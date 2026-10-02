@@ -8,7 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_every_hook_runs_the_bundled_wrapper_async():
     hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())["hooks"]
-    assert set(hooks) == {"SessionStart", "Stop", "Notification", "UserPromptSubmit"}
+    assert set(hooks) == {
+        "SessionStart",
+        "SessionEnd",
+        "Stop",
+        "Notification",
+        "UserPromptSubmit",
+    }
     for groups in hooks.values():
         for group in groups:
             for hook in group["hooks"]:

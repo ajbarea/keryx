@@ -43,14 +43,26 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
     name = event.get("hook_event_name")
     session = event.get("session_id", "")
     if name == "SessionStart":
-        # Start the cold load while the developer types the first prompt.
-        return {"op": "warm", "version": version()}
+        # Start the cold load while the developer types the first prompt; hold a voice.
+        return {
+            "op": "warm",
+            "version": version(),
+            "session": session,
+            "source": source_name(event.get("cwd", "")),
+        }
+    if name == "SessionEnd":
+        return {"op": "release", "session": session}
     if name == "UserPromptSubmit":
         # keryx's own commands must not restart the daemon or reload the model.
         if str(event.get("user_input") or event.get("prompt") or "").startswith("/keryx:"):
             return None
-        prompt = event.get("prompt_id", "")
-        return {"op": "stop", "session": session, "prompt": prompt, "warm": True}
+        return {
+            "op": "stop",
+            "session": session,
+            "prompt": event.get("prompt_id", ""),
+            "source": source_name(event.get("cwd", "")),
+            "warm": True,
+        }
     if name == "Stop":
         text = event.get("last_assistant_message") or ""
         if not text.strip():

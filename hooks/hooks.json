@@ -4,6 +4,9 @@
     "SessionStart": [
       { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/keryx\" hook", "async": true } ] }
     ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/keryx\" hook", "async": true } ] }
+    ],
     "Stop": [
       { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/keryx\" hook", "async": true } ] }
     ],

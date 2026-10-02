@@ -44,14 +44,27 @@ def test_missing_entrypoint_counts_as_interactive():
 
 def test_prompt_submit_stops_that_session():
     event = {"hook_event_name": "UserPromptSubmit", "session_id": "s9", "prompt_id": "p9"}
-    expected = {"op": "stop", "session": "s9", "prompt": "p9", "warm": True}
+    expected = {"op": "stop", "session": "s9", "prompt": "p9", "source": "", "warm": True}
     assert request_for(event, "cli") == expected
+
+
+def test_prompt_submit_names_its_repo_so_the_session_can_hold_a_voice(tmp_path):
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "cwd": str(tmp_path)}
+    request = request_for(event, "cli")
+    assert request is not None
+    assert request["source"] == tmp_path.name
+
+
+def test_session_end_releases_the_voice():
+    event = {"hook_event_name": "SessionEnd", "session_id": "s", "reason": "other"}
+    assert request_for(event, "cli") == {"op": "release", "session": "s"}
 
 
 @pytest.mark.parametrize("source", ["startup", "resume", "clear", "compact"])
 def test_session_start_warms(source):
     event = {"hook_event_name": "SessionStart", "session_id": "s", "source": source}
-    assert request_for(event, "cli") == {"op": "warm", "version": version()}
+    expected = {"op": "warm", "version": version(), "session": "s", "source": ""}
+    assert request_for(event, "cli") == expected
 
 
 def test_headless_session_start_is_silent():

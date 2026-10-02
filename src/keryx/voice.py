@@ -18,6 +18,7 @@ RELEASE = "model-files-v1.0"
 REPO = "thewh1teagle/kokoro-onnx"
 MODEL = "kokoro-v1.0.onnx"
 VOICES = "voices-v1.0.bin"
+STYLE_CACHE = 64  # blends kept; each is about 0.5 MB
 
 
 def model_dir() -> Path:
@@ -61,14 +62,23 @@ class KokoroVoice:
         self.speed = speed
         self._styles: dict[VoiceSpec, np.ndarray] = {}
 
+    def has(self, spec: VoiceSpec) -> bool:
+        return all(name in self._kokoro.voices for name in spec.names)
+
     def style(self, spec: VoiceSpec) -> np.ndarray:
         """A voice's style vectors; a blend is the weighted mean of its voices'."""
         if spec not in self._styles:
+            # Scaled by the largest weight first, so huge weights cannot overflow to NaN.
+            top = max(spec.weights)
+            weights = [w / top for w in spec.weights]
+            total = sum(weights)
             parts = [
-                w * self._kokoro.get_voice_style(n)
-                for n, w in zip(spec.names, spec.weights, strict=True)
+                (w / total) * self._kokoro.get_voice_style(n).astype(np.float64)
+                for n, w in zip(spec.names, weights, strict=True)
             ]
-            self._styles[spec] = (sum(parts) / sum(spec.weights)).astype(np.float32)
+            if len(self._styles) >= STYLE_CACHE:
+                self._styles.pop(next(iter(self._styles)))
+            self._styles[spec] = sum(parts).astype(np.float32)
         return self._styles[spec]
 
     def synth(self, text: str, voice: VoiceSpec | None = None) -> tuple[np.ndarray, int]:

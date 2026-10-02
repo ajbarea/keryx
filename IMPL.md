@@ -4,7 +4,8 @@
 
 `voices.py` hands each session a voice from a graded pool, keyed by repo in
 `~/.cache/keryx/voices.json`, with same-gender blends past the pool. The speaker asks it per
-utterance; `keryx voices` auditions the pool. Version 0.2.0. Next: duck Spotify while
+utterance, and sessions claim voices on start and prompt and release them on
+`SessionEnd`; `keryx voices` auditions the pool. Version 0.2.0. Next: duck Spotify while
 speaking, prototyped through Core Audio's per-app volume from PowerShell.
 
 ## Install state

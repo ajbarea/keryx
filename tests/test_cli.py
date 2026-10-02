@@ -47,12 +47,20 @@ def test_stop_event_spawns_daemon_if_needed(monkeypatch, sent):
 
 def test_prompt_submit_spawns_so_the_voice_loads_early(monkeypatch, sent):
     assert run_hook(monkeypatch, {"hook_event_name": "UserPromptSubmit", "session_id": "s"}) == 0
-    assert sent["spawn"] == [{"op": "stop", "session": "s", "prompt": "", "warm": True}]
+    assert sent["spawn"] == [
+        {"op": "stop", "session": "s", "prompt": "", "source": "", "warm": True}
+    ]
 
 
 def test_session_start_spawns_and_warms(monkeypatch, sent):
     assert run_hook(monkeypatch, {"hook_event_name": "SessionStart", "session_id": "s"}) == 0
-    assert sent["spawn"] == [{"op": "warm", "version": version()}]
+    assert sent["spawn"] == [{"op": "warm", "version": version(), "session": "s", "source": ""}]
+
+
+def test_session_end_releases_without_starting_a_daemon(monkeypatch, sent):
+    assert run_hook(monkeypatch, {"hook_event_name": "SessionEnd", "session_id": "s"}) == 0
+    assert sent["send"] == [{"op": "release", "session": "s"}]
+    assert sent["spawn"] == []
 
 
 class ExitedDaemon:
@@ -204,16 +212,31 @@ def test_unknown_command_prints_usage(capsys):
     assert "keryx hook" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("arg", ["all", "-1", "0"])
+@pytest.mark.parametrize("arg", ["all", "-1", "0", "\u00b2"])
 def test_voices_refuses_a_bad_count(arg, sent, capsys):
     assert cli.main(["voices", arg]) == 2
     assert sent["spawn"] == []
     assert "usage" in capsys.readouterr().err
 
 
-def test_voices_plays_the_first_n(sent):
+def test_voices_plays_the_first_n_on_a_current_daemon(sent):
     assert cli.main(["voices", "3"]) == 0
-    assert [r["voice"] for r in sent["spawn"]] == ["af_heart", "am_michael", "bf_emma"]
+    assert sent["spawn"][0] == {"op": "warm", "version": version()}
+    assert [r["voice"] for r in sent["spawn"][1:]] == ["af_heart", "am_michael", "bf_emma"]
+
+
+def test_voices_reports_a_refused_voice(monkeypatch, capsys):
+    monkeypatch.setattr(
+        client,
+        "send_or_spawn",
+        lambda req, *a, **k: (
+            {"ok": True, "version": version()}
+            if req["op"] == "warm"
+            else {"ok": False, "error": "unknown voice"}
+        ),
+    )
+    assert cli.main(["voices", "1"]) == 0
+    assert "unknown voice" in capsys.readouterr().err
 
 
 def test_every_listed_command_is_in_the_usage_text():

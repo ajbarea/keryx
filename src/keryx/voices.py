@@ -43,10 +43,14 @@ LANG = {"a": "en-us", "b": "en-gb"}
 # Blends of voices far apart (another gender) come out muddy, so only same-gender pairs.
 BLEND_WEIGHTS = ((0.5, 0.5), (0.7, 0.3), (0.3, 0.7))
 
-# A session silent this long no longer holds its voice.
-ACTIVE_SECONDS = 30 * 60
-# A repo silent this long stops reserving its home voice.
+# A session holds its voice from its start to its end (SessionEnd); this long without a
+# prompt or a reply covers a terminal killed before SessionEnd could run.
+ACTIVE_SECONDS = 4 * 3600
+# A repo silent this long stops reserving its home voice; after FORGET it is dropped.
 HOME_SECONDS = 14 * 24 * 3600
+FORGET_SECONDS = 90 * 24 * 3600
+# Refreshed timestamps alone are saved at most this often; new holds and homes at once.
+SAVE_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -122,20 +126,26 @@ class VoiceBook:
         self._active_seconds = active_seconds
         self._home_seconds = home_seconds
         self._home, self._held = self._load()  # by source, by session
+        self._saved = float("-inf")
 
     def default(self) -> VoiceSpec:
         return self._specs[0]
 
     def assign(self, session: str, source: str) -> VoiceSpec:
-        """The voice for `session`, which works in repo `source`."""
-        if not session:
-            return self.default()
+        """The voice for `session`, which works in repo `source`, held until it ends.
+
+        Without a session (`keryx say`, scripts): the first voice no session holds, so a
+        notice is never mistaken for a session's line.
+        """
         now = self._clock()
         self._expire(now)
-        if session in self._held:
+        taken = {i for i, _ in self._held.values()}
+        if not session:
+            return self._specs[next((i for i in range(len(self._specs)) if i not in taken), 0)]
+        changed = session not in self._held
+        if not changed:
             index = self._held[session][0]
         else:
-            taken = {i for i, _ in self._held.values()}
             home = self._home.get(source)
             if home is not None and home[0] not in taken:
                 index = home[0]
@@ -146,22 +156,25 @@ class VoiceBook:
         self._held[session] = (index, now)
         if source in self._home:
             self._home[source] = (self._home[source][0], now)
-        self._save()
+        self._save(now, force=changed)
         return self._specs[index]
 
-    def touch(self, session: str) -> None:
-        """`session` sent a prompt, so it is still working: keep its voice held."""
-        now = self._clock()
-        self._expire(now)
-        if session in self._held:
-            self._held[session] = (self._held[session][0], now)
-            self._save()
+    def release(self, session: str) -> None:
+        """`session` ended: its voice is free for the next session."""
+        if self._held.pop(session, None) is not None:
+            self._save(self._clock(), force=True)
 
     def _expire(self, now: float) -> None:
+        # A clock that jumped back (WSL after the host sleeps) must not make holds eternal.
         self._held = {
-            s: (i, seen)
+            s: (i, min(seen, now))
             for s, (i, seen) in self._held.items()
-            if now - seen <= self._active_seconds
+            if now - min(seen, now) <= self._active_seconds
+        }
+        self._home = {
+            s: (i, min(seen, now))
+            for s, (i, seen) in self._home.items()
+            if now - min(seen, now) <= FORGET_SECONDS
         }
 
     def _first_free(self, taken: set[int], now: float) -> int:
@@ -189,11 +202,20 @@ class VoiceBook:
             if not isinstance(entry, dict):
                 continue
             label, seen = entry.get("voice"), entry.get("seen")
-            if isinstance(label, str) and label in self._index and isinstance(seen, int | float):
+            if (
+                isinstance(label, str)
+                and label in self._index
+                and isinstance(seen, int | float)
+                and math.isfinite(seen)
+            ):
                 out[str(key)] = (self._index[label], float(seen))
         return out
 
-    def _save(self) -> None:
+    def _save(self, now: float, force: bool) -> None:
+        if not force and now - self._saved < SAVE_SECONDS:
+            return
+        self._saved = now
+
         def entries(table: Table) -> dict[str, dict]:
             return {
                 key: {"voice": self._specs[i].label(), "seen": seen}

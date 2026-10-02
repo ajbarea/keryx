@@ -16,6 +16,9 @@ class FakeVoice:
         self.voices.append(voice)
         return np.zeros(240, dtype=np.float32), 24000
 
+    def has(self, spec):
+        return True
+
 
 class FakePlayer:
     """Records plays; a play lasts until released or interrupted."""
@@ -150,6 +153,9 @@ class BrokenVoice:
             raise RuntimeError("kokoro choked")
         return np.zeros(240, dtype=np.float32), 24000
 
+    def has(self, spec):
+        return True
+
 
 class FlakyPlayer(FakePlayer):
     def play(self, wav, seconds, interrupt):
@@ -279,13 +285,15 @@ def test_a_shortening_error_does_not_silence_later_speech(make):
 class FakeVoices:
     def __init__(self, picked):
         self.picked = picked
-        self.touched = []
+        self.claimed = []
+        self.released = []
 
     def assign(self, session, source):
-        return self.picked[session]
+        self.claimed.append((session, source))
+        return self.picked.get(session)
 
-    def touch(self, session):
-        self.touched.append(session)
+    def release(self, session):
+        self.released.append(session)
 
 
 def test_each_utterance_is_spoken_in_the_voice_picked_for_its_session(tmp_path):
@@ -310,9 +318,12 @@ def test_an_explicit_voice_is_kept(tmp_path):
     sp.close()
 
 
-def test_touch_reaches_the_voices(tmp_path):
+def test_claim_and_release_reach_the_voices(tmp_path):
     voices = FakeVoices({})
     sp = Speaker(lambda t: t, FakeVoice(), FakePlayer(), tmp_path, voices)
-    sp.touch("a")
-    assert voices.touched == ["a"]
+    sp.claim("a", "repo")
+    sp.claim("", "repo")  # no session: nothing to hold
+    sp.release("a")
+    assert voices.claimed == [("a", "repo")]
+    assert voices.released == ["a"]
     sp.close()

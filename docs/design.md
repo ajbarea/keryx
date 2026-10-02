@@ -75,9 +75,12 @@ were told apart by ear on 2026-10-02.
 A repo keeps the voice it was first given, stored by label in `~/.cache/keryx/voices.json`.
 A session takes its repo's voice unless another session holds it; then it borrows the first
 voice that no repo heard in the last 14 days calls home and no session holds. A session
-holds its voice while it has spoken or sent a prompt within 30 minutes, so a long turn
-keeps it. Holds are saved with wall-clock times, so a daemon restart does not let two
-sessions trade voices. Hashing
+claims its voice on `SessionStart` and on each prompt, and releases it on `SessionEnd`.
+`SessionEnd` may not run when a terminal is killed, so a hold also lapses after 4 hours with
+no prompt or reply. Holds are saved with wall-clock times, so a daemon restart does not let
+two sessions trade voices; a clock that jumps back counts from the jump. A line with no
+session (`keryx say`) takes a voice no session holds, so it is not mistaken for one. Repos
+unheard for 90 days are dropped from the file. Hashing
 repo names to voices was rejected: with 15 voices, two of six repos already share one about
 two times in three. Claude Code does not report how many sessions are open, so the daemon
 counts the ones it has heard from.
@@ -102,7 +105,8 @@ clip, each play adds about 6 ms. The WAV must sit on a Windows drive: loading fr
   summarizer. A daemon from another keryx version (0.1.0 has no `warm` op) is retired and
   replaced with the current code. `Stop` sends the reply. `Notification` sends permission
   and elicitation prompts. `UserPromptSubmit` stops that session's speech, starts the daemon if needed, and
-  preloads the summarizer, since a reply is coming.
+  preloads the summarizer, since a reply is coming. `SessionEnd` frees the session's voice
+  and never starts a daemon.
 - **One daemon per machine** on a Unix socket, guarded by a lock file so a second daemon
   exits instead of taking over the socket.
 - **One queue** serves every session. A new prompt cancels only that session's speech.

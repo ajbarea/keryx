@@ -53,7 +53,7 @@ def handle(
             latest[request["session"]] = request["prompt"]
         speaker.stop(request.get("session") or None)
         if request.get("session"):
-            speaker.touch(request["session"])
+            speaker.claim(request["session"], str(request.get("source") or ""))
         # A prompt was just sent, so a reply is coming: load the summarizer meanwhile.
         if request.get("warm"):
             start_warming(warm)
@@ -64,8 +64,14 @@ def handle(
         if request.get("version") not in (None, VERSION):
             speaker.stop()
             return {"ok": True, "quit": True, "version": VERSION}
+        if request.get("session"):
+            speaker.claim(request["session"], str(request.get("source") or ""))
         start_warming(warm)
         return {"ok": True, "version": VERSION}
+    if op == "release":
+        if request.get("session"):
+            speaker.release(request["session"])
+        return {"ok": True}
     if op == "say":
         text = str(request.get("text") or "")
         if not text.strip():
@@ -79,6 +85,8 @@ def handle(
             voice = VoiceSpec.parse(request["voice"]) if request.get("voice") else None
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
+        if voice is not None and not speaker.knows(voice):
+            return {"ok": False, "error": f"unknown voice {voice.label()!r}"}
         speaker.submit(
             Utterance(
                 text=text,

@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from keryx.voices import POOL, VoiceBook, VoiceSpec, catalogue, pool
@@ -88,9 +89,8 @@ def test_every_voice_taken_still_answers(tmp_path):
         assert isinstance(b.assign(f"s{i}", ""), VoiceSpec)
 
 
-def test_no_session_gets_the_default(book):
+def test_no_session_with_nobody_holding_gets_the_default(book):
     b, _ = book
-    b.assign("s1", "ariadne")
     assert b.assign("", "") == b.default()
 
 
@@ -166,18 +166,78 @@ def test_a_prompt_keeps_a_long_turn_holding_its_voice(book):
     b, clock = book
     home = b.assign("a", "repo")
     clock.now = 50
-    b.touch("a")
+    b.assign("a", "repo")  # the prompt claims it again
     clock.now = 100  # 50 s after the prompt, 100 s after it last spoke
     b.assign("c", "repo")
     assert b.assign("a", "repo") == home
 
 
-def test_touch_does_not_revive_an_expired_hold(book):
+def test_a_prompt_after_the_hold_expired_reclaims_the_home_voice(book):
     b, clock = book
     home = b.assign("a", "repo")
     clock.now = 61
-    b.touch("a")
-    assert b.assign("c", "repo") == home  # a no longer holds it
+    b.assign("a", "repo")  # prompt after a long pause, before anyone else speaks
+    assert b.assign("c", "repo") != home
+    assert b.assign("a", "repo") == home
+
+
+def test_an_ended_session_frees_its_voice_at_once(book):
+    b, _ = book
+    home = b.assign("a", "repo")
+    b.release("a")
+    assert b.assign("c", "repo") == home
+
+
+def test_releasing_an_unknown_session_is_harmless(book):
+    b, _ = book
+    b.release("never-seen")
+
+
+def test_a_notice_without_a_session_avoids_held_voices(book):
+    b, _ = book
+    held = b.assign("a", "repo")
+    assert b.assign("", "") != held
+    assert b.assign("c", "other") != held  # and holding nothing, it took nobody's voice
+
+
+def test_a_clock_that_jumped_back_does_not_hold_voices_forever(book):
+    b, clock = book
+    clock.now = 1000
+    b.assign("a", "repo")
+    clock.now = 10  # the host slept and WSL's clock came back early
+    b.assign("x", "other")
+    clock.now = 71  # 61 s after the jump
+    assert b.assign("c", "repo") == VoiceSpec(("af_heart",))
+
+
+def test_non_finite_times_in_the_file_are_dropped(tmp_path):
+    (tmp_path / "v.json").write_text('{"sessions": {"a": {"voice": "af_heart", "seen": Infinity}}}')
+    b = VoiceBook(tmp_path / "v.json")
+    assert b.assign("c", "repo") == VoiceSpec(("af_heart",))
+
+
+def test_repos_unheard_for_ninety_days_are_forgotten(tmp_path):
+    from keryx.voices import FORGET_SECONDS
+
+    clock = Clock()
+    b = VoiceBook(tmp_path / "v.json", clock=clock, active_seconds=60)
+    b.assign("a", "old")
+    clock.now = FORGET_SECONDS + 1
+    b.assign("n", "new")
+    assert '"old"' not in (tmp_path / "v.json").read_text()
+
+
+def test_refreshed_timestamps_are_not_saved_on_every_line(tmp_path):
+    clock = Clock()
+    path = tmp_path / "v.json"
+    b = VoiceBook(path, clock=clock, active_seconds=600)
+    b.assign("a", "repo")
+    first = path.read_text()
+    clock.now = 10
+    b.assign("a", "repo")
+    assert path.read_text() == first  # only a timestamp moved
+    b.assign("b", "repo")
+    assert '"b"' in path.read_text()  # a new hold is saved at once
 
 
 def test_repos_unheard_for_long_free_their_voices_for_new_repos(tmp_path):
@@ -224,3 +284,47 @@ def test_a_non_english_first_voice_is_never_blended():
     specs = catalogue("jf_alpha")
     assert specs[0] == VoiceSpec(("jf_alpha",))
     assert not any("jf_alpha" in s.names for s in specs[1:])
+
+
+class FakeKokoro:
+    def __init__(self):
+        self.voices = {
+            "a": np.full((4, 1, 2), 1.0, np.float32),
+            "b": np.full((4, 1, 2), 3.0, np.float32),
+        }
+
+    def get_voice_style(self, name):
+        return self.voices[name]
+
+
+def kokoro_voice():
+    from keryx.voice import KokoroVoice
+
+    v = object.__new__(KokoroVoice)  # skip loading the real model
+    v._kokoro, v._styles = FakeKokoro(), {}
+    return v
+
+
+def test_a_blend_is_the_weighted_mean_of_its_voices():
+    style = kokoro_voice().style(VoiceSpec(("a", "b"), (0.75, 0.25)))
+    assert np.allclose(style, 1.5)
+
+
+def test_huge_weights_still_blend_to_finite_styles():
+    style = kokoro_voice().style(VoiceSpec(("a", "b"), (1e308, 1e308)))
+    assert np.isfinite(style).all() and np.allclose(style, 2.0)
+
+
+def test_the_style_cache_is_bounded():
+    from keryx.voice import STYLE_CACHE
+
+    v = kokoro_voice()
+    for i in range(STYLE_CACHE + 10):
+        v.style(VoiceSpec(("a", "b"), (1.0, 1.0 + i)))
+    assert len(v._styles) == STYLE_CACHE
+
+
+def test_has_checks_every_name():
+    v = kokoro_voice()
+    assert v.has(VoiceSpec(("a", "b"), (1.0, 1.0)))
+    assert not v.has(VoiceSpec(("a", "zz"), (1.0, 1.0)))

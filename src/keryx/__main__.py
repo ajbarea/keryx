@@ -38,9 +38,12 @@ def main(argv: list[str] | None = None) -> int:
         # Spawning on a prompt, not just a reply, loads the voice while Claude works.
         # No daemon to answer (turned off, or it failed to start): nothing to say.
         with contextlib.suppress(OSError):
-            reply = client.send_or_spawn(request)
-            if request["op"] == "warm" and reply.get("version") != request["version"]:
-                client.replace_daemon(request, reply)
+            if request["op"] == "release":
+                client.send(request)  # a session ending must not start a daemon
+            elif request["op"] == "warm":
+                client.warm_current(request)
+            else:
+                client.send_or_spawn(request)
         return 0
 
     if cmd in ("on", "off"):
@@ -78,14 +81,23 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "voices":
         from keryx.voices import catalogue
 
-        count = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0 if len(args) > 1 else 8
+        try:
+            count = int(args[1]) if len(args) > 1 else 8
+        except ValueError:
+            count = 0
         if count < 1:
             print("usage: keryx voices [N], N a positive whole number", file=sys.stderr)
             return 2
+        from keryx import version
+
+        # An older daemon would ignore `voice` and play every line in one voice.
+        client.warm_current({"op": "warm", "version": version()})
         for n, spec in enumerate(catalogue(cfg.voice)[:count], 1):
             text = f"Voice {n}, {spec.label().replace('_', ' ')}."
             request = {"op": "say", "kind": "notice", "text": text, "voice": spec.label()}
-            client.send_or_spawn(request)
+            reply = client.send_or_spawn(request)
+            if not reply.get("ok"):
+                print(f"{spec.label()}: {reply.get('error')}", file=sys.stderr)
         return 0
 
     if cmd == "stop":

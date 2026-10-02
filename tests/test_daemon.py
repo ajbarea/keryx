@@ -12,7 +12,8 @@ class FakeSpeaker:
     def __init__(self):
         self.submitted = []
         self.stopped = []
-        self.touched = []
+        self.claimed = []
+        self.released = []
         self.closed = False
 
     def submit(self, utt):
@@ -21,8 +22,14 @@ class FakeSpeaker:
     def stop(self, session=None):
         self.stopped.append(session)
 
-    def touch(self, session):
-        self.touched.append(session)
+    def claim(self, session, source):
+        self.claimed.append((session, source))
+
+    def release(self, session):
+        self.released.append(session)
+
+    def knows(self, spec):
+        return spec.names != ("zz_nope",)
 
     def close(self, timeout=5.0):
         self.closed = True
@@ -54,11 +61,25 @@ def test_a_bad_voice_is_refused_not_fatal(bad):
     assert sp.submitted == []
 
 
-def test_a_prompt_keeps_its_sessions_voice_held():
+def test_a_prompt_and_a_session_start_claim_the_sessions_voice():
     sp = FakeSpeaker()
-    handle({"op": "stop", "session": "s1", "prompt": "p"}, sp)
+    handle({"op": "stop", "session": "s1", "prompt": "p", "source": "r"}, sp)
     handle({"op": "stop"}, sp)
-    assert sp.touched == ["s1"]
+    handle({"op": "warm", "session": "s2", "source": "q"}, sp, None)
+    assert sp.claimed == [("s1", "r"), ("s2", "q")]
+
+
+def test_a_session_end_releases_its_voice():
+    sp = FakeSpeaker()
+    assert handle({"op": "release", "session": "s1"}, sp) == {"ok": True}
+    assert sp.released == ["s1"]
+
+
+def test_an_unknown_voice_is_refused_before_it_is_queued():
+    sp = FakeSpeaker()
+    reply = handle({"op": "say", "text": "Hi.", "voice": "zz_nope"}, sp)
+    assert reply["ok"] is False and "zz_nope" in reply["error"]
+    assert sp.submitted == []
 
 
 def test_an_unexpected_error_in_a_request_leaves_the_daemon_serving(running, monkeypatch):

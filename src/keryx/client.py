@@ -85,6 +85,14 @@ def send_or_spawn(request: dict, wait: float = SPAWN_WAIT_SECONDS) -> dict:
                 time.sleep(0.2)
 
 
+def warm_current(request: dict) -> dict:
+    """Send a `warm`, first replacing a daemon from another keryx version."""
+    reply = send_or_spawn(request)
+    if reply.get("version") != request["version"]:
+        return replace_daemon(request, reply)
+    return reply
+
+
 def replace_daemon(request: dict, reply: dict, sock_path: Path | None = None) -> dict:
     """Retire a daemon from another keryx version and send `request` to a fresh one.
 

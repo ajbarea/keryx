@@ -33,17 +33,20 @@ PLAY_AHEAD = 2
 
 class Voice(Protocol):
     def synth(self, text: str, voice: VoiceSpec | None = None) -> tuple[np.ndarray, int]: ...
+    def has(self, spec: VoiceSpec) -> bool: ...
 
 
 class Voices(Protocol):
     def assign(self, session: str, source: str) -> VoiceSpec: ...
-    def touch(self, session: str) -> None: ...
+    def release(self, session: str) -> None: ...
 
 
 class SpeechQueue(Protocol):
     def submit(self, utt: Utterance) -> None: ...
     def stop(self, session: str | None = None) -> None: ...
-    def touch(self, session: str) -> None: ...
+    def claim(self, session: str, source: str) -> None: ...
+    def release(self, session: str) -> None: ...
+    def knows(self, spec: VoiceSpec) -> bool: ...
     def close(self, timeout: float = 5.0) -> None: ...
     def idle(self) -> bool: ...
 
@@ -105,10 +108,17 @@ class Speaker:
             self._active.append(utt)
             self._cond.notify_all()
 
-    def touch(self, session: str) -> None:
-        """`session` sent a prompt: it still holds its voice."""
+    def claim(self, session: str, source: str) -> None:
+        """`session` started or sent a prompt: hold its voice before it speaks."""
+        if self._voices is not None and session:
+            self._voices.assign(session, source)
+
+    def release(self, session: str) -> None:
         if self._voices is not None:
-            self._voices.touch(session)
+            self._voices.release(session)
+
+    def knows(self, spec: VoiceSpec) -> bool:
+        return self._voice.has(spec)
 
     def stop(self, session: str | None = None) -> None:
         """Cancel queued and playing speech, for one session or (None) all of them."""
