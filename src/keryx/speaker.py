@@ -23,6 +23,7 @@ import numpy as np
 from keryx.player import Player
 from keryx.text import split_sentences
 from keryx.voice import write_wav
+from keryx.voices import VoiceSpec, holder
 
 log = logging.getLogger("keryx")
 
@@ -31,12 +32,19 @@ PLAY_AHEAD = 2
 
 
 class Voice(Protocol):
-    def synth(self, text: str) -> tuple[np.ndarray, int]: ...
+    def synth(self, text: str, voice: VoiceSpec | None = None) -> tuple[np.ndarray, int]: ...
+    def has(self, spec: VoiceSpec) -> bool: ...
+
+
+class Voices(Protocol):
+    def assign(self, holder: str, source: str) -> VoiceSpec: ...
 
 
 class SpeechQueue(Protocol):
     def submit(self, utt: Utterance) -> None: ...
     def stop(self, session: str | None = None) -> None: ...
+    def claim(self, holder: str, source: str) -> None: ...
+    def knows(self, spec: VoiceSpec) -> bool: ...
     def close(self, timeout: float = 5.0) -> None: ...
     def idle(self) -> bool: ...
 
@@ -46,9 +54,11 @@ class Utterance:
     text: str
     kind: str = "reply"  # "reply" is shortened first; "notice" is spoken as given
     session: str = ""
+    terminal: str = ""  # holds the voice; the session when empty
     source: str = ""
     cancelled: threading.Event = field(default_factory=threading.Event)
     line: str | None = None  # the words to say, once shortened
+    voice: VoiceSpec | None = None  # None: the configured voice
     announced: bool = False  # its line starts with the source name
     played: bool = False
 
@@ -60,8 +70,11 @@ class Speaker:
         voice: Voice,
         player: Player,
         audio_dir: Path,
+        voices: Voices | None = None,
     ):
+        """`voices` picks each session's voice; None speaks everything in the default."""
         self._shorten = shorten
+        self._voices = voices
         self._voice = voice
         self._player = player
         self._audio_dir = audio_dir
@@ -87,10 +100,20 @@ class Speaker:
             t.start()
 
     def submit(self, utt: Utterance) -> None:
+        if utt.voice is None and self._voices is not None:
+            utt.voice = self._voices.assign(holder(utt.terminal, utt.session), utt.source)
         with self._cond:
             (self._to_shorten if utt.kind == "reply" else self._pending).append(utt)
             self._active.append(utt)
             self._cond.notify_all()
+
+    def claim(self, holder: str, source: str) -> None:
+        """`holder` started or sent a prompt: hold its voice before it speaks."""
+        if self._voices is not None and holder:
+            self._voices.assign(holder, source)
+
+    def knows(self, spec: VoiceSpec) -> bool:
+        return self._voice.has(spec)
 
     def stop(self, session: str | None = None) -> None:
         """Cancel queued and playing speech, for one session or (None) all of them."""
@@ -156,7 +179,7 @@ class Speaker:
                 for sentence in split_sentences(line):
                     if utt.cancelled.is_set():
                         break
-                    samples, rate = self._voice.synth(sentence)
+                    samples, rate = self._voice.synth(sentence, utt.voice)
                     wav = self._audio_dir / slot_name(next(self._slots))
                     seconds = write_wav(wav, samples, rate)
                     self.spoken.append(sentence)

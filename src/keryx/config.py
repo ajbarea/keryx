@@ -25,6 +25,8 @@ def socket_path() -> Path:
 class Config:
     enabled: bool = True
     voice: str = "af_heart"
+    # Give each terminal its own voice; `voice` is the first one handed out.
+    distinct_voices: bool = True
     speed: float = 1.0
     model: str = "gemma3:4b"
     ollama_host: str = "http://localhost:11434"

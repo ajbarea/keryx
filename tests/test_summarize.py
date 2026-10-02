@@ -1,4 +1,5 @@
 import json
+import sys
 import threading
 import time
 import urllib.error
@@ -74,7 +75,7 @@ def test_code_only_reply_is_silent():
 class SlowOllama(BaseHTTPRequestHandler):
     """Loads slower than the chat timeout, then chats instantly."""
 
-    load_seconds: ClassVar[float] = 0.6
+    load_seconds: ClassVar[float] = 2.0
     chat_seconds: ClassVar[float] = 0.0
     requests: ClassVar[list[str]] = []
 
@@ -97,11 +98,19 @@ class SlowOllama(BaseHTTPRequestHandler):
         pass
 
 
+class QuietServer(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        # A client that timed out leaves the handler a broken pipe; anything else is a bug.
+        if not isinstance(sys.exc_info()[1], BrokenPipeError | ConnectionResetError):
+            super().handle_error(request, client_address)
+
+
 @pytest.fixture
 def slow_ollama():
     SlowOllama.requests = []
     SlowOllama.chat_seconds = 0.0
-    server = ThreadingHTTPServer(("127.0.0.1", 0), SlowOllama)
+    SlowOllama.load_seconds = 2.0
+    server = QuietServer(("127.0.0.1", 0), SlowOllama)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
     server.shutdown()
@@ -109,15 +118,16 @@ def slow_ollama():
 
 
 def test_a_cold_load_longer_than_the_chat_timeout_still_gets_the_gist(slow_ollama):
-    client = OllamaClient("m", slow_ollama, timeout=0.2)
+    client = OllamaClient("m", slow_ollama, timeout=1.0)
     assert SlowOllama.load_seconds > client.timeout
     assert spoken_line(LONG, client) == "I fixed the parser."
     assert SlowOllama.requests == ["/api/generate", "/api/chat"]
 
 
 def test_generation_is_still_bounded_by_the_short_timeout(slow_ollama):
-    SlowOllama.chat_seconds = 0.5
-    client = OllamaClient("m", slow_ollama, timeout=0.2, load_timeout=2.0)
+    SlowOllama.load_seconds = 0.0
+    SlowOllama.chat_seconds = 3.0
+    client = OllamaClient("m", slow_ollama, timeout=1.0, load_timeout=5.0)
     assert spoken_line(LONG, client).startswith("I changed the parser.")
 
 

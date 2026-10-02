@@ -4,6 +4,7 @@ keryx hook             read a Claude Code hook payload on stdin
 keryx on | off         turn speech on or off
 keryx status           show settings and whether the daemon is up
 keryx say TEXT         speak TEXT as given
+keryx voices [N]       say a line in each of the first N voices in the catalogue
 keryx stop             cut off current speech
 keryx daemon           run the speech daemon in the foreground
 """
@@ -18,7 +19,7 @@ import sys
 from keryx import client
 from keryx.config import Config
 
-COMMANDS = ("hook", "on", "off", "status", "say", "stop", "daemon")
+COMMANDS = ("hook", "on", "off", "status", "say", "voices", "stop", "daemon")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,9 +38,10 @@ def main(argv: list[str] | None = None) -> int:
         # Spawning on a prompt, not just a reply, loads the voice while Claude works.
         # No daemon to answer (turned off, or it failed to start): nothing to say.
         with contextlib.suppress(OSError):
-            reply = client.send_or_spawn(request)
-            if request["op"] == "warm" and reply.get("version") != request["version"]:
-                client.replace_daemon(request, reply)
+            if request["op"] == "warm":
+                client.current(request)
+            else:
+                client.send_or_spawn(request)
         return 0
 
     if cmd in ("on", "off"):
@@ -72,6 +74,35 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "say":
         text = " ".join(args[1:]) or sys.stdin.read()
         print(client.send_or_spawn({"op": "say", "kind": "notice", "text": text}))
+        return 0
+
+    if cmd == "voices":
+        from keryx.voices import catalogue
+
+        try:
+            count = int(args[1]) if len(args) > 1 else 8
+        except ValueError:
+            count = 0
+        if count < 1:
+            print("usage: keryx voices [N], N a positive whole number", file=sys.stderr)
+            return 2
+        if not cfg.enabled:
+            print("keryx is off; `keryx on` first", file=sys.stderr)
+            return 1
+        from keryx import version
+
+        try:
+            # An older daemon would ignore `voice` and play every line in one voice.
+            client.current({"op": "ping", "version": version()})
+            for n, spec in enumerate(catalogue(cfg.voice)[:count], 1):
+                text = f"Voice {n}, {spec.spoken()}."
+                request = {"op": "say", "kind": "notice", "text": text, "voice": spec.label()}
+                reply = client.send_or_spawn(request)
+                if not reply.get("ok"):
+                    print(f"{spec.label()}: {reply.get('error')}", file=sys.stderr)
+        except OSError as exc:
+            print(f"the keryx daemon did not answer: {exc}", file=sys.stderr)
+            return 1
         return 0
 
     if cmd == "stop":

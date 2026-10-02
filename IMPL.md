@@ -1,15 +1,12 @@
 # IMPL
 
-## Current: cold-start fix
+## Current: a voice per terminal
 
-On the first reply after the daemon's 4-hour idle exit, `gemma3:4b` took 44 s to load from
-disk. The 30 s generate timeout hung up, Ollama aborted the load, and the reply fell back to
-its opening sentences. This change loads the model under its own timeout before generating,
-adds a `warm` op and a `SessionStart` hook that sends it, and moves shortening off the
-synth thread so notices never queue behind a load.
-
-Known limit: sessions still running 0.1.0 hooks re-sync the shared venv to the 0.1.0 checkout,
-so a daemon may retire and respawn on an old version until those sessions are restarted. Version 0.1.1 so `claude plugin update` picks it up.
+`voices.py` hands each terminal a voice from a graded pool, keyed by repo in
+`~/.cache/keryx/voices.json`, with same-gender blends past the pool. `procs.py` names a
+terminal by its Claude Code process and tells the daemon when it has exited. Voices are
+claimed on start and prompt; `keryx voices` auditions the pool. Version 0.2.0. Next: duck Spotify while
+speaking, prototyped through Core Audio's per-app volume from PowerShell.
 
 ## Install state
 

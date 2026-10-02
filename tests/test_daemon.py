@@ -12,6 +12,7 @@ class FakeSpeaker:
     def __init__(self):
         self.submitted = []
         self.stopped = []
+        self.claimed = []
         self.closed = False
 
     def submit(self, utt):
@@ -19,6 +20,12 @@ class FakeSpeaker:
 
     def stop(self, session=None):
         self.stopped.append(session)
+
+    def claim(self, holder, source):
+        self.claimed.append((holder, source))
+
+    def knows(self, spec):
+        return spec.names != ("zz_nope",)
 
     def close(self, timeout=5.0):
         self.closed = True
@@ -35,6 +42,58 @@ def test_handle_say_builds_an_utterance():
     assert reply == {"ok": True}
     utt = sp.submitted[0]
     assert (utt.text, utt.kind, utt.session, utt.source) == ("Hi.", "notice", "s", "r")
+
+
+def test_handle_say_carries_an_explicit_voice():
+    sp = FakeSpeaker()
+    handle({"op": "say", "text": "Hi.", "voice": "af_heart(0.7)+af_bella(0.3)"}, sp)
+    assert sp.submitted[0].voice.names == ("af_heart", "af_bella")
+
+
+@pytest.mark.parametrize("bad", ["af_heart(x)", 5, "a(0)+b(0)", "a(1)+"])
+def test_a_bad_voice_is_refused_not_fatal(bad):
+    sp = FakeSpeaker()
+    assert handle({"op": "say", "text": "Hi.", "voice": bad}, sp)["ok"] is False
+    assert sp.submitted == []
+
+
+def test_a_prompt_and_a_session_start_claim_the_terminals_voice():
+    sp = FakeSpeaker()
+    handle({"op": "stop", "session": "s1", "prompt": "p", "terminal": "9:1", "source": "r"}, sp)
+    handle({"op": "stop", "session": "s3", "source": "r"}, sp)  # outside a terminal
+    handle({"op": "warm", "session": "s2", "terminal": "8:1", "source": "q"}, sp, None)
+    assert sp.claimed == [("9:1", "r"), ("s3", "r"), ("8:1", "q")]
+
+
+def test_say_carries_its_terminal():
+    sp = FakeSpeaker()
+    handle({"op": "say", "text": "Hi.", "session": "s", "terminal": "9:1"}, sp)
+    assert sp.submitted[0].terminal == "9:1"
+
+
+def test_ping_reports_the_version():
+    assert handle({"op": "ping"}, FakeSpeaker())["version"] == VERSION
+
+
+def test_an_unknown_voice_is_refused_before_it_is_queued():
+    sp = FakeSpeaker()
+    reply = handle({"op": "say", "text": "Hi.", "voice": "zz_nope"}, sp)
+    assert reply["ok"] is False and "zz_nope" in reply["error"]
+    assert sp.submitted == []
+
+
+def test_an_unexpected_error_in_a_request_leaves_the_daemon_serving(running, monkeypatch):
+    from keryx import daemon
+
+    sock, _, _ = running
+
+    def boom(*a, **k):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(daemon, "handle", boom)
+    assert client.send({"op": "ping"}, sock)["ok"] is False
+    monkeypatch.undo()
+    assert client.send({"op": "ping"}, sock)["ok"] is True
 
 
 def test_handle_unknown_kind_is_a_reply():
@@ -81,13 +140,18 @@ def test_warm_without_a_summarizer_is_a_no_op():
     assert handle({"op": "warm"}, FakeSpeaker(), None)["ok"] is True
 
 
-def test_warm_from_another_version_retires_the_daemon_without_warming():
+def test_warm_from_a_newer_version_retires_the_daemon_without_warming():
     warmed = threading.Event()
     sp = FakeSpeaker()
-    reply = handle({"op": "warm", "version": "0.0.0-other"}, sp, warmed.set)
+    reply = handle({"op": "warm", "version": "999.0.0"}, sp, warmed.set)
     assert reply["quit"] is True
     assert sp.stopped == [None]
     assert not warmed.wait(0.1)
+
+
+def test_warm_from_an_older_version_does_not_retire_the_daemon():
+    reply = handle({"op": "warm", "version": "0.0.1"}, FakeSpeaker(), None)
+    assert reply == {"ok": True, "version": VERSION}
 
 
 def test_one_at_a_time_skips_calls_while_one_runs():

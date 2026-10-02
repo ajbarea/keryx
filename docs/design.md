@@ -62,6 +62,36 @@ CUDA ships as the `cuda` extra (about 2 GB of NVIDIA wheels); `onnxruntime-gpu` 
 kokoro-onnx's CPU-only `onnxruntime` through a uv override, and falls back to its CPU
 provider when the CUDA libraries are missing. Synthesis runs one sentence ahead of playback.
 
+## Voices
+
+Each terminal gets its own voice so parallel terminals are told apart by ear; the repo name
+is still spoken when the speaker changes. The pool is Kokoro v1.0's English voices graded C
+or better in its VOICES.md, 15 of 28, ordered so neighbours differ in accent or gender, best
+grades first. British voices are phonemized as `en-gb`, and a blend in the accent of the
+voice it weighs most. Past the pool come same-gender blends (the weighted mean of two
+voices' style vectors) at 50/50, 70/30 and 30/70; blends across genders are reported to come
+out muddy. All eight first voices and three blends were told apart by ear on 2026-10-02.
+
+A terminal is its Claude Code process: the hook's nearest ancestor named `claude`, as
+`pid:starttime` so a reused pid is not mistaken for it. Session ids would not do: `/clear`
+and resume start new sessions in the same terminal, and `SessionEnd` gets a 1.5 s budget at
+exit and may not run at all when a terminal is killed. A terminal holds its voice while its
+process runs, which the daemon reads from `/proc`; a hook outside Claude Code (no such
+ancestor) holds by session id and lapses 4 hours after its last prompt or reply.
+
+A repo keeps the voice it was first given, stored by label in `~/.cache/keryx/voices.json`.
+A terminal takes its repo's voice unless another terminal holds it; then it borrows the
+first voice that no repo heard in the last 14 days calls home and nobody holds. Voices are
+claimed on `SessionStart` and on each prompt, before the first reply. Holds are saved with
+wall-clock times, so a daemon restart does not let two terminals trade voices; a clock that
+jumps back counts from the jump. A line with no session (`keryx say`) takes a voice nobody
+holds, so it is not mistaken for a terminal's. Repos unheard for 90 days are dropped from
+the file. The repo name comes from `.git` read directly (a worktree's `commondir` leads to
+its main checkout), so a prompt's stop never waits on a `git` subprocess. Hashing
+repo names to voices was rejected: with 15 voices, two of six repos already share one about
+two times in three. Claude Code does not report how many sessions are open, so the daemon
+counts the ones it has heard from.
+
 ## Playback
 
 WSLg's PulseAudio sink was tried first. One `paplay` call returned in 186 ms for a 0.5 s

@@ -1,8 +1,10 @@
 """The long-lived process: keeps Kokoro loaded and serves requests on a Unix socket.
 
 Requests are one JSON object per connection, answered with one JSON line:
-`{"op": "say", "text", "kind", "session", "source"}`, `{"op": "stop", "session"}`,
-`{"op": "warm"}`, `{"op": "ping"}`, `{"op": "quit"}`.
+`{"op": "say", "text", "kind", "session", "prompt", "terminal", "source", "voice"}`,
+`{"op": "stop", "session", "prompt", "terminal", "source", "warm"}`,
+`{"op": "warm", "version", "session", "terminal", "source"}`, `{"op": "ping"}`,
+`{"op": "quit"}`. `warm` and `ping` answer with the daemon's version.
 """
 
 from __future__ import annotations
@@ -19,13 +21,14 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from keryx import version
+from keryx import older, version
 from keryx.client import read_all
-from keryx.config import Config, socket_path
+from keryx.config import Config, cache_dir, socket_path
 from keryx.player import WindowsPlayer
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.summarize import OllamaClient, spoken_line
 from keryx.voice import KokoroVoice
+from keryx.voices import VoiceBook, VoiceSpec, holder
 
 log = logging.getLogger("keryx")
 
@@ -43,7 +46,7 @@ def handle(
     latest = latest_prompt if latest_prompt is not None else {}
     op = request.get("op")
     if op == "ping":
-        return {"ok": True, "pid": os.getpid()}
+        return {"ok": True, "pid": os.getpid(), "version": VERSION}
     if op == "quit":
         speaker.stop()
         return {"ok": True, "quit": True}
@@ -51,6 +54,7 @@ def handle(
         if request.get("session") and request.get("prompt"):
             latest[request["session"]] = request["prompt"]
         speaker.stop(request.get("session") or None)
+        claim(request, speaker)
         # A prompt was just sent, so a reply is coming: load the summarizer meanwhile.
         if request.get("warm"):
             start_warming(warm)
@@ -58,9 +62,11 @@ def handle(
     if op == "warm":
         # This process keeps the code it started with; a hook from an updated keryx
         # retires it so the next hook spawns the new code.
-        if request.get("version") not in (None, VERSION):
+        # Only for a newer keryx: a session still running older hooks must not retire it.
+        if request.get("version") and older(VERSION, request["version"]):
             speaker.stop()
             return {"ok": True, "quit": True, "version": VERSION}
+        claim(request, speaker)
         start_warming(warm)
         return {"ok": True, "version": VERSION}
     if op == "say":
@@ -72,16 +78,30 @@ def handle(
         session, prompt = request.get("session"), request.get("prompt")
         if session and prompt and latest.get(session, prompt) != prompt:
             return {"ok": True, "dropped": "stale"}
+        try:
+            voice = VoiceSpec.parse(request["voice"]) if request.get("voice") else None
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        if voice is not None and not speaker.knows(voice):
+            return {"ok": False, "error": f"unknown voice {voice.label()!r}"}
         speaker.submit(
             Utterance(
                 text=text,
                 kind="notice" if request.get("kind") == "notice" else "reply",
                 session=str(request.get("session") or ""),
+                terminal=str(request.get("terminal") or ""),
                 source=str(request.get("source") or ""),
+                voice=voice,
             )
         )
         return {"ok": True}
     return {"ok": False, "error": f"unknown op {op!r}"}
+
+
+def claim(request: dict, speaker: SpeechQueue) -> None:
+    """Hold the requesting terminal's voice (its session's, outside a terminal)."""
+    who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
+    speaker.claim(who, str(request.get("source") or ""))
 
 
 def start_warming(warm: Callable[[], None] | None) -> None:
@@ -123,7 +143,8 @@ def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], Non
 
     player = WindowsPlayer()
     voice = KokoroVoice(cfg.voice, cfg.speed)
-    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir))
+    book = VoiceBook(cache_dir() / "voices.json", cfg.voice) if cfg.distinct_voices else None
+    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book)
     return speaker, player, warm if client else None
 
 
@@ -202,6 +223,10 @@ def _serve_locked(
                         else {"ok": False}
                     )
                 except (json.JSONDecodeError, OSError) as exc:
+                    reply = {"ok": False, "error": str(exc)}
+                except Exception as exc:
+                    # One bad request must not take speech down for every session.
+                    log.exception("could not handle %s", request_summary(request))
                     reply = {"ok": False, "error": str(exc)}
                 log.info("%s -> %s", request_summary(request), reply)
                 with contextlib.suppress(OSError):
