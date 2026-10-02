@@ -47,8 +47,10 @@ def test_prompt_submit_stops_that_session():
     assert request_for(event, "cli") == expected
 
 
-def test_keryx_commands_do_not_wake_the_daemon():
-    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "user_input": "/keryx:off"}
+# Claude Code sends the text as `prompt` (seen live, 2026-10-02); the docs say `user_input`.
+@pytest.mark.parametrize("field", ["prompt", "user_input"])
+def test_keryx_commands_do_not_wake_the_daemon(field):
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", field: "/keryx:off"}
     assert request_for(event, "cli") is None
 
 
