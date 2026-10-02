@@ -286,14 +286,10 @@ class FakeVoices:
     def __init__(self, picked):
         self.picked = picked
         self.claimed = []
-        self.released = []
 
-    def assign(self, session, source):
-        self.claimed.append((session, source))
-        return self.picked.get(session)
-
-    def release(self, session):
-        self.released.append(session)
+    def assign(self, holder, source):
+        self.claimed.append((holder, source))
+        return self.picked.get(holder)
 
 
 def test_each_utterance_is_spoken_in_the_voice_picked_for_its_session(tmp_path):
@@ -318,12 +314,20 @@ def test_an_explicit_voice_is_kept(tmp_path):
     sp.close()
 
 
-def test_claim_and_release_reach_the_voices(tmp_path):
+def test_claim_reaches_the_voices(tmp_path):
     voices = FakeVoices({})
     sp = Speaker(lambda t: t, FakeVoice(), FakePlayer(), tmp_path, voices)
     sp.claim("a", "repo")
-    sp.claim("", "repo")  # no session: nothing to hold
-    sp.release("a")
+    sp.claim("", "repo")  # no holder: nothing to hold
     assert voices.claimed == [("a", "repo")]
-    assert voices.released == ["a"]
+    sp.close()
+
+
+def test_the_terminal_holds_the_voice_when_there_is_one(tmp_path):
+    voices = FakeVoices({"9:1": VoiceSpec(("bm_george",)), "s": VoiceSpec(("af_heart",))})
+    sp = Speaker(lambda t: t, FakeVoice(), FakePlayer(), tmp_path, voices)
+    sp.submit(Utterance("Hi.", kind="notice", session="s", terminal="9:1"))
+    sp.submit(Utterance("Hi.", kind="notice", session="s"))
+    wait_idle(sp)
+    assert voices.claimed == [("9:1", ""), ("s", "")]
     sp.close()

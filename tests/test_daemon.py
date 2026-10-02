@@ -13,7 +13,6 @@ class FakeSpeaker:
         self.submitted = []
         self.stopped = []
         self.claimed = []
-        self.released = []
         self.closed = False
 
     def submit(self, utt):
@@ -22,11 +21,8 @@ class FakeSpeaker:
     def stop(self, session=None):
         self.stopped.append(session)
 
-    def claim(self, session, source):
-        self.claimed.append((session, source))
-
-    def release(self, session):
-        self.released.append(session)
+    def claim(self, holder, source):
+        self.claimed.append((holder, source))
 
     def knows(self, spec):
         return spec.names != ("zz_nope",)
@@ -61,18 +57,22 @@ def test_a_bad_voice_is_refused_not_fatal(bad):
     assert sp.submitted == []
 
 
-def test_a_prompt_and_a_session_start_claim_the_sessions_voice():
+def test_a_prompt_and_a_session_start_claim_the_terminals_voice():
     sp = FakeSpeaker()
-    handle({"op": "stop", "session": "s1", "prompt": "p", "source": "r"}, sp)
-    handle({"op": "stop"}, sp)
-    handle({"op": "warm", "session": "s2", "source": "q"}, sp, None)
-    assert sp.claimed == [("s1", "r"), ("s2", "q")]
+    handle({"op": "stop", "session": "s1", "prompt": "p", "terminal": "9:1", "source": "r"}, sp)
+    handle({"op": "stop", "session": "s3", "source": "r"}, sp)  # outside a terminal
+    handle({"op": "warm", "session": "s2", "terminal": "8:1", "source": "q"}, sp, None)
+    assert sp.claimed == [("9:1", "r"), ("s3", "r"), ("8:1", "q")]
 
 
-def test_a_session_end_releases_its_voice():
+def test_say_carries_its_terminal():
     sp = FakeSpeaker()
-    assert handle({"op": "release", "session": "s1"}, sp) == {"ok": True}
-    assert sp.released == ["s1"]
+    handle({"op": "say", "text": "Hi.", "session": "s", "terminal": "9:1"}, sp)
+    assert sp.submitted[0].terminal == "9:1"
+
+
+def test_ping_reports_the_version():
+    assert handle({"op": "ping"}, FakeSpeaker())["version"] == VERSION
 
 
 def test_an_unknown_voice_is_refused_before_it_is_queued():

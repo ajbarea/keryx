@@ -64,23 +64,30 @@ provider when the CUDA libraries are missing. Synthesis runs one sentence ahead 
 
 ## Voices
 
-Each session gets its own voice so parallel terminals are told apart by ear; the repo name is
-still spoken when the speaker changes. The pool is Kokoro v1.0's English voices graded C or
-better in its VOICES.md, 15 of 28, ordered so neighbours differ in accent or gender, best
-grades first. British voices are phonemized as `en-gb`. Past the pool come same-gender
-blends (the weighted mean of two voices' style vectors) at 50/50, 70/30 and 30/70; blends
-across genders are reported to come out muddy. All eight first voices and three blends
-were told apart by ear on 2026-10-02.
+Each terminal gets its own voice so parallel terminals are told apart by ear; the repo name
+is still spoken when the speaker changes. The pool is Kokoro v1.0's English voices graded C
+or better in its VOICES.md, 15 of 28, ordered so neighbours differ in accent or gender, best
+grades first. British voices are phonemized as `en-gb`, and a blend in the accent of the
+voice it weighs most. Past the pool come same-gender blends (the weighted mean of two
+voices' style vectors) at 50/50, 70/30 and 30/70; blends across genders are reported to come
+out muddy. All eight first voices and three blends were told apart by ear on 2026-10-02.
+
+A terminal is its Claude Code process: the hook's nearest ancestor named `claude`, as
+`pid:starttime` so a reused pid is not mistaken for it. Session ids would not do: `/clear`
+and resume start new sessions in the same terminal, and `SessionEnd` gets a 1.5 s budget at
+exit and may not run at all when a terminal is killed. A terminal holds its voice while its
+process runs, which the daemon reads from `/proc`; a hook outside Claude Code (no such
+ancestor) holds by session id and lapses 4 hours after its last prompt or reply.
 
 A repo keeps the voice it was first given, stored by label in `~/.cache/keryx/voices.json`.
-A session takes its repo's voice unless another session holds it; then it borrows the first
-voice that no repo heard in the last 14 days calls home and no session holds. A session
-claims its voice on `SessionStart` and on each prompt, and releases it on `SessionEnd`.
-`SessionEnd` may not run when a terminal is killed, so a hold also lapses after 4 hours with
-no prompt or reply. Holds are saved with wall-clock times, so a daemon restart does not let
-two sessions trade voices; a clock that jumps back counts from the jump. A line with no
-session (`keryx say`) takes a voice no session holds, so it is not mistaken for one. Repos
-unheard for 90 days are dropped from the file. Hashing
+A terminal takes its repo's voice unless another terminal holds it; then it borrows the
+first voice that no repo heard in the last 14 days calls home and nobody holds. Voices are
+claimed on `SessionStart` and on each prompt, before the first reply. Holds are saved with
+wall-clock times, so a daemon restart does not let two terminals trade voices; a clock that
+jumps back counts from the jump. A line with no session (`keryx say`) takes a voice nobody
+holds, so it is not mistaken for a terminal's. Repos unheard for 90 days are dropped from
+the file. The repo name comes from `.git` read directly (a worktree's `commondir` leads to
+its main checkout), so a prompt's stop never waits on a `git` subprocess. Hashing
 repo names to voices was rejected: with 15 voices, two of six repos already share one about
 two times in three. Claude Code does not report how many sessions are open, so the daemon
 counts the ones it has heard from.
@@ -105,8 +112,7 @@ clip, each play adds about 6 ms. The WAV must sit on a Windows drive: loading fr
   summarizer. A daemon from another keryx version (0.1.0 has no `warm` op) is retired and
   replaced with the current code. `Stop` sends the reply. `Notification` sends permission
   and elicitation prompts. `UserPromptSubmit` stops that session's speech, starts the daemon if needed, and
-  preloads the summarizer, since a reply is coming. `SessionEnd` frees the session's voice
-  and never starts a daemon.
+  preloads the summarizer, since a reply is coming.
 - **One daemon per machine** on a Unix socket, guarded by a lock file so a second daemon
   exits instead of taking over the socket.
 - **One queue** serves every session. A new prompt cancels only that session's speech.

@@ -48,19 +48,15 @@ def test_stop_event_spawns_daemon_if_needed(monkeypatch, sent):
 def test_prompt_submit_spawns_so_the_voice_loads_early(monkeypatch, sent):
     assert run_hook(monkeypatch, {"hook_event_name": "UserPromptSubmit", "session_id": "s"}) == 0
     assert sent["spawn"] == [
-        {"op": "stop", "session": "s", "prompt": "", "source": "", "warm": True}
+        {"op": "stop", "session": "s", "prompt": "", "terminal": "", "source": "", "warm": True}
     ]
 
 
 def test_session_start_spawns_and_warms(monkeypatch, sent):
     assert run_hook(monkeypatch, {"hook_event_name": "SessionStart", "session_id": "s"}) == 0
-    assert sent["spawn"] == [{"op": "warm", "version": version(), "session": "s", "source": ""}]
-
-
-def test_session_end_releases_without_starting_a_daemon(monkeypatch, sent):
-    assert run_hook(monkeypatch, {"hook_event_name": "SessionEnd", "session_id": "s"}) == 0
-    assert sent["send"] == [{"op": "release", "session": "s"}]
-    assert sent["spawn"] == []
+    assert sent["spawn"] == [
+        {"op": "warm", "version": version(), "session": "s", "terminal": "", "source": ""}
+    ]
 
 
 class ExitedDaemon:
@@ -221,7 +217,7 @@ def test_voices_refuses_a_bad_count(arg, sent, capsys):
 
 def test_voices_plays_the_first_n_on_a_current_daemon(sent):
     assert cli.main(["voices", "3"]) == 0
-    assert sent["spawn"][0] == {"op": "warm", "version": version()}
+    assert sent["spawn"][0] == {"op": "ping", "version": version()}
     assert [r["voice"] for r in sent["spawn"][1:]] == ["af_heart", "am_michael", "bf_emma"]
 
 
@@ -231,12 +227,33 @@ def test_voices_reports_a_refused_voice(monkeypatch, capsys):
         "send_or_spawn",
         lambda req, *a, **k: (
             {"ok": True, "version": version()}
-            if req["op"] == "warm"
+            if req["op"] == "ping"
             else {"ok": False, "error": "unknown voice"}
         ),
     )
     assert cli.main(["voices", "1"]) == 0
     assert "unknown voice" in capsys.readouterr().err
+
+
+def test_voices_while_off_says_so_and_starts_nothing(sent, capsys):
+    Config(enabled=False).save()
+    assert cli.main(["voices"]) == 1
+    assert sent == {"send": [], "spawn": []}
+    assert "off" in capsys.readouterr().err
+
+
+def test_voices_without_a_daemon_reports_it(monkeypatch, capsys):
+    def no_daemon(req, *a, **k):
+        raise ConnectionRefusedError("refused")
+
+    monkeypatch.setattr(client, "send_or_spawn", no_daemon)
+    assert cli.main(["voices", "1"]) == 1
+    assert "did not answer" in capsys.readouterr().err
+
+
+def test_voices_speaks_readable_names(sent):
+    cli.main(["voices", "1"])
+    assert sent["spawn"][1]["text"] == "Voice 1, heart."
 
 
 def test_every_listed_command_is_in_the_usage_text():

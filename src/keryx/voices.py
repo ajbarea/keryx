@@ -1,10 +1,10 @@
-"""A distinct voice for each Claude Code session, kept per repo across restarts.
+"""A distinct voice for each Claude Code terminal, kept per repo across restarts.
 
-A repo keeps the voice it was first given unless another active session is using it;
-then, like a second session in the same repo, it borrows the next voice nobody active
-is using. Past the stock voices come same-gender blends, so voices only repeat once
-every blend is taken too. Homes and holds are saved, so a daemon restart changes nobody's
-voice.
+A repo keeps the voice it was first given unless another terminal is using it; then, like
+a second terminal in the same repo, it borrows the next voice nobody holds. A terminal
+holds its voice while its Claude Code process runs, across `/clear` and resume. Past the
+stock voices come same-gender blends, so voices only repeat once every blend is taken too.
+Homes and holds are saved, so a daemon restart changes nobody's voice.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+from keryx.procs import is_alive
 
 # Kokoro v1.0's English voices graded C or better in its VOICES.md (research 2026-10),
 # ordered so neighbours differ in accent or gender, best grades first.
@@ -43,8 +45,8 @@ LANG = {"a": "en-us", "b": "en-gb"}
 # Blends of voices far apart (another gender) come out muddy, so only same-gender pairs.
 BLEND_WEIGHTS = ((0.5, 0.5), (0.7, 0.3), (0.3, 0.7))
 
-# A session holds its voice from its start to its end (SessionEnd); this long without a
-# prompt or a reply covers a terminal killed before SessionEnd could run.
+# A holder without a process to watch (no Claude Code ancestor) keeps its voice this long
+# after its last prompt or reply.
 ACTIVE_SECONDS = 4 * 3600
 # A repo silent this long stops reserving its home voice; after FORGET it is dropped.
 HOME_SECONDS = 14 * 24 * 3600
@@ -66,7 +68,13 @@ class VoiceSpec:
 
     @property
     def lang(self) -> str:
-        return LANG.get(self.names[0][0], "en-us")
+        """Phonemes for the voice that weighs most, so a mostly British blend sounds British."""
+        heaviest = max(zip(self.weights, self.names, strict=True))[1]
+        return LANG.get(heaviest[0], "en-us")
+
+    def spoken(self) -> str:
+        """The voice's name to say aloud: `heart`, or `heart and emma`."""
+        return " and ".join(name.partition("_")[2] or name for name in self.names)
 
     @classmethod
     def parse(cls, label: object) -> VoiceSpec:
@@ -117,8 +125,14 @@ class VoiceBook:
         clock: Callable[[], float] = time.time,
         active_seconds: float = ACTIVE_SECONDS,
         home_seconds: float = HOME_SECONDS,
+        alive: Callable[[str], bool | None] = is_alive,
     ):
-        """`clock` is wall time, since holds and homes outlive the daemon in `path`."""
+        """`clock` is wall time, since holds and homes outlive the daemon in `path`.
+
+        `alive(holder)` says whether a terminal's process still runs, or None for a holder
+        that is not a terminal (a bare session id), which then lapses after `active_seconds`.
+        """
+        self._alive = alive
         self._path = path
         self._specs = catalogue(first)
         self._index = {spec.label(): i for i, spec in enumerate(self._specs)}
@@ -131,20 +145,20 @@ class VoiceBook:
     def default(self) -> VoiceSpec:
         return self._specs[0]
 
-    def assign(self, session: str, source: str) -> VoiceSpec:
-        """The voice for `session`, which works in repo `source`, held until it ends.
+    def assign(self, holder: str, source: str) -> VoiceSpec:
+        """The voice for `holder` (a terminal, else a session), working in repo `source`.
 
-        Without a session (`keryx say`, scripts): the first voice no session holds, so a
-        notice is never mistaken for a session's line.
+        Without a holder (`keryx say`, scripts): the first voice nobody holds, so a notice
+        is never mistaken for a terminal's line.
         """
         now = self._clock()
         self._expire(now)
         taken = {i for i, _ in self._held.values()}
-        if not session:
+        if not holder:
             return self._specs[next((i for i in range(len(self._specs)) if i not in taken), 0)]
-        changed = session not in self._held
+        changed = holder not in self._held
         if not changed:
-            index = self._held[session][0]
+            index = self._held[holder][0]
         else:
             home = self._home.get(source)
             if home is not None and home[0] not in taken:
@@ -153,24 +167,20 @@ class VoiceBook:
                 index = self._first_free(taken, now)
                 if source and home is None:
                     self._home[source] = (index, now)
-        self._held[session] = (index, now)
+        self._held[holder] = (index, now)
         if source in self._home:
             self._home[source] = (self._home[source][0], now)
         self._save(now, force=changed)
         return self._specs[index]
 
-    def release(self, session: str) -> None:
-        """`session` ended: its voice is free for the next session."""
-        if self._held.pop(session, None) is not None:
-            self._save(self._clock(), force=True)
-
     def _expire(self, now: float) -> None:
         # A clock that jumped back (WSL after the host sleeps) must not make holds eternal.
-        self._held = {
-            s: (i, min(seen, now))
-            for s, (i, seen) in self._held.items()
-            if now - min(seen, now) <= self._active_seconds
-        }
+        held = {s: (i, min(seen, now)) for s, (i, seen) in self._held.items()}
+        self._held = {}
+        for holder, (i, seen) in held.items():
+            running = self._alive(holder)
+            if running or (running is None and now - seen <= self._active_seconds):
+                self._held[holder] = (i, seen)
         self._home = {
             s: (i, min(seen, now))
             for s, (i, seen) in self._home.items()

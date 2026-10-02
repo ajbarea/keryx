@@ -1,8 +1,10 @@
 """The long-lived process: keeps Kokoro loaded and serves requests on a Unix socket.
 
 Requests are one JSON object per connection, answered with one JSON line:
-`{"op": "say", "text", "kind", "session", "source"}`, `{"op": "stop", "session"}`,
-`{"op": "warm"}`, `{"op": "ping"}`, `{"op": "quit"}`.
+`{"op": "say", "text", "kind", "session", "prompt", "terminal", "source", "voice"}`,
+`{"op": "stop", "session", "prompt", "terminal", "source", "warm"}`,
+`{"op": "warm", "version", "session", "terminal", "source"}`, `{"op": "ping"}`,
+`{"op": "quit"}`. `warm` and `ping` answer with the daemon's version.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ def handle(
     latest = latest_prompt if latest_prompt is not None else {}
     op = request.get("op")
     if op == "ping":
-        return {"ok": True, "pid": os.getpid()}
+        return {"ok": True, "pid": os.getpid(), "version": VERSION}
     if op == "quit":
         speaker.stop()
         return {"ok": True, "quit": True}
@@ -52,8 +54,7 @@ def handle(
         if request.get("session") and request.get("prompt"):
             latest[request["session"]] = request["prompt"]
         speaker.stop(request.get("session") or None)
-        if request.get("session"):
-            speaker.claim(request["session"], str(request.get("source") or ""))
+        claim(request, speaker)
         # A prompt was just sent, so a reply is coming: load the summarizer meanwhile.
         if request.get("warm"):
             start_warming(warm)
@@ -64,14 +65,9 @@ def handle(
         if request.get("version") not in (None, VERSION):
             speaker.stop()
             return {"ok": True, "quit": True, "version": VERSION}
-        if request.get("session"):
-            speaker.claim(request["session"], str(request.get("source") or ""))
+        claim(request, speaker)
         start_warming(warm)
         return {"ok": True, "version": VERSION}
-    if op == "release":
-        if request.get("session"):
-            speaker.release(request["session"])
-        return {"ok": True}
     if op == "say":
         text = str(request.get("text") or "")
         if not text.strip():
@@ -92,12 +88,19 @@ def handle(
                 text=text,
                 kind="notice" if request.get("kind") == "notice" else "reply",
                 session=str(request.get("session") or ""),
+                terminal=str(request.get("terminal") or ""),
                 source=str(request.get("source") or ""),
                 voice=voice,
             )
         )
         return {"ok": True}
     return {"ok": False, "error": f"unknown op {op!r}"}
+
+
+def claim(request: dict, speaker: SpeechQueue) -> None:
+    """Hold the requesting terminal's voice (its session's, outside a terminal)."""
+    holder = request.get("terminal") or request.get("session") or ""
+    speaker.claim(str(holder), str(request.get("source") or ""))
 
 
 def start_warming(warm: Callable[[], None] | None) -> None:

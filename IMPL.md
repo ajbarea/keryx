@@ -1,11 +1,11 @@
 # IMPL
 
-## Current: a voice per session
+## Current: a voice per terminal
 
-`voices.py` hands each session a voice from a graded pool, keyed by repo in
-`~/.cache/keryx/voices.json`, with same-gender blends past the pool. The speaker asks it per
-utterance, and sessions claim voices on start and prompt and release them on
-`SessionEnd`; `keryx voices` auditions the pool. Version 0.2.0. Next: duck Spotify while
+`voices.py` hands each terminal a voice from a graded pool, keyed by repo in
+`~/.cache/keryx/voices.json`, with same-gender blends past the pool. `procs.py` names a
+terminal by its Claude Code process and tells the daemon when it has exited. Voices are
+claimed on start and prompt; `keryx voices` auditions the pool. Version 0.2.0. Next: duck Spotify while
 speaking, prototyped through Core Audio's per-app volume from PowerShell.
 
 ## Install state

@@ -38,10 +38,8 @@ def main(argv: list[str] | None = None) -> int:
         # Spawning on a prompt, not just a reply, loads the voice while Claude works.
         # No daemon to answer (turned off, or it failed to start): nothing to say.
         with contextlib.suppress(OSError):
-            if request["op"] == "release":
-                client.send(request)  # a session ending must not start a daemon
-            elif request["op"] == "warm":
-                client.warm_current(request)
+            if request["op"] == "warm":
+                client.current(request)
             else:
                 client.send_or_spawn(request)
         return 0
@@ -88,16 +86,23 @@ def main(argv: list[str] | None = None) -> int:
         if count < 1:
             print("usage: keryx voices [N], N a positive whole number", file=sys.stderr)
             return 2
+        if not cfg.enabled:
+            print("keryx is off; `keryx on` first", file=sys.stderr)
+            return 1
         from keryx import version
 
-        # An older daemon would ignore `voice` and play every line in one voice.
-        client.warm_current({"op": "warm", "version": version()})
-        for n, spec in enumerate(catalogue(cfg.voice)[:count], 1):
-            text = f"Voice {n}, {spec.label().replace('_', ' ')}."
-            request = {"op": "say", "kind": "notice", "text": text, "voice": spec.label()}
-            reply = client.send_or_spawn(request)
-            if not reply.get("ok"):
-                print(f"{spec.label()}: {reply.get('error')}", file=sys.stderr)
+        try:
+            # An older daemon would ignore `voice` and play every line in one voice.
+            client.current({"op": "ping", "version": version()})
+            for n, spec in enumerate(catalogue(cfg.voice)[:count], 1):
+                text = f"Voice {n}, {spec.spoken()}."
+                request = {"op": "say", "kind": "notice", "text": text, "voice": spec.label()}
+                reply = client.send_or_spawn(request)
+                if not reply.get("ok"):
+                    print(f"{spec.label()}: {reply.get('error')}", file=sys.stderr)
+        except OSError as exc:
+            print(f"the keryx daemon did not answer: {exc}", file=sys.stderr)
+            return 1
         return 0
 
     if cmd == "stop":

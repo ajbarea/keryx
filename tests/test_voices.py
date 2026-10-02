@@ -118,6 +118,16 @@ def test_british_voices_use_british_phonemes():
     assert VoiceSpec(("af_heart",)).lang == "en-us"
 
 
+def test_a_blend_speaks_with_its_heaviest_voices_accent():
+    assert VoiceSpec(("af_heart", "bf_emma"), (0.3, 0.7)).lang == "en-gb"
+    assert VoiceSpec(("af_heart", "bf_emma"), (0.7, 0.3)).lang == "en-us"
+
+
+def test_spoken_names_are_readable():
+    assert VoiceSpec(("af_heart",)).spoken() == "heart"
+    assert VoiceSpec(("af_heart", "bf_emma"), (0.5, 0.5)).spoken() == "heart and emma"
+
+
 def test_a_corrupt_file_starts_empty(tmp_path):
     (tmp_path / "v.json").write_text("{nope")
     b = VoiceBook(tmp_path / "v.json")
@@ -181,16 +191,38 @@ def test_a_prompt_after_the_hold_expired_reclaims_the_home_voice(book):
     assert b.assign("a", "repo") == home
 
 
-def test_an_ended_session_frees_its_voice_at_once(book):
-    b, _ = book
-    home = b.assign("a", "repo")
-    b.release("a")
-    assert b.assign("c", "repo") == home
+def test_a_closed_terminal_frees_its_voice_at_once(tmp_path):
+    running = {"1:1": True, "2:1": True}
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), alive=lambda h: running.get(h))
+    home = b.assign("1:1", "repo")
+    assert b.assign("2:1", "repo") != home
+    running["1:1"] = False  # that terminal was closed, or killed
+    assert b.assign("3:1", "repo") == home
 
 
-def test_releasing_an_unknown_session_is_harmless(book):
-    b, _ = book
-    b.release("never-seen")
+def test_an_open_terminal_keeps_its_voice_however_long_it_idles(tmp_path):
+    clock = Clock()
+    b = VoiceBook(tmp_path / "v.json", clock=clock, active_seconds=60, alive=lambda h: True)
+    home = b.assign("1:1", "repo")
+    clock.now = 10**6
+    assert b.assign("2:1", "repo") != home
+    assert b.assign("1:1", "repo") == home
+
+
+def test_a_new_session_in_the_same_terminal_keeps_its_voice(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), alive=lambda h: True)
+    first = b.assign("1:1", "repo")  # holder is the terminal, so /clear changes nothing
+    b.assign("2:1", "repo")
+    assert b.assign("1:1", "repo") == first
+
+
+def test_a_closed_terminal_found_after_a_restart_is_dropped(tmp_path):
+    running = {"1:1": True}
+    path = tmp_path / "v.json"
+    VoiceBook(path, clock=Clock(), alive=lambda h: running.get(h)).assign("1:1", "repo")
+    running["1:1"] = False
+    again = VoiceBook(path, clock=Clock(), alive=lambda h: running.get(h))
+    assert again.assign("2:1", "repo") == VoiceSpec(("af_heart",))
 
 
 def test_a_notice_without_a_session_avoids_held_voices(book):

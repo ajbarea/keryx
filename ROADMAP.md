@@ -11,7 +11,7 @@ Last reviewed: 2026-10-02.
 
 ## Completed
 
-- 2026-10-02: a distinct voice per session, kept per repo; blends past the stock voices.
+- 2026-10-02: a distinct voice per terminal, kept per repo; blends past the stock voices.
 - 2026-10-02: cold-start fix. A summarizer load slower than the 30 s generate timeout was
   aborted by Ollama, and the reply fell back to its opening sentences; the model now loads
   under its own 120 s timeout, and `SessionStart` preloads it.
