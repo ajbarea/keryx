@@ -3,9 +3,9 @@ import time
 
 import pytest
 
-from keryx import client
+from keryx import __version__, client
 from keryx.config import Config
-from keryx.daemon import handle, request_summary, serve
+from keryx.daemon import handle, one_at_a_time, request_summary, serve
 
 
 class FakeSpeaker:
@@ -68,6 +68,68 @@ def test_stop_without_warm_flag_does_not_warm():
     warmed = threading.Event()
     handle({"op": "stop"}, FakeSpeaker(), warmed.set)
     assert not warmed.wait(0.1)
+
+
+def test_warm_op_loads_the_summarizer():
+    warmed = threading.Event()
+    reply = handle({"op": "warm", "version": __version__}, FakeSpeaker(), warmed.set)
+    assert reply == {"ok": True, "version": __version__}
+    assert warmed.wait(2)
+
+
+def test_warm_without_a_summarizer_is_a_no_op():
+    assert handle({"op": "warm"}, FakeSpeaker(), None)["ok"] is True
+
+
+def test_warm_from_another_version_retires_the_daemon_without_warming():
+    warmed = threading.Event()
+    sp = FakeSpeaker()
+    reply = handle({"op": "warm", "version": "0.0.0-other"}, sp, warmed.set)
+    assert reply["quit"] is True
+    assert sp.stopped == [None]
+    assert not warmed.wait(0.1)
+
+
+def test_one_at_a_time_skips_calls_while_one_runs():
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+
+    def slow():
+        calls.append(1)
+        entered.set()
+        release.wait(2)
+
+    once = one_at_a_time(slow)
+    t = threading.Thread(target=once)
+    t.start()
+    assert entered.wait(2)
+    once()  # skipped: the first call is still running
+    release.set()
+    t.join(2)
+    once()  # runs: the first call finished
+    assert calls == [1, 1]
+
+
+class FakePlayer:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+def test_daemon_turned_off_while_starting_exits_before_listening(tmp_path, monkeypatch):
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.delenv("KERYX_ENABLED", raising=False)
+    Config(enabled=False).save()
+    sp, player = FakeSpeaker(), FakePlayer()
+    monkeypatch.setattr(daemon, "build_speaker", lambda cfg: (sp, player, None))
+    sock = tmp_path / "k.sock"
+    serve(Config(), sock, idle_exit=0.2, poll=0.05)
+    assert not sock.exists()
+    assert sp.closed and player.closed
 
 
 def test_request_summary_omits_text():

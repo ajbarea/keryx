@@ -1,6 +1,9 @@
 {
-  "description": "Speak each reply's gist, speak permission prompts, and stop speaking when the user sends a prompt",
+  "description": "Load the voice when a session starts, speak each reply's gist, speak permission prompts, and stop speaking when the user sends a prompt",
   "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/keryx\" hook", "async": true } ] }
+    ],
     "Stop": [
       { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/keryx\" hook", "async": true } ] }
     ],

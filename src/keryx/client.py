@@ -30,12 +30,12 @@ def send(request: dict, sock_path: Path | None = None, timeout: float = 5.0) -> 
         return json.loads(read_all(s) or b"{}")
 
 
-def spawn() -> None:
+def spawn() -> subprocess.Popen:
     """Start a detached daemon that outlives the hook process."""
     log_file = cache_dir() / "daemon.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "ab") as out:
-        subprocess.Popen(
+        return subprocess.Popen(
             [sys.executable, "-m", "keryx", "daemon"],
             stdin=subprocess.DEVNULL,
             stdout=out,
@@ -63,12 +63,13 @@ def send_or_spawn(request: dict, wait: float = SPAWN_WAIT_SECONDS) -> dict:
         try:
             return send(request)
         except (FileNotFoundError, ConnectionRefusedError):
-            spawn()
+            daemon = spawn()
         deadline = time.monotonic() + wait
         while True:
             try:
                 return send(request)
             except (FileNotFoundError, ConnectionRefusedError):
-                if time.monotonic() > deadline:
+                # Exited (turned off, or an old daemon still held the lock): it never binds.
+                if daemon.poll() is not None or time.monotonic() > deadline:
                     raise
                 time.sleep(0.2)

@@ -44,6 +44,11 @@ EXAMPLES = (
 # Long enough to cover a working session, short enough to hand the VRAM back.
 KEEP_ALIVE = "30m"
 
+# Ollama aborts a load when its client hangs up, so this must outlast a cold load:
+# 4-14 s with the model file in the page cache, 44 s read from disk (2026-10-02).
+LOAD_TIMEOUT = 120.0
+GENERATE_TIMEOUT = 30.0
+
 # Replies this short are spoken as-is; anything longer goes through the model.
 DIRECT_MAX_CHARS = 200
 SPOKEN_MAX_CHARS = 320
@@ -54,12 +59,21 @@ class Generator(Protocol):
 
 
 class OllamaClient:
-    def __init__(self, model: str, host: str = "http://localhost:11434", timeout: float = 30.0):
+    def __init__(
+        self,
+        model: str,
+        host: str = "http://localhost:11434",
+        timeout: float = GENERATE_TIMEOUT,
+        load_timeout: float = LOAD_TIMEOUT,
+    ):
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout
+        self.load_timeout = load_timeout
 
     def generate(self, prompt: str, system: str) -> str:
+        # Load first under the long timeout; `timeout` then bounds generation alone.
+        self.warm()
         messages = [{"role": "system", "content": system}]
         for message, spoken in EXAMPLES:
             messages.append({"role": "user", "content": _framed(message)})
@@ -96,7 +110,7 @@ class OllamaClient:
             data=json.dumps(body).encode(),
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=self.load_timeout) as resp:
             resp.read()
 
 

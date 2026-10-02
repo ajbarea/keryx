@@ -28,7 +28,7 @@ def main() -> None:
     for model in models:
         unload_all = "for m in $(ollama ps | awk 'NR>1{print $1}'); do ollama stop $m; done"
         subprocess.run(unload_all, shell=True)
-        client = OllamaClient(model, timeout=300)
+        client = OllamaClient(model, timeout=300, load_timeout=300)
         started = time.time()
         client.generate(_framed("warm up"), SYSTEM_PROMPT)
         load = time.time() - started

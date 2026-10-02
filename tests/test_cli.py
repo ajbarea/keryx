@@ -4,7 +4,7 @@ import json
 import pytest
 
 from keryx import __main__ as cli
-from keryx import client
+from keryx import __version__, client
 from keryx.config import Config
 
 
@@ -44,6 +44,26 @@ def test_stop_event_spawns_daemon_if_needed(monkeypatch, sent):
 def test_prompt_submit_spawns_so_the_voice_loads_early(monkeypatch, sent):
     assert run_hook(monkeypatch, {"hook_event_name": "UserPromptSubmit", "session_id": "s"}) == 0
     assert sent["spawn"] == [{"op": "stop", "session": "s", "prompt": "", "warm": True}]
+
+
+def test_session_start_spawns_and_warms(monkeypatch, sent):
+    assert run_hook(monkeypatch, {"hook_event_name": "SessionStart", "session_id": "s"}) == 0
+    assert sent["spawn"] == [{"op": "warm", "version": __version__}]
+
+
+class ExitedDaemon:
+    def poll(self):
+        return 0
+
+
+def test_a_spawned_daemon_that_exits_is_not_waited_on(monkeypatch):
+    def no_socket(req, *a, **k):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(client, "send", no_socket)
+    monkeypatch.setattr(client, "spawn", ExitedDaemon)
+    with pytest.raises(FileNotFoundError):
+        client.send_or_spawn({"op": "warm"}, wait=30)
 
 
 def test_disabled_hook_does_nothing(monkeypatch, sent):

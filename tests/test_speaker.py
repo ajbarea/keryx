@@ -214,3 +214,58 @@ def test_a_cancelled_announcement_is_repeated_next_time(make):
     sp.submit(Utterance("Heard.", session="a", source="ariadne"))
     wait_idle(sp)
     assert sp.spoken[-1] == "ariadne: Heard."
+
+
+def test_a_notice_is_spoken_while_a_reply_waits_on_the_summarizer(make):
+    loaded = threading.Event()
+
+    def slow_shorten(text):
+        loaded.wait(5)
+        return "The reply."
+
+    sp = make(shorten=slow_shorten)
+    sp.submit(Utterance("a long reply", session="a"))
+    sp.submit(Utterance("I need your permission.", kind="notice", session="b"))
+    deadline = time.time() + 2
+    while "I need your permission." not in sp.spoken:
+        assert time.time() < deadline
+        time.sleep(0.01)
+    loaded.set()
+    wait_idle(sp)
+    assert list(sp.spoken) == ["I need your permission.", "The reply."]
+
+
+def test_a_reply_cancelled_while_shortening_is_never_spoken(make):
+    started, loaded = threading.Event(), threading.Event()
+
+    def slow_shorten(text):
+        started.set()
+        loaded.wait(5)
+        return text
+
+    sp = make(shorten=slow_shorten)
+    sp.submit(Utterance("Stale.", session="a"))
+    assert started.wait(2)
+    sp.submit(Utterance("Also stale.", session="a"))
+    sp.stop("a")
+    loaded.set()
+    wait_idle(sp)
+    sp.submit(Utterance("Fresh.", session="a"))
+    wait_idle(sp)
+    assert list(sp.spoken) == ["Fresh."]
+
+
+def test_a_shortening_error_does_not_silence_later_speech(make):
+    calls = []
+
+    def flaky(text):
+        calls.append(text)
+        if len(calls) == 1:
+            raise RuntimeError("ollama choked")
+        return text
+
+    sp = make(shorten=flaky)
+    sp.submit(Utterance("First."))
+    sp.submit(Utterance("Second."))
+    wait_idle(sp)
+    assert list(sp.spoken) == ["Second."]

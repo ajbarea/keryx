@@ -2,13 +2,14 @@
 
 Requests are one JSON object per connection, answered with one JSON line:
 `{"op": "say", "text", "kind", "session", "source"}`, `{"op": "stop", "session"}`,
-`{"op": "ping"}`, `{"op": "quit"}`.
+`{"op": "warm"}`, `{"op": "ping"}`, `{"op": "quit"}`.
 """
 
 from __future__ import annotations
 
 import contextlib
 import fcntl
+import http.client
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from keryx import __version__
 from keryx.client import read_all
 from keryx.config import Config, socket_path
 from keryx.player import WindowsPlayer
@@ -49,9 +51,17 @@ def handle(
             latest[request["session"]] = request["prompt"]
         speaker.stop(request.get("session") or None)
         # A prompt was just sent, so a reply is coming: load the summarizer meanwhile.
-        if request.get("warm") and warm is not None:
-            threading.Thread(target=warm, daemon=True).start()
+        if request.get("warm"):
+            start_warming(warm)
         return {"ok": True}
+    if op == "warm":
+        # This process keeps the code it started with; a hook from an updated keryx
+        # retires it so the next hook spawns the new code.
+        if request.get("version") not in (None, __version__):
+            speaker.stop()
+            return {"ok": True, "quit": True, "version": __version__}
+        start_warming(warm)
+        return {"ok": True, "version": __version__}
     if op == "say":
         text = str(request.get("text") or "")
         if not text.strip():
@@ -73,14 +83,35 @@ def handle(
     return {"ok": False, "error": f"unknown op {op!r}"}
 
 
+def start_warming(warm: Callable[[], None] | None) -> None:
+    if warm is not None:
+        threading.Thread(target=warm, daemon=True).start()
+
+
+def one_at_a_time(fn: Callable[[], None]) -> Callable[[], None]:
+    """Skip a call while another is running; Ollama would only queue repeat loads."""
+    running = threading.Lock()
+
+    def once() -> None:
+        if not running.acquire(blocking=False):
+            return
+        try:
+            fn()
+        finally:
+            running.release()
+
+    return once
+
+
 def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], None] | None]:
     client = OllamaClient(cfg.model, cfg.ollama_host) if cfg.model else None
 
+    @one_at_a_time
     def warm() -> None:
         assert client is not None
         try:
             client.warm()
-        except OSError as exc:
+        except (OSError, http.client.HTTPException) as exc:
             log.warning("could not warm %s: %s", cfg.model, exc)
 
     def shorten(text: str) -> str:
@@ -133,6 +164,12 @@ def _serve_locked(
     player = None
     if speaker is None:
         speaker, player, warm = build_speaker(cfg)
+        # `keryx off` while the voice loaded found no socket to send its quit to.
+        if not Config.load().enabled:
+            log.info("turned off while starting, exiting")
+            speaker.close()
+            player.close()
+            return
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(sock_path))
     os.chmod(sock_path, 0o600)
