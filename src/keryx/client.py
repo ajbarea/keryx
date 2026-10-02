@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import json
 import socket
@@ -45,6 +46,11 @@ def spawn() -> subprocess.Popen:
         )
 
 
+# The daemon's exit status when another daemon holds the lock (EX_TEMPFAIL); that one may
+# be a retiring daemon that has not released it yet.
+LOCK_BUSY_EXIT = 75
+RETIRE_WAIT_SECONDS = 10.0
+
 # A first run downloads ~350 MB of model files before the socket binds; hooks are async,
 # so waiting costs the session nothing.
 SPAWN_WAIT_SECONDS = 900.0
@@ -69,7 +75,27 @@ def send_or_spawn(request: dict, wait: float = SPAWN_WAIT_SECONDS) -> dict:
             try:
                 return send(request)
             except (FileNotFoundError, ConnectionRefusedError):
-                # Exited (turned off, or an old daemon still held the lock): it never binds.
-                if daemon.poll() is not None or time.monotonic() > deadline:
+                if time.monotonic() > deadline:
                     raise
+                status = daemon.poll()
+                if status == LOCK_BUSY_EXIT:
+                    daemon = spawn()  # a retiring daemon still held the lock; try again
+                elif status is not None:
+                    raise  # exited for good (turned off, or failed to start)
                 time.sleep(0.2)
+
+
+def replace_daemon(request: dict, reply: dict, sock_path: Path | None = None) -> dict:
+    """Retire a daemon from another keryx version and send `request` to a fresh one.
+
+    A daemon keeps the code it started with. One from 0.1.0 has no `warm` op, so any reply
+    without the caller's version means an older daemon.
+    """
+    sock_path = sock_path or socket_path()
+    if not reply.get("quit"):
+        with contextlib.suppress(OSError):
+            send({"op": "quit"}, sock_path)
+    deadline = time.monotonic() + RETIRE_WAIT_SECONDS
+    while sock_path.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return send_or_spawn(request)

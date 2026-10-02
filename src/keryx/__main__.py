@@ -35,7 +35,11 @@ def main(argv: list[str] | None = None) -> int:
         if request is None:
             return 0
         # Spawning on a prompt, not just a reply, loads the voice while Claude works.
-        client.send_or_spawn(request)
+        # No daemon to answer (turned off, or it failed to start): nothing to say.
+        with contextlib.suppress(OSError):
+            reply = client.send_or_spawn(request)
+            if request["op"] == "warm" and reply.get("version") != request["version"]:
+                client.replace_daemon(request, reply)
         return 0
 
     if cmd in ("on", "off"):
@@ -81,8 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         logging.basicConfig(
             level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr
         )
-        daemon.serve(cfg)
-        return 0
+        return 0 if daemon.serve(cfg) else client.LOCK_BUSY_EXIT
 
     print(__doc__, file=sys.stderr)
     return 2

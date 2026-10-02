@@ -79,9 +79,9 @@ clip, each play adds about 6 ms. The WAV must sit on a Windows drive: loading fr
   `SessionStart`, the first response of `claude -p --model haiku` came at a median 9.0 s
   (7.5-9.8) run async, 23.3 s (21.3-23.8) run sync, and 6.4 s (6.4-9.7) with no hook; three
   runs each, 2026-10-02. `SessionStart` starts the daemon if needed and preloads the
-  summarizer, and a daemon from another keryx version exits so the next hook starts the
-  current code. `Stop` sends the reply. `Notification` sends permission and elicitation
-  prompts. `UserPromptSubmit` stops that session's speech, starts the daemon if needed, and
+  summarizer. A daemon from another keryx version (0.1.0 has no `warm` op) is retired and
+  replaced with the current code. `Stop` sends the reply. `Notification` sends permission
+  and elicitation prompts. `UserPromptSubmit` stops that session's speech, starts the daemon if needed, and
   preloads the summarizer, since a reply is coming.
 - **One daemon per machine** on a Unix socket, guarded by a lock file so a second daemon
   exits instead of taking over the socket.

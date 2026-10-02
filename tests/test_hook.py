@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from keryx import __version__
+from keryx import version
 from keryx.hook import parse, request_for, source_name
 
 
@@ -51,7 +51,7 @@ def test_prompt_submit_stops_that_session():
 @pytest.mark.parametrize("source", ["startup", "resume", "clear", "compact"])
 def test_session_start_warms(source):
     event = {"hook_event_name": "SessionStart", "session_id": "s", "source": source}
-    assert request_for(event, "cli") == {"op": "warm", "version": __version__}
+    assert request_for(event, "cli") == {"op": "warm", "version": version()}
 
 
 def test_headless_session_start_is_silent():

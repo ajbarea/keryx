@@ -3,9 +3,9 @@ import time
 
 import pytest
 
-from keryx import __version__, client
+from keryx import client
 from keryx.config import Config
-from keryx.daemon import handle, one_at_a_time, request_summary, serve
+from keryx.daemon import VERSION, handle, one_at_a_time, request_summary, serve
 
 
 class FakeSpeaker:
@@ -72,8 +72,8 @@ def test_stop_without_warm_flag_does_not_warm():
 
 def test_warm_op_loads_the_summarizer():
     warmed = threading.Event()
-    reply = handle({"op": "warm", "version": __version__}, FakeSpeaker(), warmed.set)
-    assert reply == {"ok": True, "version": __version__}
+    reply = handle({"op": "warm", "version": VERSION}, FakeSpeaker(), warmed.set)
+    assert reply == {"ok": True, "version": VERSION}
     assert warmed.wait(2)
 
 
@@ -191,7 +191,7 @@ def test_second_daemon_on_the_same_socket_exits_without_stealing_it(running):
     sock, sp, _ = running
     other = FakeSpeaker()
     started = time.time()
-    serve(Config(), sock, speaker=other, idle_exit=0.2, poll=0.05)
+    assert serve(Config(), sock, speaker=other, idle_exit=0.2, poll=0.05) is False
     assert time.time() - started < 1
     assert sock.exists()
     assert client.send({"op": "say", "text": "Still mine."}, sock) == {"ok": True}

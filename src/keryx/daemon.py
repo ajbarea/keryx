@@ -19,7 +19,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from keryx import __version__
+from keryx import version
 from keryx.client import read_all
 from keryx.config import Config, socket_path
 from keryx.player import WindowsPlayer
@@ -30,6 +30,7 @@ from keryx.voice import KokoroVoice
 log = logging.getLogger("keryx")
 
 IDLE_EXIT_SECONDS = 4 * 3600
+VERSION = version()
 
 
 def handle(
@@ -57,11 +58,11 @@ def handle(
     if op == "warm":
         # This process keeps the code it started with; a hook from an updated keryx
         # retires it so the next hook spawns the new code.
-        if request.get("version") not in (None, __version__):
+        if request.get("version") not in (None, VERSION):
             speaker.stop()
-            return {"ok": True, "quit": True, "version": __version__}
+            return {"ok": True, "quit": True, "version": VERSION}
         start_warming(warm)
-        return {"ok": True, "version": __version__}
+        return {"ok": True, "version": VERSION}
     if op == "say":
         text = str(request.get("text") or "")
         if not text.strip():
@@ -133,7 +134,8 @@ def serve(
     warm: Callable[[], None] | None = None,
     idle_exit: float = IDLE_EXIT_SECONDS,
     poll: float = 60.0,
-) -> None:
+) -> bool:
+    """Serve until idle or told to quit; False if another daemon holds the lock."""
     sock_path = sock_path or socket_path()
     sock_path.parent.mkdir(parents=True, exist_ok=True)
     # One daemon per socket. Without this, a second daemon would unlink the socket and
@@ -144,11 +146,12 @@ def serve(
     except BlockingIOError:
         log.info("another daemon already owns %s", sock_path)
         lock.close()
-        return
+        return False
     try:
         _serve_locked(cfg, sock_path, speaker, warm, idle_exit, poll)
     finally:
         lock.close()
+    return True
 
 
 def _serve_locked(

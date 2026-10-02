@@ -1,3 +1,5 @@
-from importlib.metadata import version
+def version() -> str:
+    """The installed keryx version; looked up on demand, since hooks import this package."""
+    from importlib.metadata import version as installed
 
-__version__ = version("keryx")
+    return installed("keryx")
