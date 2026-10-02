@@ -1,12 +1,10 @@
 # IMPL
 
-## Current: a voice per terminal
+## Current: ducking other apps while speaking
 
-`voices.py` hands each terminal a voice from a graded pool, keyed by repo in
-`~/.cache/keryx/voices.json`, with same-gender blends past the pool. `procs.py` names a
-terminal by its Claude Code process and tells the daemon when it has exited. Voices are
-claimed on start and prompt; `keryx voices` auditions the pool. Version 0.2.0. Next: duck Spotify while
-speaking, prototyped through Core Audio's per-app volume from PowerShell.
+`ducker.cs` lowers listed apps' per-app volume through Core Audio from the player's
+PowerShell process, with a state file so a crash cannot leave the music down; the speaker
+ducks once per run of speech and restores after 1 s of quiet. Version 0.3.0.
 
 ## Install state
 

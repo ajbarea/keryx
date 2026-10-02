@@ -141,7 +141,11 @@ def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], Non
         log.info("shortened %d chars to %r in %.2fs", len(text), line, time.monotonic() - started)
         return line
 
-    player = WindowsPlayer()
+    player = WindowsPlayer(
+        audio_dir=Path(cfg.audio_dir),
+        duck_apps=tuple(cfg.duck_apps),
+        duck_ratio=cfg.duck_ratio,
+    )
     voice = KokoroVoice(cfg.voice, cfg.speed)
     book = VoiceBook(cache_dir() / "voices.json", cfg.voice) if cfg.distinct_voices else None
     speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book)

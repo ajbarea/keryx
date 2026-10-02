@@ -57,6 +57,9 @@ voice across terminals and restarts, a second terminal in the same repo gets ano
 once the stock voices run out new terminals get blends of two. `keryx voices [N]` plays the first N voices in the catalogue,
 stock voices first.
 
+While keryx speaks, Spotify drops to a quarter of its volume and comes back a second after
+the last line; set `duck_apps` to turn down other apps instead.
+
 Turn keryx off before a long local-LLM run: Ollama sizes GPU offload when a model loads, so a
 large model loaded beside keryx can end up partly on the CPU.
 
@@ -72,6 +75,8 @@ large model loaded beside keryx can end up partly on the CPU.
 | `speed` | `1.0` | Speaking rate |
 | `model` | `gemma3:4b` | Ollama model that shortens replies; empty to speak the opening sentences instead |
 | `ollama_host` | `http://localhost:11434` | Ollama server |
+| `duck_apps` | `["Spotify"]` | Windows process names turned down while keryx speaks; `[]` for none |
+| `duck_ratio` | `0.25` | The share of their volume ducked apps keep |
 | `audio_dir` | `/mnt/c/Windows/Temp/keryx` | Where WAVs are written; must be on a Windows drive |
 
 The daemon logs to `~/.cache/keryx/daemon.log`.

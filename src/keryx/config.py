@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 
@@ -30,6 +30,9 @@ class Config:
     speed: float = 1.0
     model: str = "gemma3:4b"
     ollama_host: str = "http://localhost:11434"
+    # Apps (Windows process names) turned down to `duck_ratio` of their volume while speaking.
+    duck_apps: list[str] = field(default_factory=lambda: ["Spotify"])
+    duck_ratio: float = 0.25
     # Spoken WAVs are written here because Windows can only play from its own drives.
     audio_dir: str = "/mnt/c/Windows/Temp/keryx"
 
@@ -41,8 +44,15 @@ class Config:
             raw = json.loads(path.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
             raw = {}
-        known = {f.name for f in fields(cls)}
-        cfg = cls(**{k: v for k, v in raw.items() if k in known})
+        defaults = cls()
+        # A value of the wrong type (a string where a list belongs) falls back to the default.
+        cfg = cls(
+            **{
+                f.name: raw[f.name]
+                for f in fields(cls)
+                if f.name in raw and _fits(raw[f.name], getattr(defaults, f.name))
+            }
+        )
         for f in fields(cls) if env else ():
             value = os.environ.get(f"KERYX_{f.name.upper()}")
             if value is not None:
@@ -56,7 +66,19 @@ class Config:
         path.write_text(json.dumps(asdict(self), indent=2) + "\n")
 
 
+def _fits(value: object, default: object) -> bool:
+    if isinstance(default, bool):
+        return isinstance(value, bool)
+    if isinstance(default, float):
+        return isinstance(value, int | float) and not isinstance(value, bool)
+    if isinstance(default, list):
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+    return isinstance(value, type(default))
+
+
 def _coerce(value: str, kind: type) -> object:
     if kind is bool:
         return value.strip().lower() in {"1", "true", "yes", "on"}
+    if kind is list:
+        return [part.strip() for part in value.split(",") if part.strip()]
     return kind(value)

@@ -103,6 +103,34 @@ PowerShell's `System.Media.SoundPlayer` plays reliably. A fresh `powershell.exe`
 clip, each play adds about 6 ms. The WAV must sit on a Windows drive: loading from a
 `\\wsl.localhost` path took 10 to 12 s and logged vsock errors.
 
+## Ducking
+
+While keryx speaks, other apps (Spotify by default) drop to a quarter of their volume, then
+come back. Three ways were weighed:
+
+- **Per-app volume** through Core Audio: each app's audio session exposes
+  `ISimpleAudioVolume`. Chosen: local, instant, and it changes only that app's level.
+- **Pause and resume** through Windows' media session API
+  (`GlobalSystemMediaTransportControlsSession.TryPauseAsync`). Rejected: stopping the music
+  for every few-second gist is jarring, and it would also resume music the user paused.
+- **Spotify's Web API**: needs Premium, OAuth and the network, and covers one app.
+
+The player's PowerShell process compiles `ducker.cs` once at start and takes `duck` and
+`unduck` lines like `play` (the compile adds about 0.18 s to a player's start: 0.37 to 0.40 s
+against 0.19 to 0.21 s). A duck covers every active output device and writes each audio
+session's instance id, original and lowered volume to `keryx-ducked.txt` before it changes
+anything; an unduck restores a session only if its
+volume is still the lowered one, so a level changed by hand meanwhile is kept. A new player
+restores anything that file still records, and the loop restores again when its stdin
+closes, so a crash cannot leave the music down; a player restarted mid-speech ducks again. The speaker ducks before the first clip of a
+run of speech and restores after 1 s with nothing queued, being synthesized or playing; a
+reply still waiting on the summarizer does not hold the music down.
+
+Measured live on 2026-10-02 with Spotify playing: the volume read 0.25 for all of a
+three-sentence line and returned to 1 about a second after it. With the daemon killed by
+SIGKILL mid-line the volume was back to 1 within 3 s; with the player killed, the next
+unduck started a new player that restored it 3.1 s later. AJ confirmed the 25% level by ear.
+
 ## Process model
 
 - **Hooks** are `async`, so Claude Code never waits on them. With a hook that sleeps 15 s on
