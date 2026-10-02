@@ -157,3 +157,14 @@ def test_quit_stops_speech_and_exits(tmp_path):
     t.join(2)
     assert not t.is_alive()
     assert not sock.exists()
+
+
+def test_exit_cleanup_deletes_only_keryx_slot_files(tmp_path, monkeypatch):
+    from keryx import daemon
+
+    audio = tmp_path / "audio"
+    audio.mkdir()
+    for name in ("keryx-0.wav", "keryx-7.wav", "song.wav", "0.wav"):
+        (audio / name).write_bytes(b"x")
+    daemon.remove_slots(audio)
+    assert sorted(p.name for p in audio.iterdir()) == ["0.wav", "song.wav"]

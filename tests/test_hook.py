@@ -86,3 +86,8 @@ def test_parse_tolerates_garbage():
     assert parse("not json") == {}
     assert parse("[1]") == {}
     assert parse('{"a": 1}') == {"a": 1}
+
+
+@pytest.mark.parametrize("ep", ["claude-vscode", "claude-desktop", "cli"])
+def test_interactive_surfaces_speak(ep):
+    assert request_for(stop(), ep) is not None

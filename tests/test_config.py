@@ -35,3 +35,8 @@ def test_env_overrides_file(monkeypatch):
     monkeypatch.setenv("KERYX_ENABLED", "off")
     cfg = Config.load()
     assert (cfg.voice, cfg.speed, cfg.enabled) == ("bf_emma", 1.3, False)
+
+
+def test_a_bad_env_value_keeps_the_default(monkeypatch):
+    monkeypatch.setenv("KERYX_SPEED", "fast")
+    assert Config.load().speed == Config().speed

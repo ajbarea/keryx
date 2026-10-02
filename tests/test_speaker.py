@@ -131,5 +131,68 @@ def test_wav_slots_rotate(make, tmp_path):
     sp = make(player)
     sp.submit(Utterance(" ".join(f"S{i}." for i in range(10))))
     wait_idle(sp)
-    assert player.played[:3] == ["0.wav", "1.wav", "2.wav"]
-    assert player.played[8] == "0.wav"
+    assert player.played[:3] == ["keryx-0.wav", "keryx-1.wav", "keryx-2.wav"]
+    assert player.played[8] == "keryx-0.wav"
+
+
+class BrokenVoice:
+    def __init__(self):
+        self.calls = 0
+
+    def synth(self, text):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("kokoro choked")
+        return np.zeros(240, dtype=np.float32), 24000
+
+
+class FlakyPlayer(FakePlayer):
+    def play(self, wav, seconds, interrupt):
+        if not self.played:
+            self.played.append("boom")
+            raise BrokenPipeError("powershell died")
+        return super().play(wav, seconds, interrupt)
+
+
+def test_a_synthesis_error_does_not_silence_later_speech(tmp_path):
+    player = FakePlayer()
+    sp = Speaker(lambda t: t, BrokenVoice(), player, tmp_path)
+    sp.submit(Utterance("First."))
+    sp.submit(Utterance("Second."))
+    wait_idle(sp)
+    assert sp.spoken == ["Second."]
+    sp.close()
+
+
+def test_a_playback_error_does_not_silence_later_speech(tmp_path):
+    player = FlakyPlayer()
+    sp = Speaker(lambda t: t, FakeVoice(), player, tmp_path)
+    sp.submit(Utterance("First."))
+    sp.submit(Utterance("Second."))
+    wait_idle(sp)
+    assert len(player.played) == 2
+    sp.close()
+
+
+def test_stop_cancels_audio_already_queued_behind_another_session(make):
+    player = FakePlayer(hold=True)
+    sp = make(player)
+    sp.submit(Utterance("B speaks first.", session="b"))
+    assert player.started.wait(2)
+    sp.submit(Utterance("A is queued.", session="a"))
+    deadline = time.time() + 2
+    while "A is queued." not in sp.spoken:  # synthesized, waiting for playback
+        assert time.time() < deadline
+        time.sleep(0.01)
+    sp.stop("a")
+    player.release.set()
+    wait_idle(sp)
+    assert len(player.played) == 1
+
+
+def test_slot_files_carry_a_keryx_prefix(make):
+    player = FakePlayer()
+    sp = make(player)
+    sp.submit(Utterance("One."))
+    wait_idle(sp)
+    assert player.played == ["keryx-0.wav"]

@@ -8,9 +8,9 @@ import re
 import subprocess
 from pathlib import Path
 
-# Claude Code sets this to "cli" for interactive sessions; `claude -p` and the SDK
-# use other values, and those sessions should stay quiet.
-INTERACTIVE_ENTRYPOINTS = {"cli", ""}
+# `claude -p` and the Agent SDK run with an `sdk-*` entrypoint; nobody is listening.
+# Interactive surfaces (terminal, IDE extensions, desktop app) use other values.
+HEADLESS_PREFIX = "sdk"
 
 SPOKEN_NOTIFICATIONS = {"permission_prompt", "elicitation_dialog", "elicitation_url_dialog"}
 
@@ -36,7 +36,7 @@ def source_name(cwd: str) -> str:
 
 def request_for(event: dict, entrypoint: str) -> dict | None:
     """The daemon request for one hook payload, or None to stay silent."""
-    if entrypoint not in INTERACTIVE_ENTRYPOINTS:
+    if entrypoint.startswith(HEADLESS_PREFIX):
         return None
     name = event.get("hook_event_name")
     session = event.get("session_id", "")

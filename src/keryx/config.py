@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from dataclasses import asdict, dataclass, fields
@@ -42,7 +43,8 @@ class Config:
         for f in fields(cls):
             env = os.environ.get(f"KERYX_{f.name.upper()}")
             if env is not None:
-                setattr(cfg, f.name, _coerce(env, type(getattr(cfg, f.name))))
+                with contextlib.suppress(ValueError):
+                    setattr(cfg, f.name, _coerce(env, type(getattr(cfg, f.name))))
         return cfg
 
     def save(self) -> None:

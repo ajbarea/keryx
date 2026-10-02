@@ -41,6 +41,7 @@ def spawn() -> None:
             stdout=out,
             stderr=out,
             start_new_session=True,
+            cwd="/",  # don't pin the session's working directory for hours
         )
 
 

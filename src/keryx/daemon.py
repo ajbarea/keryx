@@ -21,7 +21,7 @@ from pathlib import Path
 from keryx.client import read_all
 from keryx.config import Config, socket_path
 from keryx.player import WindowsPlayer
-from keryx.speaker import Speaker, SpeechQueue, Utterance
+from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.summarize import OllamaClient, spoken_line
 from keryx.voice import KokoroVoice
 
@@ -162,9 +162,14 @@ def _serve_locked(
         speaker.close()
         if player is not None:
             player.close()
-            for wav in Path(cfg.audio_dir).glob("*.wav"):
-                with contextlib.suppress(OSError):
-                    wav.unlink()
+            remove_slots(Path(cfg.audio_dir))
+
+
+def remove_slots(audio_dir: Path) -> None:
+    """Delete keryx's own slot files; anything else in `audio_dir` is left alone."""
+    for name in slot_names():
+        with contextlib.suppress(OSError):
+            (audio_dir / name).unlink()
 
 
 def request_summary(request: object) -> str:

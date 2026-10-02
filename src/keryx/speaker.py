@@ -8,6 +8,7 @@ session on the machine, so sessions never talk over each other.
 from __future__ import annotations
 
 import itertools
+import logging
 import queue
 import threading
 from collections.abc import Callable
@@ -20,6 +21,8 @@ import numpy as np
 from keryx.player import Player
 from keryx.text import split_sentences
 from keryx.voice import write_wav
+
+log = logging.getLogger("keryx")
 
 RING = 8  # WAV slots; more than can be queued for playback at once
 PLAY_AHEAD = 2
@@ -57,13 +60,16 @@ class Speaker:
         self._voice = voice
         self._player = player
         self._audio_dir = audio_dir
-        self._pending: list[Utterance] = []
         self._cond = threading.Condition()
-        self._current: Utterance | None = None
-        self._playing: Utterance | None = None
+        self._pending: list[Utterance] = []  # waiting for synthesis
+        self._active: list[Utterance] = []  # submitted and not yet fully played
         self._last_source = ""
         self._slots = itertools.cycle(range(RING))
-        self._play_q: queue.Queue[tuple[Path, float, Utterance] | None] = queue.Queue(PLAY_AHEAD)
+        # (wav, seconds, utt) to play, (None, 0, utt) once utt's audio is all queued,
+        # None to shut down.
+        self._play_q: queue.Queue[tuple[Path | None, float, Utterance] | None] = queue.Queue(
+            PLAY_AHEAD
+        )
         self._closed = False
         self.spoken: list[str] = []  # what was handed to the voice, for logs and tests
         self._threads = [
@@ -76,15 +82,20 @@ class Speaker:
     def submit(self, utt: Utterance) -> None:
         with self._cond:
             self._pending.append(utt)
+            self._active.append(utt)
             self._cond.notify()
 
     def stop(self, session: str | None = None) -> None:
         """Cancel queued and playing speech, for one session or (None) all of them."""
         with self._cond:
-            for utt in [*self._pending, self._current, self._playing]:
-                if utt is not None and (session is None or utt.session == session):
+            for utt in self._active:
+                if session is None or utt.session == session:
                     utt.cancelled.set()
+            dropped = [u for u in self._pending if u.cancelled.is_set()]
             self._pending = [u for u in self._pending if not u.cancelled.is_set()]
+            # Never synthesized, so no end-of-audio marker will come to retire them.
+            for utt in dropped:
+                self._active.remove(utt)
 
     def close(self, timeout: float = 5.0) -> None:
         with self._cond:
@@ -95,12 +106,7 @@ class Speaker:
 
     def idle(self) -> bool:
         with self._cond:
-            return (
-                not self._pending
-                and self._current is None
-                and self._playing is None
-                and self._play_q.empty()
-            )
+            return not self._active
 
     def _next(self) -> Utterance | None:
         with self._cond:
@@ -108,8 +114,7 @@ class Speaker:
                 self._cond.wait()
             if self._closed:
                 return None
-            self._current = self._pending.pop(0)
-            return self._current
+            return self._pending.pop(0)
 
     def _line(self, utt: Utterance) -> str:
         line = self._shorten(utt.text) if utt.kind == "reply" else utt.text
@@ -126,23 +131,34 @@ class Speaker:
                     if utt.cancelled.is_set():
                         break
                     samples, rate = self._voice.synth(sentence)
-                    wav = self._audio_dir / f"{next(self._slots)}.wav"
+                    wav = self._audio_dir / slot_name(next(self._slots))
                     seconds = write_wav(wav, samples, rate)
                     self.spoken.append(sentence)
                     self._play_q.put((wav, seconds, utt))
+            except Exception:
+                log.exception("could not synthesize %r", utt.text[:80])
             finally:
-                with self._cond:
-                    self._current = None
+                self._play_q.put((None, 0.0, utt))
         self._play_q.put(None)
 
     def _play_loop(self) -> None:
         while (item := self._play_q.get()) is not None:
             wav, seconds, utt = item
-            with self._cond:
-                self._playing = utt
-            try:
-                if not utt.cancelled.is_set():
-                    self._player.play(wav, seconds, utt.cancelled)
-            finally:
+            if wav is None:
                 with self._cond:
-                    self._playing = None
+                    self._active.remove(utt)
+                continue
+            if utt.cancelled.is_set():
+                continue
+            try:
+                self._player.play(wav, seconds, utt.cancelled)
+            except Exception:
+                log.exception("could not play %s", wav)
+
+
+def slot_name(i: int) -> str:
+    return f"keryx-{i}.wav"
+
+
+def slot_names() -> list[str]:
+    return [slot_name(i) for i in range(RING)]
