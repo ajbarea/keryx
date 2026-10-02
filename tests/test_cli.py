@@ -260,3 +260,29 @@ def test_every_listed_command_is_in_the_usage_text():
     assert cli.__doc__ is not None
     for cmd in cli.COMMANDS:
         assert cmd in cli.__doc__
+
+
+def test_a_newer_daemon_is_kept(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        client, "send_or_spawn", lambda req, *a, **k: {"ok": True, "version": "999.0.0"}
+    )
+    monkeypatch.setattr(client, "replace_daemon", lambda req, rep: calls.append(rep))
+    assert run_hook(monkeypatch, {"hook_event_name": "SessionStart", "session_id": "s"}) == 0
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("theirs", "ours", "expected"),
+    [
+        ("0.1.1", "0.2.0", True),
+        ("0.2.0", "0.2.0", False),
+        ("0.10.0", "0.9.0", False),
+        (None, "0.2.0", True),
+        ("garbage", "0.2.0", True),
+    ],
+)
+def test_older(theirs, ours, expected):
+    from keryx import older
+
+    assert older(theirs, ours) is expected

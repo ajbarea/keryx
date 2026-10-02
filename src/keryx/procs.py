@@ -47,7 +47,7 @@ def terminal_id(pid: int | None = None, proc: Path = PROC) -> str:
         if _is_claude(pid, proc):
             return f"{pid}:{fields[19]}"  # stat field 22, starttime
         pid = int(fields[1])  # stat field 4, ppid
-        if pid <= 1:
+        if pid < 1:  # pid 1 itself is checked: in a container Claude Code can be init
             return ""
     return ""
 
@@ -58,4 +58,5 @@ def is_alive(terminal: str, proc: Path = PROC) -> bool | None:
     if not (pid.isdigit() and start.isdigit()):
         return None
     fields = _stat(int(pid), proc)
-    return fields is not None and fields[19] == start
+    # A zombie (state Z) has exited and only waits for its parent to reap it.
+    return fields is not None and fields[0] != "Z" and fields[19] == start

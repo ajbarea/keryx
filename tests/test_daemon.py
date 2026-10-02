@@ -140,13 +140,18 @@ def test_warm_without_a_summarizer_is_a_no_op():
     assert handle({"op": "warm"}, FakeSpeaker(), None)["ok"] is True
 
 
-def test_warm_from_another_version_retires_the_daemon_without_warming():
+def test_warm_from_a_newer_version_retires_the_daemon_without_warming():
     warmed = threading.Event()
     sp = FakeSpeaker()
-    reply = handle({"op": "warm", "version": "0.0.0-other"}, sp, warmed.set)
+    reply = handle({"op": "warm", "version": "999.0.0"}, sp, warmed.set)
     assert reply["quit"] is True
     assert sp.stopped == [None]
     assert not warmed.wait(0.1)
+
+
+def test_warm_from_an_older_version_does_not_retire_the_daemon():
+    reply = handle({"op": "warm", "version": "0.0.1"}, FakeSpeaker(), None)
+    assert reply == {"ok": True, "version": VERSION}
 
 
 def test_one_at_a_time_skips_calls_while_one_runs():

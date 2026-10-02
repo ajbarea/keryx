@@ -360,3 +360,38 @@ def test_has_checks_every_name():
     v = kokoro_voice()
     assert v.has(VoiceSpec(("a", "b"), (1.0, 1.0)))
     assert not v.has(VoiceSpec(("a", "zz"), (1.0, 1.0)))
+
+
+def test_blend_labels_do_not_depend_on_the_configured_voice():
+    def blends(first):
+        return {s.label() for s in catalogue(first) if len(s.names) == 2}
+
+    assert blends("af_bella") == blends("af_heart")
+
+
+def test_a_fifty_fifty_blend_takes_the_first_voices_accent():
+    assert VoiceSpec(("af_heart", "bf_emma"), (0.5, 0.5)).lang == "en-us"
+
+
+def test_a_repo_is_heard_only_in_its_own_voice(tmp_path):
+    clock = Clock()
+    running = {"1:1": True, "2:1": True}
+    b = VoiceBook(tmp_path / "v.json", clock=clock, home_seconds=1000, alive=running.get)
+    b.assign("1:1", "a")  # a's home: voice 0
+    other = b.assign("2:1", "b")  # b's home: voice 1
+    running["2:1"] = False  # b's terminal closes
+    clock.now = 900
+    b.assign("1:1", "b")  # a's terminal works in b, still speaking in a's voice
+    clock.now = 1500  # b was last heard in its own voice at 0
+    assert b.assign("3:1", "c") == other  # so b's voice is free for a new repo
+
+
+def test_saves_resume_after_the_clock_jumps_back(tmp_path):
+    clock = Clock()
+    path = tmp_path / "v.json"
+    b = VoiceBook(path, clock=clock, active_seconds=10**9)
+    clock.now = 10_000
+    b.assign("t1", "a")
+    clock.now = 100  # jumped back
+    b.assign("t1", "a")
+    assert '"seen": 100' in path.read_text()

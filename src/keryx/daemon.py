@@ -21,14 +21,14 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from keryx import version
+from keryx import older, version
 from keryx.client import read_all
 from keryx.config import Config, cache_dir, socket_path
 from keryx.player import WindowsPlayer
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.summarize import OllamaClient, spoken_line
 from keryx.voice import KokoroVoice
-from keryx.voices import VoiceBook, VoiceSpec
+from keryx.voices import VoiceBook, VoiceSpec, holder
 
 log = logging.getLogger("keryx")
 
@@ -62,7 +62,8 @@ def handle(
     if op == "warm":
         # This process keeps the code it started with; a hook from an updated keryx
         # retires it so the next hook spawns the new code.
-        if request.get("version") not in (None, VERSION):
+        # Only for a newer keryx: a session still running older hooks must not retire it.
+        if request.get("version") and older(VERSION, request["version"]):
             speaker.stop()
             return {"ok": True, "quit": True, "version": VERSION}
         claim(request, speaker)
@@ -99,8 +100,8 @@ def handle(
 
 def claim(request: dict, speaker: SpeechQueue) -> None:
     """Hold the requesting terminal's voice (its session's, outside a terminal)."""
-    holder = request.get("terminal") or request.get("session") or ""
-    speaker.claim(str(holder), str(request.get("source") or ""))
+    who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
+    speaker.claim(who, str(request.get("source") or ""))
 
 
 def start_warming(warm: Callable[[], None] | None) -> None:

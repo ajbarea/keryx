@@ -86,9 +86,11 @@ def send_or_spawn(request: dict, wait: float = SPAWN_WAIT_SECONDS) -> dict:
 
 
 def current(request: dict) -> dict:
-    """Send a `warm` or `ping`, replacing a daemon from another keryx version first."""
+    """Send a `warm` or `ping`, replacing a daemon from an older keryx first."""
+    from keryx import older
+
     reply = send_or_spawn(request)
-    if reply.get("version") != request["version"]:
+    if older(reply.get("version"), request["version"]):
         return replace_daemon(request, reply)
     return reply
 

@@ -72,3 +72,15 @@ def test_a_bare_session_id_is_not_a_terminal(tmp_path):
 def test_this_process_is_alive():
     fields = Path(f"/proc/{os.getpid()}/stat").read_text().rsplit(")", 1)[1].split()
     assert is_alive(f"{os.getpid()}:{fields[19]}") is True
+
+
+def test_claude_running_as_pid_1_is_the_terminal(tmp_path):
+    proc = fake_proc(tmp_path, {50: ("sh", 1, 900, ["sh"]), 1: ("claude", 0, 5, ["claude"])})
+    assert terminal_id(50, proc) == "1:5"
+
+
+def test_a_zombie_is_not_alive(tmp_path):
+    proc = fake_proc(tmp_path, {30: ("claude", 1, 700, ["claude"])})
+    stat = tmp_path / "30" / "stat"
+    stat.write_text(stat.read_text().replace(") S ", ") Z "))
+    assert is_alive("30:700", proc) is False

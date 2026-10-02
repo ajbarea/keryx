@@ -68,8 +68,9 @@ class VoiceSpec:
 
     @property
     def lang(self) -> str:
-        """Phonemes for the voice that weighs most, so a mostly British blend sounds British."""
-        heaviest = max(zip(self.weights, self.names, strict=True))[1]
+        """Phonemes for the voice that weighs most (the first, on a tie), so a mostly British
+        blend sounds British."""
+        heaviest = self.names[max(range(len(self.weights)), key=self.weights.__getitem__)]
         return LANG.get(heaviest[0], "en-us")
 
     def spoken(self) -> str:
@@ -94,6 +95,11 @@ class VoiceSpec:
         return "+".join(f"{n}({w:g})" for n, w in zip(self.names, self.weights, strict=True))
 
 
+def holder(terminal: str, session: str) -> str:
+    """Who holds a voice: the terminal, or the session outside one."""
+    return terminal or session
+
+
 def pool(first: str) -> tuple[str, ...]:
     """POOL led by the configured voice."""
     return (first, *(n for n in POOL if n != first))
@@ -104,8 +110,9 @@ def catalogue(first: str) -> list[VoiceSpec]:
     names = pool(first)
     specs = [VoiceSpec((n,)) for n in names]
     # Same gender (the second letter, f or m), and English, which LANG phonemizes.
+    # Each pair in name order, so its labels do not change with the configured voice.
     pairs = [
-        (a, b)
+        tuple(sorted((a, b)))
         for a, b in itertools.combinations(names, 2)
         if a[1] == b[1] and a[0] in LANG and b[0] in LANG
     ]
@@ -139,7 +146,7 @@ class VoiceBook:
         self._clock = clock
         self._active_seconds = active_seconds
         self._home_seconds = home_seconds
-        self._home, self._held = self._load()  # by source, by session
+        self._home, self._held = self._load()  # by source, by holder
         self._saved = float("-inf")
 
     def default(self) -> VoiceSpec:
@@ -168,8 +175,9 @@ class VoiceBook:
                 if source and home is None:
                     self._home[source] = (index, now)
         self._held[holder] = (index, now)
-        if source in self._home:
-            self._home[source] = (self._home[source][0], now)
+        # A repo counts as heard only in its own voice, not in one a terminal brought along.
+        if source in self._home and self._home[source][0] == index:
+            self._home[source] = (index, now)
         self._save(now, force=changed)
         return self._specs[index]
 
@@ -203,7 +211,7 @@ class VoiceBook:
             return {}, {}
         if not isinstance(raw, dict):
             return {}, {}
-        return self._entries(raw.get("homes")), self._entries(raw.get("sessions"))
+        return self._entries(raw.get("homes")), self._entries(raw.get("holders"))
 
     def _entries(self, raw: object) -> Table:
         """Stored by label, so a reordered pool keeps each voice; unknown labels drop."""
@@ -222,7 +230,7 @@ class VoiceBook:
         return out
 
     def _save(self, now: float, force: bool) -> None:
-        if not force and now - self._saved < SAVE_SECONDS:
+        if not force and 0 <= now - self._saved < SAVE_SECONDS:  # < 0: the clock jumped back
             return
         self._saved = now
 
@@ -232,7 +240,7 @@ class VoiceBook:
                 for key, (i, seen) in table.items()
             }
 
-        data = {"homes": entries(self._home), "sessions": entries(self._held)}
+        data = {"homes": entries(self._home), "holders": entries(self._held)}
         with contextlib.suppress(OSError):
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(".tmp")

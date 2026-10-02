@@ -68,7 +68,7 @@ large model loaded beside keryx can end up partly on the CPU.
 | --- | --- | --- |
 | `enabled` | `true` | Speak at all |
 | `voice` | `af_heart` | Any [Kokoro voice](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md); the first voice handed out |
-| `distinct_voices` | `true` | Give each session its own voice; `false` speaks every session in `voice` |
+| `distinct_voices` | `true` | Give each terminal its own voice; `false` speaks every terminal in `voice` |
 | `speed` | `1.0` | Speaking rate |
 | `model` | `gemma3:4b` | Ollama model that shortens replies; empty to speak the opening sentences instead |
 | `ollama_host` | `http://localhost:11434` | Ollama server |

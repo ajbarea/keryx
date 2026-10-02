@@ -23,7 +23,7 @@ import numpy as np
 from keryx.player import Player
 from keryx.text import split_sentences
 from keryx.voice import write_wav
-from keryx.voices import VoiceSpec
+from keryx.voices import VoiceSpec, holder
 
 log = logging.getLogger("keryx")
 
@@ -101,7 +101,7 @@ class Speaker:
 
     def submit(self, utt: Utterance) -> None:
         if utt.voice is None and self._voices is not None:
-            utt.voice = self._voices.assign(utt.terminal or utt.session, utt.source)
+            utt.voice = self._voices.assign(holder(utt.terminal, utt.session), utt.source)
         with self._cond:
             (self._to_shorten if utt.kind == "reply" else self._pending).append(utt)
             self._active.append(utt)

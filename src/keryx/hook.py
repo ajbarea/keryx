@@ -49,20 +49,22 @@ def source_name(cwd: str) -> str:
 
 
 def request_for(event: dict, entrypoint: str) -> dict | None:
-    """The daemon request for one hook payload, or None to stay silent."""
+    """The daemon request for one hook payload, or None to stay silent.
+
+    Requests name their terminal, which holds the voice: `/clear` and resume start new
+    sessions in it.
+    """
     if entrypoint.startswith(HEADLESS_PREFIX):
         return None
     name = event.get("hook_event_name")
     session = event.get("session_id", "")
-    # The terminal holds the voice: `/clear` and resume start new sessions in it.
-    terminal = terminal_id()
     if name == "SessionStart":
         # Start the cold load while the developer types the first prompt; hold a voice.
         return {
             "op": "warm",
             "version": version(),
             "session": session,
-            "terminal": terminal,
+            "terminal": terminal_id(),
             "source": source_name(event.get("cwd", "")),
         }
     if name == "UserPromptSubmit":
@@ -73,7 +75,7 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
             "op": "stop",
             "session": session,
             "prompt": event.get("prompt_id", ""),
-            "terminal": terminal,
+            "terminal": terminal_id(),
             "source": source_name(event.get("cwd", "")),
             "warm": True,
         }
@@ -87,7 +89,7 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
             "text": text,
             "session": session,
             "prompt": event.get("prompt_id", ""),
-            "terminal": terminal,
+            "terminal": terminal_id(),
             "source": source_name(event.get("cwd", "")),
         }
     if name == "Notification" and event.get("notification_type") in SPOKEN_NOTIFICATIONS:
@@ -99,7 +101,7 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
             "kind": "notice",
             "text": _CLAUDE_NEEDS.sub("I need", message),
             "session": session,
-            "terminal": terminal,
+            "terminal": terminal_id(),
             "source": source_name(event.get("cwd", "")),
         }
     return None

@@ -176,3 +176,14 @@ def test_parse_tolerates_garbage():
 @pytest.mark.parametrize("ep", ["claude-vscode", "claude-desktop", "cli"])
 def test_interactive_surfaces_speak(ep):
     assert request_for(stop(), ep) is not None
+
+
+def test_silent_events_do_not_walk_the_process_tree(monkeypatch):
+    def walked():
+        raise AssertionError("walked /proc for nothing")
+
+    monkeypatch.setattr("keryx.hook.terminal_id", walked)
+    assert request_for(stop("  "), "cli") is None
+    assert request_for({"hook_event_name": "SubagentStop"}, "cli") is None
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "/keryx:off"}
+    assert request_for(event, "cli") is None
