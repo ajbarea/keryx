@@ -1,9 +1,13 @@
 # IMPL
 
-## Current: first version
+## Current: nothing in flight
 
-Ships the plugin: hooks, daemon, summarizer, Kokoro voice, Windows player, `/keryx:on`,
-`/keryx:off`, `/keryx:status`. Design and measurements in `docs/design.md`.
+The first version shipped in #1 and is installed on the workstation. Pick the next item from
+`ROADMAP.md`; voice choice by ear is the cheapest.
 
-**Done when:** installed as a plugin on the workstation, a real turn is spoken, a new prompt
-cuts speech off, `/keryx:off` frees the GPU, and an independent review finds nothing blocking.
+## Install state
+
+- Installed from the local marketplace (`claude plugin marketplace add ~/ajsoftworks/keryx`).
+- The plugin cache is keyed by version: after changing code, bump `version` in
+  `.claude-plugin/plugin.json` and `pyproject.toml`, or `claude plugin uninstall` then
+  `install`, or `claude plugin update` reports "already at the latest version".
