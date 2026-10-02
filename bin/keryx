@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Runs keryx from this checkout; the venv lives outside the plugin cache so updates keep it.
+set -euo pipefail
+root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+export UV_PROJECT_ENVIRONMENT="${XDG_CACHE_HOME:-$HOME/.cache}/keryx/venv"
+extra=()
+# With an NVIDIA GPU, pull the CUDA runtime wheels so Kokoro runs on it.
+if command -v nvidia-smi >/dev/null 2>&1; then extra=(--extra cuda); fi
+exec uv run --quiet --frozen --no-dev "${extra[@]}" --project "$root" python -m keryx "$@"

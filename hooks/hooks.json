@@ -1,0 +1,17 @@
+{
+  "description": "Speak each reply's gist, speak permission prompts, and stop speaking when the user sends a prompt",
+  "hooks": {
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/keryx\" hook", "async": true } ] }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog|elicitation_url_dialog",
+        "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/keryx\" hook", "async": true } ]
+      }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/keryx\" hook", "async": true } ] }
+    ]
+  }
+}

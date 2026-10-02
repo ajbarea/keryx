@@ -1,0 +1,6 @@
+candidate                                faithful useful speakable total unfaithful items
+gemma4:e2b                                     21     25        33    79          3    17
+gemma3:4b                                      20     24        31    75          3    17
+llama3.2:3b-instruct-q4_K_M                    20     17        32    69          5    17
+qwen3:1.7b                                     21     28        18    67          2    17
+qwen2.5:3b-instruct                            14     26        15    55          7    17

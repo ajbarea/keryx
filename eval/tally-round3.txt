@@ -1,0 +1,5 @@
+candidate                                faithful useful speakable total unfaithful items
+gemma4:e2b|v2                                  20     24        33    77          5    17
+gemma4:e2b|v3                                  22     24        30    76          3    17
+gemma3:4b|v3                                   24     24        28    76          1    17
+gemma3:4b|v2                                   18     23        30    71          4    17
