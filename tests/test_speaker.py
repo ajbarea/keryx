@@ -25,6 +25,7 @@ class FakePlayer:
 
     def __init__(self, hold=False):
         self.played: list[str] = []
+        self.events: list[str] = []  # duck and unduck, in order
         self.started = threading.Event()
         self.release = threading.Event()
         if not hold:
@@ -40,6 +41,12 @@ class FakePlayer:
 
     def stop(self):
         pass
+
+    def duck(self):
+        self.events.append("duck")
+
+    def unduck(self):
+        self.events.append("unduck")
 
 
 def wait_idle(sp, timeout=3.0):
@@ -331,3 +338,86 @@ def test_the_terminal_holds_the_voice_when_there_is_one(tmp_path):
     wait_idle(sp)
     assert voices.claimed == [("9:1", ""), ("s", "")]
     sp.close()
+
+
+@pytest.fixture
+def quick_unduck(monkeypatch):
+    from keryx import speaker as speaker_mod
+
+    monkeypatch.setattr(speaker_mod, "UNDUCK_AFTER", 0.05)
+
+
+def wait_for(cond, timeout=3.0):
+    deadline = time.time() + timeout
+    while not cond():
+        assert time.time() < deadline
+        time.sleep(0.01)
+
+
+def test_other_apps_duck_once_for_a_run_of_lines_then_come_back(make, quick_unduck):
+    player = FakePlayer()
+    sp = make(player)
+    sp.submit(Utterance("One. Two. Three.", kind="notice"))
+    sp.submit(Utterance("Four.", kind="notice"))
+    wait_idle(sp)
+    wait_for(lambda: player.events[-1:] == ["unduck"])
+    assert player.events == ["duck", "unduck"]
+    assert len(player.played) == 4
+
+
+def test_ducking_starts_only_when_audio_plays(make, quick_unduck):
+    player = FakePlayer()
+    sp = make(player, shorten=lambda t: "")
+    sp.submit(Utterance("```code```"))  # nothing to say
+    wait_idle(sp)
+    time.sleep(0.2)
+    assert player.events == []
+
+
+def test_a_reply_waiting_on_the_summarizer_does_not_hold_the_music_down(make, quick_unduck):
+    player = FakePlayer()
+    loaded = threading.Event()
+
+    def slow(text):
+        loaded.wait(5)
+        return "Later."
+
+    sp = make(player, shorten=slow)
+    sp.submit(Utterance("Now.", kind="notice"))
+    sp.submit(Utterance("a long reply"))
+    wait_for(lambda: player.events == ["duck", "unduck"])  # back up while the model loads
+    loaded.set()
+    wait_idle(sp)
+    wait_for(lambda: player.events == ["duck", "unduck", "duck", "unduck"])
+
+
+def test_stopping_speech_brings_the_music_back(make, quick_unduck):
+    player = FakePlayer(hold=True)
+    sp = make(player)
+    sp.submit(Utterance("Long line.", session="a"))
+    assert player.started.wait(2)
+    sp.stop("a")
+    wait_idle(sp)
+    wait_for(lambda: player.events == ["duck", "unduck"])
+
+
+def test_a_ducking_error_does_not_silence_speech(tmp_path, quick_unduck):
+    class BrokenDuck(FakePlayer):
+        def duck(self):
+            raise OSError("powershell died")
+
+    player = BrokenDuck()
+    sp = Speaker(lambda t: t, FakeVoice(), player, tmp_path)
+    sp.submit(Utterance("Still heard.", kind="notice"))
+    wait_idle(sp)
+    assert len(player.played) == 1
+    sp.close()
+
+
+def test_closing_while_ducked_brings_the_music_back(tmp_path):
+    player = FakePlayer()
+    sp = Speaker(lambda t: t, FakeVoice(), player, tmp_path)
+    sp.submit(Utterance("Hi.", kind="notice"))
+    wait_idle(sp)
+    sp.close()
+    assert player.events == ["duck", "unduck"]

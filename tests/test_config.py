@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from keryx.config import Config, config_dir
@@ -40,3 +42,35 @@ def test_env_overrides_file(monkeypatch):
 def test_a_bad_env_value_keeps_the_default(monkeypatch):
     monkeypatch.setenv("KERYX_SPEED", "fast")
     assert Config.load().speed == Config().speed
+
+
+def test_duck_apps_come_from_a_comma_separated_env_var(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("KERYX_DUCK_APPS", "Spotify, chrome ,")
+    assert Config.load().duck_apps == ["Spotify", "chrome"]
+
+
+def test_ducking_defaults_to_spotify_at_a_quarter(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.delenv("KERYX_DUCK_APPS", raising=False)
+    cfg = Config.load()
+    assert (cfg.duck_apps, cfg.duck_ratio) == (["Spotify"], 0.25)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad"),
+    [("duck_apps", "Spotify"), ("duck_apps", [1, 2]), ("duck_ratio", "half"), ("enabled", "yes")],
+)
+def test_a_value_of_the_wrong_type_falls_back_to_the_default(tmp_path, monkeypatch, field, bad):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    (tmp_path / "keryx").mkdir(exist_ok=True)
+    (tmp_path / "keryx" / "config.json").write_text(json.dumps({field: bad}))
+    assert getattr(Config.load(env=False), field) == getattr(Config(), field)
+
+
+def test_a_whole_number_speed_is_kept(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    (tmp_path / "keryx").mkdir(exist_ok=True)
+    (tmp_path / "keryx" / "config.json").write_text('{"speed": 1, "duck_ratio": 0}')
+    cfg = Config.load(env=False)
+    assert (cfg.speed, cfg.duck_ratio) == (1, 0)

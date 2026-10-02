@@ -29,6 +29,8 @@ log = logging.getLogger("keryx")
 
 RING = 8  # WAV slots; more than can be queued for playback at once
 PLAY_AHEAD = 2
+# Other apps come back up after this much quiet, so the music does not pump between lines.
+UNDUCK_AFTER = 1.0
 
 
 class Voice(Protocol):
@@ -90,6 +92,7 @@ class Speaker:
             PLAY_AHEAD
         )
         self._closed = False
+        self._synthesizing = False  # the synth thread holds an utterance
         self.spoken: deque[str] = deque(maxlen=50)  # recent sentences, for logs and tests
         self._threads = [
             threading.Thread(target=self._shorten_loop, daemon=True),
@@ -140,13 +143,22 @@ class Speaker:
         with self._cond:
             return not self._active
 
-    def _next(self, waiting: list[Utterance]) -> Utterance | None:
+    def _next(self, waiting: list[Utterance], synth: bool = False) -> Utterance | None:
         with self._cond:
+            if synth:
+                self._synthesizing = False
             while not waiting and not self._closed:
                 self._cond.wait()
             if self._closed:
                 return None
+            if synth:
+                self._synthesizing = True  # in the same lock as the pop, so quiet never flickers
             return waiting.pop(0)
+
+    def _quiet(self) -> bool:
+        """Nothing left to synthesize or play; a reply still being shortened does not count."""
+        with self._cond:
+            return not self._pending and not self._synthesizing and self._play_q.empty()
 
     def _shorten_loop(self) -> None:
         while (utt := self._next(self._to_shorten)) is not None:
@@ -173,7 +185,7 @@ class Speaker:
         return line
 
     def _synth_loop(self) -> None:
-        while (utt := self._next(self._pending)) is not None:
+        while (utt := self._next(self._pending, synth=True)) is not None:
             try:
                 line = "" if utt.cancelled.is_set() else self._line(utt)
                 for sentence in split_sentences(line):
@@ -191,7 +203,17 @@ class Speaker:
         self._play_q.put(None)
 
     def _play_loop(self) -> None:
-        while (item := self._play_q.get()) is not None:
+        ducked = False
+        while True:
+            try:
+                item = self._play_q.get(timeout=UNDUCK_AFTER if ducked else None)
+            except queue.Empty:
+                if self._quiet():
+                    self._safely(self._player.unduck)
+                    ducked = False
+                continue
+            if item is None:
+                break
             wav, seconds, utt = item
             if wav is None:
                 with self._cond:
@@ -202,10 +224,22 @@ class Speaker:
                 continue
             if utt.cancelled.is_set():
                 continue
+            if not ducked:
+                self._safely(self._player.duck)
+                ducked = True
             try:
                 utt.played = self._player.play(wav, seconds, utt.cancelled) or utt.played
             except Exception:
                 log.exception("could not play %s", wav)
+        if ducked:
+            self._safely(self._player.unduck)
+
+    @staticmethod
+    def _safely(step: Callable[[], None]) -> None:
+        try:
+            step()
+        except Exception:
+            log.exception("could not change other apps' volume")
 
 
 def slot_name(i: int) -> str:
