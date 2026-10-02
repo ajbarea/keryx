@@ -11,6 +11,7 @@ import itertools
 import logging
 import queue
 import threading
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -46,6 +47,8 @@ class Utterance:
     session: str = ""
     source: str = ""
     cancelled: threading.Event = field(default_factory=threading.Event)
+    announced: bool = False  # its line starts with the source name
+    played: bool = False
 
 
 class Speaker:
@@ -71,7 +74,7 @@ class Speaker:
             PLAY_AHEAD
         )
         self._closed = False
-        self.spoken: list[str] = []  # what was handed to the voice, for logs and tests
+        self.spoken: deque[str] = deque(maxlen=50)  # recent sentences, for logs and tests
         self._threads = [
             threading.Thread(target=self._synth_loop, daemon=True),
             threading.Thread(target=self._play_loop, daemon=True),
@@ -118,9 +121,11 @@ class Speaker:
 
     def _line(self, utt: Utterance) -> str:
         line = self._shorten(utt.text) if utt.kind == "reply" else utt.text
-        if line and utt.source and utt.source != self._last_source:
-            line = f"{utt.source}: {line}"
-            self._last_source = utt.source
+        with self._cond:
+            if line and utt.source and utt.source != self._last_source:
+                line = f"{utt.source}: {line}"
+                self._last_source = utt.source
+                utt.announced = True
         return line
 
     def _synth_loop(self) -> None:
@@ -147,11 +152,14 @@ class Speaker:
             if wav is None:
                 with self._cond:
                     self._active.remove(utt)
+                    # Never heard, so the next line from this source must announce it.
+                    if utt.announced and not utt.played and self._last_source == utt.source:
+                        self._last_source = ""
                 continue
             if utt.cancelled.is_set():
                 continue
             try:
-                self._player.play(wav, seconds, utt.cancelled)
+                utt.played = self._player.play(wav, seconds, utt.cancelled) or utt.played
             except Exception:
                 log.exception("could not play %s", wav)
 

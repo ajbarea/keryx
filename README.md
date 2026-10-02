@@ -40,14 +40,15 @@ claude plugin marketplace add ~/ajsoftworks/keryx
 claude plugin install keryx@keryx
 ```
 
-Then restart Claude Code. The first reply after install builds the environment and loads the
-voice, so it can take a minute; later replies start speaking in about 1 to 2 seconds.
+Then restart Claude Code. The first prompt after install builds the environment and downloads
+the models, so the first reply can take several minutes to be spoken; later replies start
+speaking in about 1 to 2 seconds.
 
 ## Use
 
 | Command | What it does |
 | --- | --- |
-| `/keryx:off` | Stops speech, shuts the daemon down and unloads the summarizer, freeing about 4.7 GB of VRAM |
+| `/keryx:off` | Stops speech, shuts the daemon down and unloads the summarizer, freeing about 4.4 GB of VRAM |
 | `/keryx:on` | Turns speech back on; the next prompt starts the daemon |
 | `/keryx:status` | Shows the settings and whether the daemon is running |
 

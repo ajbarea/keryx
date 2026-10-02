@@ -32,7 +32,8 @@ class Config:
     audio_dir: str = "/mnt/c/Windows/Temp/keryx"
 
     @classmethod
-    def load(cls) -> Config:
+    def load(cls, env: bool = True) -> Config:
+        """Settings from the file, then `KERYX_*` env overrides unless `env` is False."""
         path = config_dir() / "config.json"
         try:
             raw = json.loads(path.read_text())
@@ -40,11 +41,11 @@ class Config:
             raw = {}
         known = {f.name for f in fields(cls)}
         cfg = cls(**{k: v for k, v in raw.items() if k in known})
-        for f in fields(cls):
-            env = os.environ.get(f"KERYX_{f.name.upper()}")
-            if env is not None:
+        for f in fields(cls) if env else ():
+            value = os.environ.get(f"KERYX_{f.name.upper()}")
+            if value is not None:
                 with contextlib.suppress(ValueError):
-                    setattr(cfg, f.name, _coerce(env, type(getattr(cfg, f.name))))
+                    setattr(cfg, f.name, _coerce(value, type(getattr(cfg, f.name))))
         return cfg
 
     def save(self) -> None:

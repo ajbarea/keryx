@@ -39,9 +39,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if cmd in ("on", "off"):
-        cfg.enabled = cmd == "on"
-        cfg.save()
-        if not cfg.enabled:
+        stored = Config.load(env=False)  # don't persist env overrides into the file
+        stored.enabled = cmd == "on"
+        stored.save()
+        if not stored.enabled:
             # Off frees the GPU: the daemon exits (releasing Kokoro) and the model unloads.
             with contextlib.suppress(OSError):
                 client.send({"op": "quit"})
@@ -51,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
                 with contextlib.suppress(OSError):
                     OllamaClient(cfg.model, cfg.ollama_host).unload()
         print(f"keryx is {cmd}")
+        if Config.load().enabled != stored.enabled:
+            print("note: KERYX_ENABLED in the environment overrides this")
         return 0
 
     if cmd == "status":

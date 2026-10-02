@@ -17,9 +17,12 @@ _INLINE_CODE = re.compile(r"`([^`]*)`")
 # Emphasis markers hug a word on both sides; a lone `*` in `*.py` does not.
 _BOLD = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
 _ITALIC = re.compile(r"(?<![\w*])([*_])(?=\S)(.+?)(?<=\S)\1(?![\w*])")
-# A path has a slash and ends in a file name; line suffixes like `:42` go too.
+# A path is rooted (`/`, `~/`, `./`) or ends in a file name with a letter extension, so
+# `client/server`, `and/or` and `10/01/2026` stay; line suffixes like `:42` go too.
 _PATH = re.compile(
-    r"(?:~|\.{1,2})?(?:/?[\w.@-]+/)+([\w@-]+(?:\.[\w@-]+)*)(?::\d+(?::\d+)?)?(?![\w/])"
+    r"(?:(?<![\w.~/])(?:~|\.{1,2})?/(?:[\w.@-]+/)*([\w@-]+(?:\.[\w@-]+)*)"
+    r"|(?:[\w.@-]+/)+([\w@-]+(?:\.[\w@-]+)*\.[A-Za-z]\w*))"
+    r"(?::\d+(?::\d+)?)?(?![\w/])"
 )
 _SYMBOLS = re.compile(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]")
 _SPACES = re.compile(r"\s+")
@@ -31,7 +34,7 @@ def _inline(text: str) -> str:
     text = _LINK.sub(r"\1", text)
     text = _URL.sub("a link", text)
     text = _INLINE_CODE.sub(r"\1", text)
-    text = _PATH.sub(r"\1", text)
+    text = _PATH.sub(lambda m: m.group(1) or m.group(2), text)
     text = _BOLD.sub(r"\2", text)
     text = _ITALIC.sub(r"\2", text)
     text = _SYMBOLS.sub("", text)

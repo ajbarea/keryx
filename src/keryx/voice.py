@@ -30,7 +30,8 @@ def ensure_models() -> Path:
     for name in (MODEL, VOICES):
         if not (d / name).exists():
             url = f"https://github.com/{REPO}/releases/download/{RELEASE}/{name}"
-            subprocess.run(["curl", "-fsSL", "-o", str(d / f"{name}.part"), url], check=True)
+            curl = ["curl", "-fsSL", "--connect-timeout", "20", "--max-time", "900"]
+            subprocess.run([*curl, "-o", str(d / f"{name}.part"), url], check=True)
             (d / f"{name}.part").rename(d / name)
     return d
 

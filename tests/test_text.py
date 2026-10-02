@@ -70,3 +70,12 @@ def test_first_sentences_respects_limit():
 def test_first_sentences_truncates_a_single_long_sentence_on_a_word():
     out = first_sentences("alpha beta gamma delta epsilon", max_chars=17)
     assert out == "alpha beta gamma"
+
+
+def test_slashed_prose_and_dates_are_not_paths():
+    text = "Tests pass on client/server and input/output, due 10/01/2026, over TCP/IP and/or UDP."
+    assert clean_for_speech(text) == text
+
+
+def test_rooted_paths_shrink_even_without_an_extension():
+    assert clean_for_speech("See ./scripts/run and ~/notes/todo") == "See run and todo"

@@ -62,7 +62,7 @@ def test_reply_is_shortened_and_split_into_sentences(make):
     sp = make(player, shorten=lambda t: "First. Second.")
     sp.submit(Utterance("a long reply", session="s1"))
     wait_idle(sp)
-    assert sp.spoken == ["First.", "Second."]
+    assert list(sp.spoken) == ["First.", "Second."]
     assert len(player.played) == 2
 
 
@@ -70,7 +70,7 @@ def test_notice_is_not_shortened(make):
     sp = make(shorten=lambda t: "WRONG")
     sp.submit(Utterance("I need your permission.", kind="notice"))
     wait_idle(sp)
-    assert sp.spoken == ["I need your permission."]
+    assert list(sp.spoken) == ["I need your permission."]
 
 
 def test_source_announced_only_when_it_changes(make):
@@ -78,7 +78,7 @@ def test_source_announced_only_when_it_changes(make):
     for src in ["ariadne", "ariadne", "pharos"]:
         sp.submit(Utterance("Done.", source=src))
     wait_idle(sp)
-    assert sp.spoken == ["ariadne: Done.", "Done.", "pharos: Done."]
+    assert list(sp.spoken) == ["ariadne: Done.", "Done.", "pharos: Done."]
 
 
 def test_empty_line_is_silent(make):
@@ -111,7 +111,7 @@ def test_stop_for_other_session_leaves_speech_alone(make):
     sp.stop("b")
     player.release.set()
     wait_idle(sp)
-    assert sp.spoken == ["Keep going."]
+    assert list(sp.spoken) == ["Keep going."]
     assert len(player.played) == 1
 
 
@@ -123,7 +123,7 @@ def test_stop_all(make):
     sp.submit(Utterance("Two.", session="b"))
     sp.stop()
     wait_idle(sp)
-    assert sp.spoken == ["One."]
+    assert list(sp.spoken) == ["One."]
 
 
 def test_wav_slots_rotate(make, tmp_path):
@@ -160,7 +160,7 @@ def test_a_synthesis_error_does_not_silence_later_speech(tmp_path):
     sp.submit(Utterance("First."))
     sp.submit(Utterance("Second."))
     wait_idle(sp)
-    assert sp.spoken == ["Second."]
+    assert list(sp.spoken) == ["Second."]
     sp.close()
 
 
@@ -196,3 +196,21 @@ def test_slot_files_carry_a_keryx_prefix(make):
     sp.submit(Utterance("One."))
     wait_idle(sp)
     assert player.played == ["keryx-0.wav"]
+
+
+def test_a_cancelled_announcement_is_repeated_next_time(make):
+    player = FakePlayer(hold=True)
+    sp = make(player)
+    sp.submit(Utterance("First.", session="x", source="other"))
+    assert player.started.wait(2)
+    sp.submit(Utterance("Never heard.", session="a", source="ariadne"))
+    deadline = time.time() + 2
+    while "ariadne: Never heard." not in sp.spoken:
+        assert time.time() < deadline
+        time.sleep(0.01)
+    sp.stop("a")
+    player.release.set()
+    wait_idle(sp)
+    sp.submit(Utterance("Heard.", session="a", source="ariadne"))
+    wait_idle(sp)
+    assert sp.spoken[-1] == "ariadne: Heard."

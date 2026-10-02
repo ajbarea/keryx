@@ -6,7 +6,13 @@ from keryx.hook import parse, request_for, source_name
 
 
 def stop(msg="Done. Tests pass.", **kw):
-    return {"hook_event_name": "Stop", "session_id": "s1", "last_assistant_message": msg, **kw}
+    return {
+        "hook_event_name": "Stop",
+        "session_id": "s1",
+        "prompt_id": "p1",
+        "last_assistant_message": msg,
+        **kw,
+    }
 
 
 def test_stop_becomes_a_reply(tmp_path):
@@ -16,6 +22,7 @@ def test_stop_becomes_a_reply(tmp_path):
         "kind": "reply",
         "text": "Done. Tests pass.",
         "session": "s1",
+        "prompt": "p1",
         "source": tmp_path.name,
     }
 
@@ -35,8 +42,14 @@ def test_missing_entrypoint_counts_as_interactive():
 
 
 def test_prompt_submit_stops_that_session():
-    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s9"}
-    assert request_for(event, "cli") == {"op": "stop", "session": "s9", "warm": True}
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s9", "prompt_id": "p9"}
+    expected = {"op": "stop", "session": "s9", "prompt": "p9", "warm": True}
+    assert request_for(event, "cli") == expected
+
+
+def test_keryx_commands_do_not_wake_the_daemon():
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "user_input": "/keryx:off"}
+    assert request_for(event, "cli") is None
 
 
 def test_permission_prompt_is_spoken_in_first_person():

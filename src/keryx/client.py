@@ -45,7 +45,12 @@ def spawn() -> None:
         )
 
 
-def send_or_spawn(request: dict, wait: float = 30.0) -> dict:
+# A first run downloads ~350 MB of model files before the socket binds; hooks are async,
+# so waiting costs the session nothing.
+SPAWN_WAIT_SECONDS = 900.0
+
+
+def send_or_spawn(request: dict, wait: float = SPAWN_WAIT_SECONDS) -> dict:
     """Send, starting the daemon first if none is running."""
     try:
         return send(request)

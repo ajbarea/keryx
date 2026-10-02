@@ -30,7 +30,14 @@ log = logging.getLogger("keryx")
 IDLE_EXIT_SECONDS = 4 * 3600
 
 
-def handle(request: dict, speaker: SpeechQueue, warm: Callable[[], None] | None = None) -> dict:
+def handle(
+    request: dict,
+    speaker: SpeechQueue,
+    warm: Callable[[], None] | None = None,
+    latest_prompt: dict[str, str] | None = None,
+) -> dict:
+    """`latest_prompt` maps session to its newest prompt id, to drop replies that lost a race."""
+    latest = latest_prompt if latest_prompt is not None else {}
     op = request.get("op")
     if op == "ping":
         return {"ok": True, "pid": os.getpid()}
@@ -38,6 +45,8 @@ def handle(request: dict, speaker: SpeechQueue, warm: Callable[[], None] | None 
         speaker.stop()
         return {"ok": True, "quit": True}
     if op == "stop":
+        if request.get("session") and request.get("prompt"):
+            latest[request["session"]] = request["prompt"]
         speaker.stop(request.get("session") or None)
         # A prompt was just sent, so a reply is coming: load the summarizer meanwhile.
         if request.get("warm") and warm is not None:
@@ -47,6 +56,11 @@ def handle(request: dict, speaker: SpeechQueue, warm: Callable[[], None] | None 
         text = str(request.get("text") or "")
         if not text.strip():
             return {"ok": False, "error": "empty text"}
+        # Hooks are async: a reply's hook can land after the next prompt's. That reply is
+        # stale and would talk over the new turn.
+        session, prompt = request.get("session"), request.get("prompt")
+        if session and prompt and latest.get(session, prompt) != prompt:
+            return {"ok": True, "dropped": "stale"}
         speaker.submit(
             Utterance(
                 text=text,
@@ -126,6 +140,7 @@ def _serve_locked(
     server.settimeout(poll)
     log.info("listening on %s (voice=%s, model=%s)", sock_path, cfg.voice, cfg.model)
     last_activity = time.monotonic()
+    latest_prompt: dict[str, str] = {}
     try:
         while True:
             try:
@@ -142,7 +157,7 @@ def _serve_locked(
                 try:
                     request = json.loads(read_all(conn))
                     reply = (
-                        handle(request, speaker, warm)
+                        handle(request, speaker, warm, latest_prompt)
                         if isinstance(request, dict)
                         else {"ok": False}
                     )

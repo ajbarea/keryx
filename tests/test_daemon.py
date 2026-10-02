@@ -168,3 +168,25 @@ def test_exit_cleanup_deletes_only_keryx_slot_files(tmp_path, monkeypatch):
         (audio / name).write_bytes(b"x")
     daemon.remove_slots(audio)
     assert sorted(p.name for p in audio.iterdir()) == ["0.wav", "song.wav"]
+
+
+def test_a_reply_older_than_the_sessions_latest_prompt_is_dropped():
+    sp = FakeSpeaker()
+    latest: dict[str, str] = {}
+
+    def say(text, prompt):
+        return handle(
+            {"op": "say", "text": text, "session": "s", "prompt": prompt}, sp, None, latest
+        )
+
+    handle({"op": "stop", "session": "s", "prompt": "p1"}, sp, None, latest)
+    assert say("Turn one.", "p1") == {"ok": True}
+    handle({"op": "stop", "session": "s", "prompt": "p2"}, sp, None, latest)
+    assert say("Turn one, late.", "p1")["dropped"] == "stale"
+    assert [u.text for u in sp.submitted] == ["Turn one."]
+
+
+def test_a_reply_with_no_prompt_history_is_spoken():
+    sp = FakeSpeaker()
+    handle({"op": "say", "text": "Hi.", "session": "new", "prompt": "p7"}, sp, None, {})
+    assert len(sp.submitted) == 1

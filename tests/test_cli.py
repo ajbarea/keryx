@@ -43,7 +43,7 @@ def test_stop_event_spawns_daemon_if_needed(monkeypatch, sent):
 
 def test_prompt_submit_spawns_so_the_voice_loads_early(monkeypatch, sent):
     assert run_hook(monkeypatch, {"hook_event_name": "UserPromptSubmit", "session_id": "s"}) == 0
-    assert sent["spawn"] == [{"op": "stop", "session": "s", "warm": True}]
+    assert sent["spawn"] == [{"op": "stop", "session": "s", "prompt": "", "warm": True}]
 
 
 def test_disabled_hook_does_nothing(monkeypatch, sent):
@@ -78,6 +78,13 @@ def test_off_then_on_persists(sent, capsys, monkeypatch):
     assert cli.main(["on"]) == 0
     assert Config.load().enabled is True
     assert "keryx is on" in capsys.readouterr().out
+
+
+def test_on_off_never_persists_env_overrides(sent, monkeypatch):
+    monkeypatch.setattr("keryx.summarize.OllamaClient.unload", lambda self: None)
+    monkeypatch.setenv("KERYX_MODEL", "temporary:1b")
+    cli.main(["off"])
+    assert Config.load(env=False).model == Config().model
 
 
 def test_status_without_daemon(sent, capsys):

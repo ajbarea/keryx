@@ -85,8 +85,12 @@ clip, each play adds about 6 ms. The WAV must sit on a Windows drive: loading fr
 - **Cold start.** Loading `gemma3:4b` took 14 s on a quiet GPU and up to 34 s while models
   were downloading. The model stays loaded 30 minutes after its last use, and the preload on
   each prompt hides the load behind Claude's own working time.
-- **Headless sessions** (`claude -p` and the SDK, where `CLAUDE_CODE_ENTRYPOINT` is not
-  `cli`) stay silent.
-- **Off frees the GPU**: `/keryx:off` shuts the daemon down and unloads the summarizer.
+- **Headless sessions** (`claude -p` and the SDK, whose `CLAUDE_CODE_ENTRYPOINT` starts
+  with `sdk`) stay silent.
+- **Late replies.** Hooks run async, so a reply's hook can land after the next prompt's.
+  Each request carries its `prompt_id`, and the daemon drops a reply from an older prompt
+  than the session's latest.
+- **Off frees the GPU**: `/keryx:off` shuts the daemon down and unloads the summarizer,
+  freeing 4,464 MiB measured (3,791 for `gemma3:4b`, the rest Kokoro).
   With two summarizer models and Kokoro loaded, the GPU sat at 7.6 of 8 GB and one reply took
   4.98 s instead of about 1 s.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -110,7 +111,7 @@ def spoken_line(reply: str, client: Generator | None) -> str:
         return first_sentences(cleaned, SPOKEN_MAX_CHARS)
     try:
         out = client.generate(_framed(cleaned), SYSTEM_PROMPT)
-    except (urllib.error.URLError, TimeoutError, OSError, KeyError, ValueError):
+    except (OSError, http.client.HTTPException, KeyError, ValueError, TypeError):
         return first_sentences(cleaned, SPOKEN_MAX_CHARS)
     spoken = clean_for_speech(out).strip("\"' ")
     return first_sentences(spoken, SPOKEN_MAX_CHARS) or first_sentences(cleaned, SPOKEN_MAX_CHARS)

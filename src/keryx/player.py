@@ -9,6 +9,7 @@ stall for seconds.
 
 from __future__ import annotations
 
+import select
 import subprocess
 import threading
 from pathlib import Path
@@ -30,6 +31,9 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
     [Console]::Out.Flush()
 }
 """
+
+
+REPLY_TIMEOUT = 10.0  # seconds; a play or stop answers in milliseconds
 
 
 class Player(Protocol):
@@ -63,10 +67,19 @@ class WindowsPlayer:
                     bufsize=1,
                     cwd="/mnt/c",
                 )
-            assert self._proc.stdin and self._proc.stdout
-            self._proc.stdin.write(line + "\n")
-            self._proc.stdin.flush()
-            return self._proc.stdout.readline().strip()
+            proc = self._proc
+            assert proc.stdin and proc.stdout
+            try:
+                proc.stdin.write(line + "\n")
+                proc.stdin.flush()
+                ready, _, _ = select.select([proc.stdout], [], [], REPLY_TIMEOUT)
+                if not ready:
+                    raise TimeoutError(f"powershell did not answer {line.split()[0]!r}")
+                return proc.stdout.readline().strip()
+            except (OSError, TimeoutError):
+                proc.kill()  # a fresh process starts on the next command
+                self._proc = None
+                return "err"
 
     def play(self, wav: Path, seconds: float, interrupt: threading.Event) -> bool:
         """Start `wav` and block for its length; False if interrupted or it failed to start."""
@@ -82,7 +95,7 @@ class WindowsPlayer:
             self._send("stop")
 
     def close(self) -> None:
-        with self._lock:
-            if self._proc is not None:
-                self._proc.kill()
-                self._proc = None
+        # No lock: a play stuck in `_send` holds it, and kill() is what unsticks it.
+        proc = self._proc
+        if proc is not None:
+            proc.kill()
