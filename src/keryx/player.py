@@ -58,15 +58,20 @@ class WindowsPlayer:
     def _send(self, line: str) -> str:
         with self._lock:
             if self._proc is None or self._proc.poll() is not None:
-                self._proc = subprocess.Popen(
-                    self._cmd,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                    text=True,
-                    bufsize=1,
-                    cwd="/mnt/c",
-                )
+                try:
+                    self._proc = subprocess.Popen(
+                        self._cmd,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
+                        text=True,
+                        bufsize=1,
+                        # A Windows cwd keeps powershell.exe from warning about UNC paths.
+                        cwd="/mnt/c" if Path("/mnt/c").is_dir() else None,
+                    )
+                except OSError:
+                    self._proc = None
+                    return "err"
             proc = self._proc
             assert proc.stdin and proc.stdout
             try:

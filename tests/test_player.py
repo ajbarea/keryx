@@ -35,3 +35,8 @@ def test_a_hung_player_times_out_and_close_does_not_deadlock(mute_shell, monkeyp
     closer.start()
     closer.join(2)
     assert not closer.is_alive()
+
+
+def test_a_missing_powershell_fails_the_play_instead_of_raising(tmp_path):
+    p = WindowsPlayer(powershell=str(tmp_path / "no-such-shell"))
+    assert p.play(Path("/mnt/c/x.wav"), 1.0, threading.Event()) is False
