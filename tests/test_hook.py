@@ -2,6 +2,7 @@ import subprocess
 
 import pytest
 
+from keryx import version
 from keryx.hook import parse, request_for, source_name
 
 
@@ -45,6 +46,16 @@ def test_prompt_submit_stops_that_session():
     event = {"hook_event_name": "UserPromptSubmit", "session_id": "s9", "prompt_id": "p9"}
     expected = {"op": "stop", "session": "s9", "prompt": "p9", "warm": True}
     assert request_for(event, "cli") == expected
+
+
+@pytest.mark.parametrize("source", ["startup", "resume", "clear", "compact"])
+def test_session_start_warms(source):
+    event = {"hook_event_name": "SessionStart", "session_id": "s", "source": source}
+    assert request_for(event, "cli") == {"op": "warm", "version": version()}
+
+
+def test_headless_session_start_is_silent():
+    assert request_for({"hook_event_name": "SessionStart"}, "sdk-cli") is None
 
 
 # Claude Code sends the text as `prompt` (seen live, 2026-10-02); the docs say `user_input`.

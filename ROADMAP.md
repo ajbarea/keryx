@@ -1,6 +1,6 @@
 # Roadmap
 
-Last reviewed: 2026-10-01.
+Last reviewed: 2026-10-02.
 
 ## Possible next steps
 
@@ -12,6 +12,9 @@ Last reviewed: 2026-10-01.
 
 ## Completed
 
+- 2026-10-02: cold-start fix. A summarizer load slower than the 30 s generate timeout was
+  aborted by Ollama, and the reply fell back to its opening sentences; the model now loads
+  under its own 120 s timeout, and `SessionStart` preloads it.
 - 2026-10-01: first version. Stop, Notification and UserPromptSubmit hooks; local summarizer
   chosen over three blind-judged rounds; Kokoro on CUDA; Windows playback through a
   persistent PowerShell `SoundPlayer`.

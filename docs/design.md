@@ -75,16 +75,25 @@ clip, each play adds about 6 ms. The WAV must sit on a Windows drive: loading fr
 
 ## Process model
 
-- **Hooks** are `async`, so Claude Code never waits on them. `Stop` sends the reply.
-  `Notification` sends permission and elicitation prompts. `UserPromptSubmit` stops that
-  session's speech, starts the daemon if needed, and preloads the summarizer, since a reply
-  is coming.
+- **Hooks** are `async`, so Claude Code never waits on them. With a hook that sleeps 15 s on
+  `SessionStart`, the first response of `claude -p --model haiku` came at a median 9.0 s
+  (7.5-9.8) run async, 23.3 s (21.3-23.8) run sync, and 6.4 s (6.4-9.7) with no hook; three
+  runs each, 2026-10-02. `SessionStart` starts the daemon if needed and preloads the
+  summarizer. A daemon from another keryx version (0.1.0 has no `warm` op) is retired and
+  replaced with the current code. `Stop` sends the reply. `Notification` sends permission
+  and elicitation prompts. `UserPromptSubmit` stops that session's speech, starts the daemon if needed, and
+  preloads the summarizer, since a reply is coming.
 - **One daemon per machine** on a Unix socket, guarded by a lock file so a second daemon
   exits instead of taking over the socket.
 - **One queue** serves every session. A new prompt cancels only that session's speech.
-- **Cold start.** Loading `gemma3:4b` took 14 s on a quiet GPU and up to 34 s while models
-  were downloading. The model stays loaded 30 minutes after its last use, and the preload on
-  each prompt hides the load behind Claude's own working time.
+- **Cold start.** Loading `gemma3:4b` took 4 to 14 s with the model file in the page cache,
+  34 s while models were downloading, and 44 s read from disk after a night idle. Ollama
+  aborts a load when its client hangs up, so the summarizer loads the model first under a
+  120 s timeout, then generates under 30 s. A loaded model answers the load call in about
+  10 ms. The model stays loaded 30 minutes after its last use. `SessionStart` and each prompt
+  preload it, which puts the load behind the developer's typing and Claude's working time.
+  Shortening runs on its own thread, so a permission prompt is spoken while a reply waits
+  on a load.
 - **Headless sessions** (`claude -p` and the SDK, whose `CLAUDE_CODE_ENTRYPOINT` starts
   with `sdk`) stay silent.
 - **Late replies.** Hooks run async, so a reply's hook can land after the next prompt's.

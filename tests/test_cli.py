@@ -4,7 +4,7 @@ import json
 import pytest
 
 from keryx import __main__ as cli
-from keryx import client
+from keryx import client, version
 from keryx.config import Config
 
 
@@ -26,7 +26,11 @@ def sent(monkeypatch):
         raise FileNotFoundError
 
     monkeypatch.setattr(client, "send", fake_send)
-    monkeypatch.setattr(client, "send_or_spawn", lambda req, *a, **k: calls["spawn"].append(req))
+    monkeypatch.setattr(
+        client,
+        "send_or_spawn",
+        lambda req, *a, **k: calls["spawn"].append(req) or {"ok": True, "version": version()},
+    )
     return calls
 
 
@@ -44,6 +48,109 @@ def test_stop_event_spawns_daemon_if_needed(monkeypatch, sent):
 def test_prompt_submit_spawns_so_the_voice_loads_early(monkeypatch, sent):
     assert run_hook(monkeypatch, {"hook_event_name": "UserPromptSubmit", "session_id": "s"}) == 0
     assert sent["spawn"] == [{"op": "stop", "session": "s", "prompt": "", "warm": True}]
+
+
+def test_session_start_spawns_and_warms(monkeypatch, sent):
+    assert run_hook(monkeypatch, {"hook_event_name": "SessionStart", "session_id": "s"}) == 0
+    assert sent["spawn"] == [{"op": "warm", "version": version()}]
+
+
+class ExitedDaemon:
+    def __init__(self, status=0):
+        self.status = status
+
+    def poll(self):
+        return self.status
+
+
+def test_a_spawned_daemon_that_exits_is_not_waited_on(monkeypatch):
+    def no_socket(req, *a, **k):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(client, "send", no_socket)
+    monkeypatch.setattr(client, "spawn", ExitedDaemon)
+    with pytest.raises(FileNotFoundError):
+        client.send_or_spawn({"op": "warm"}, wait=30)
+
+
+def test_a_daemon_that_lost_the_lock_to_a_retiring_one_is_spawned_again(monkeypatch):
+    spawned = []
+    sends = iter([FileNotFoundError, FileNotFoundError, FileNotFoundError, {"ok": True}])
+
+    def send(req, *a, **k):
+        out = next(sends)
+        if out is FileNotFoundError:
+            raise out
+        return out
+
+    def spawn():
+        spawned.append(1)
+        return ExitedDaemon(client.LOCK_BUSY_EXIT if len(spawned) == 1 else None)
+
+    monkeypatch.setattr(client, "send", send)
+    monkeypatch.setattr(client, "spawn", spawn)
+    assert client.send_or_spawn({"op": "warm"}, wait=30) == {"ok": True}
+    assert len(spawned) == 2
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"ok": False, "error": "unknown op 'warm'"},  # a 0.1.0 daemon
+        {"ok": True, "version": "0.0.9"},
+        {"ok": True, "quit": True, "version": "0.0.9"},
+    ],
+)
+def test_session_start_replaces_a_daemon_from_another_version(monkeypatch, reply):
+    calls = []
+    monkeypatch.setattr(client, "send_or_spawn", lambda req, *a, **k: reply)
+    monkeypatch.setattr(client, "replace_daemon", lambda req, rep: calls.append(rep))
+    assert run_hook(monkeypatch, {"hook_event_name": "SessionStart", "session_id": "s"}) == 0
+    assert calls == [reply]
+
+
+def test_session_start_keeps_a_current_daemon(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        client, "send_or_spawn", lambda req, *a, **k: {"ok": True, "version": version()}
+    )
+    monkeypatch.setattr(client, "replace_daemon", lambda req, rep: calls.append(rep))
+    assert run_hook(monkeypatch, {"hook_event_name": "SessionStart", "session_id": "s"}) == 0
+    assert calls == []
+
+
+def test_replace_daemon_quits_the_old_one_waits_for_its_socket_then_respawns(tmp_path, monkeypatch):
+    sock = tmp_path / "k.sock"
+    sock.touch()
+    sent, respawned = [], []
+
+    def send(req, path=None, *a, **k):
+        sent.append(req)
+        sock.unlink()  # the old daemon exits on quit
+        return {"ok": True, "quit": True}
+
+    monkeypatch.setattr(client, "send", send)
+    monkeypatch.setattr(client, "send_or_spawn", lambda req, *a, **k: respawned.append(req))
+    client.replace_daemon({"op": "warm", "version": "v"}, {"ok": False}, sock)
+    assert sent == [{"op": "quit"}]
+    assert respawned == [{"op": "warm", "version": "v"}]
+
+
+def test_replace_daemon_does_not_quit_a_daemon_already_retiring(tmp_path, monkeypatch):
+    sent = []
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: sent.append(req))
+    monkeypatch.setattr(client, "send_or_spawn", lambda req, *a, **k: None)
+    client.replace_daemon({"op": "warm"}, {"ok": True, "quit": True}, tmp_path / "gone.sock")
+    assert sent == []
+
+
+def test_hook_with_no_daemon_to_answer_exits_quietly(monkeypatch):
+    def no_daemon(req, *a, **k):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(client, "send_or_spawn", no_daemon)
+    event = {"hook_event_name": "Stop", "session_id": "s", "last_assistant_message": "Done."}
+    assert run_hook(monkeypatch, event) == 0
 
 
 def test_disabled_hook_does_nothing(monkeypatch, sent):

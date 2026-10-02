@@ -1,5 +1,6 @@
 """The speech queue: shorten each utterance, synthesize it sentence by sentence, play it.
 
+Shortening has its own thread, so a notice is spoken while a reply waits on the model.
 Synthesis runs one sentence ahead of playback, so speech starts after the first
 sentence is ready instead of after the whole line. One queue serves every Claude
 session on the machine, so sessions never talk over each other.
@@ -47,6 +48,7 @@ class Utterance:
     session: str = ""
     source: str = ""
     cancelled: threading.Event = field(default_factory=threading.Event)
+    line: str | None = None  # the words to say, once shortened
     announced: bool = False  # its line starts with the source name
     played: bool = False
 
@@ -64,6 +66,7 @@ class Speaker:
         self._player = player
         self._audio_dir = audio_dir
         self._cond = threading.Condition()
+        self._to_shorten: list[Utterance] = []  # replies waiting for the summarizer
         self._pending: list[Utterance] = []  # waiting for synthesis
         self._active: list[Utterance] = []  # submitted and not yet fully played
         self._last_source = ""
@@ -76,6 +79,7 @@ class Speaker:
         self._closed = False
         self.spoken: deque[str] = deque(maxlen=50)  # recent sentences, for logs and tests
         self._threads = [
+            threading.Thread(target=self._shorten_loop, daemon=True),
             threading.Thread(target=self._synth_loop, daemon=True),
             threading.Thread(target=self._play_loop, daemon=True),
         ]
@@ -84,9 +88,9 @@ class Speaker:
 
     def submit(self, utt: Utterance) -> None:
         with self._cond:
-            self._pending.append(utt)
+            (self._to_shorten if utt.kind == "reply" else self._pending).append(utt)
             self._active.append(utt)
-            self._cond.notify()
+            self._cond.notify_all()
 
     def stop(self, session: str | None = None) -> None:
         """Cancel queued and playing speech, for one session or (None) all of them."""
@@ -94,8 +98,10 @@ class Speaker:
             for utt in self._active:
                 if session is None or utt.session == session:
                     utt.cancelled.set()
-            dropped = [u for u in self._pending if u.cancelled.is_set()]
-            self._pending = [u for u in self._pending if not u.cancelled.is_set()]
+            waiting = self._to_shorten + self._pending
+            dropped = [u for u in waiting if u.cancelled.is_set()]
+            self._to_shorten[:] = [u for u in self._to_shorten if not u.cancelled.is_set()]
+            self._pending[:] = [u for u in self._pending if not u.cancelled.is_set()]
             # Never synthesized, so no end-of-audio marker will come to retire them.
             for utt in dropped:
                 self._active.remove(utt)
@@ -103,7 +109,7 @@ class Speaker:
     def close(self, timeout: float = 5.0) -> None:
         with self._cond:
             self._closed = True
-            self._cond.notify()
+            self._cond.notify_all()
         for t in self._threads:
             t.join(timeout)
 
@@ -111,16 +117,31 @@ class Speaker:
         with self._cond:
             return not self._active
 
-    def _next(self) -> Utterance | None:
+    def _next(self, waiting: list[Utterance]) -> Utterance | None:
         with self._cond:
-            while not self._pending and not self._closed:
+            while not waiting and not self._closed:
                 self._cond.wait()
             if self._closed:
                 return None
-            return self._pending.pop(0)
+            return waiting.pop(0)
+
+    def _shorten_loop(self) -> None:
+        while (utt := self._next(self._to_shorten)) is not None:
+            try:
+                line = self._shorten(utt.text)
+            except Exception:
+                log.exception("could not shorten %r", utt.text[:80])
+                line = ""
+            with self._cond:
+                if utt.cancelled.is_set():
+                    self._active.remove(utt)
+                    continue
+                utt.line = line
+                self._pending.append(utt)
+                self._cond.notify_all()
 
     def _line(self, utt: Utterance) -> str:
-        line = self._shorten(utt.text) if utt.kind == "reply" else utt.text
+        line = utt.line if utt.line is not None else utt.text
         with self._cond:
             if line and utt.source and utt.source != self._last_source:
                 line = f"{utt.source}: {line}"
@@ -129,7 +150,7 @@ class Speaker:
         return line
 
     def _synth_loop(self) -> None:
-        while (utt := self._next()) is not None:
+        while (utt := self._next(self._pending)) is not None:
             try:
                 line = "" if utt.cancelled.is_set() else self._line(utt)
                 for sentence in split_sentences(line):

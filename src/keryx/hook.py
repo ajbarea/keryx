@@ -8,6 +8,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from keryx import version
+
 # `claude -p` and the Agent SDK run with an `sdk-*` entrypoint; nobody is listening.
 # Interactive surfaces (terminal, IDE extensions, desktop app) use other values.
 HEADLESS_PREFIX = "sdk"
@@ -40,6 +42,9 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
         return None
     name = event.get("hook_event_name")
     session = event.get("session_id", "")
+    if name == "SessionStart":
+        # Start the cold load while the developer types the first prompt.
+        return {"op": "warm", "version": version()}
     if name == "UserPromptSubmit":
         # keryx's own commands must not restart the daemon or reload the model.
         if str(event.get("user_input") or event.get("prompt") or "").startswith("/keryx:"):

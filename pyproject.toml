@@ -1,6 +1,6 @@
 [project]
 name = "keryx"
-version = "0.1.0"
+version = "0.1.1"
 description = "Gives Claude Code a voice: speaks a one- or two-sentence gist of each reply"
 readme = "README.md"
 authors = [

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import json
 import socket
@@ -30,12 +31,12 @@ def send(request: dict, sock_path: Path | None = None, timeout: float = 5.0) -> 
         return json.loads(read_all(s) or b"{}")
 
 
-def spawn() -> None:
+def spawn() -> subprocess.Popen:
     """Start a detached daemon that outlives the hook process."""
     log_file = cache_dir() / "daemon.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "ab") as out:
-        subprocess.Popen(
+        return subprocess.Popen(
             [sys.executable, "-m", "keryx", "daemon"],
             stdin=subprocess.DEVNULL,
             stdout=out,
@@ -44,6 +45,11 @@ def spawn() -> None:
             cwd="/",  # don't pin the session's working directory for hours
         )
 
+
+# The daemon's exit status when another daemon holds the lock (EX_TEMPFAIL); that one may
+# be a retiring daemon that has not released it yet.
+LOCK_BUSY_EXIT = 75
+RETIRE_WAIT_SECONDS = 10.0
 
 # A first run downloads ~350 MB of model files before the socket binds; hooks are async,
 # so waiting costs the session nothing.
@@ -63,7 +69,7 @@ def send_or_spawn(request: dict, wait: float = SPAWN_WAIT_SECONDS) -> dict:
         try:
             return send(request)
         except (FileNotFoundError, ConnectionRefusedError):
-            spawn()
+            daemon = spawn()
         deadline = time.monotonic() + wait
         while True:
             try:
@@ -71,4 +77,25 @@ def send_or_spawn(request: dict, wait: float = SPAWN_WAIT_SECONDS) -> dict:
             except (FileNotFoundError, ConnectionRefusedError):
                 if time.monotonic() > deadline:
                     raise
+                status = daemon.poll()
+                if status == LOCK_BUSY_EXIT:
+                    daemon = spawn()  # a retiring daemon still held the lock; try again
+                elif status is not None:
+                    raise  # exited for good (turned off, or failed to start)
                 time.sleep(0.2)
+
+
+def replace_daemon(request: dict, reply: dict, sock_path: Path | None = None) -> dict:
+    """Retire a daemon from another keryx version and send `request` to a fresh one.
+
+    A daemon keeps the code it started with. One from 0.1.0 has no `warm` op, so any reply
+    without the caller's version means an older daemon.
+    """
+    sock_path = sock_path or socket_path()
+    if not reply.get("quit"):
+        with contextlib.suppress(OSError):
+            send({"op": "quit"}, sock_path)
+    deadline = time.monotonic() + RETIRE_WAIT_SECONDS
+    while sock_path.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return send_or_spawn(request)
