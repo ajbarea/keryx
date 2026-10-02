@@ -10,6 +10,7 @@ import numpy as np
 import soundfile as sf
 
 from keryx.config import cache_dir
+from keryx.voices import VoiceSpec
 
 log = logging.getLogger("keryx")
 
@@ -56,11 +57,25 @@ class KokoroVoice:
         self.provider = session.get_providers()[0]
         log.info("kokoro on %s", self.provider)
         self._kokoro = Kokoro.from_session(session, str(d / VOICES))
-        self.voice = voice
+        self.voice = VoiceSpec((voice,))
         self.speed = speed
+        self._styles: dict[VoiceSpec, np.ndarray] = {}
 
-    def synth(self, text: str) -> tuple[np.ndarray, int]:
-        samples, rate = self._kokoro.create(text, voice=self.voice, speed=self.speed, lang="en-us")
+    def style(self, spec: VoiceSpec) -> np.ndarray:
+        """A voice's style vectors; a blend is the weighted mean of its voices'."""
+        if spec not in self._styles:
+            parts = [
+                w * self._kokoro.get_voice_style(n)
+                for n, w in zip(spec.names, spec.weights, strict=True)
+            ]
+            self._styles[spec] = (sum(parts) / sum(spec.weights)).astype(np.float32)
+        return self._styles[spec]
+
+    def synth(self, text: str, voice: VoiceSpec | None = None) -> tuple[np.ndarray, int]:
+        spec = voice or self.voice
+        samples, rate = self._kokoro.create(
+            text, voice=self.style(spec), speed=self.speed, lang=spec.lang
+        )
         return samples, rate
 
 

@@ -5,10 +5,15 @@ import numpy as np
 import pytest
 
 from keryx.speaker import Speaker, Utterance
+from keryx.voices import VoiceSpec
 
 
 class FakeVoice:
-    def synth(self, text):
+    def __init__(self):
+        self.voices = []
+
+    def synth(self, text, voice=None):
+        self.voices.append(voice)
         return np.zeros(240, dtype=np.float32), 24000
 
 
@@ -139,7 +144,7 @@ class BrokenVoice:
     def __init__(self):
         self.calls = 0
 
-    def synth(self, text):
+    def synth(self, text, voice=None):
         self.calls += 1
         if self.calls == 1:
             raise RuntimeError("kokoro choked")
@@ -269,3 +274,45 @@ def test_a_shortening_error_does_not_silence_later_speech(make):
     sp.submit(Utterance("Second."))
     wait_idle(sp)
     assert list(sp.spoken) == ["Second."]
+
+
+class FakeVoices:
+    def __init__(self, picked):
+        self.picked = picked
+        self.touched = []
+
+    def assign(self, session, source):
+        return self.picked[session]
+
+    def touch(self, session):
+        self.touched.append(session)
+
+
+def test_each_utterance_is_spoken_in_the_voice_picked_for_its_session(tmp_path):
+    voice = FakeVoice()
+    picked = {"a": VoiceSpec(("af_heart",)), "b": VoiceSpec(("bm_george",))}
+    sp = Speaker(lambda t: t, voice, FakePlayer(), tmp_path, FakeVoices(picked))
+    sp.submit(Utterance("One.", kind="notice", session="a"))
+    wait_idle(sp)
+    sp.submit(Utterance("Two.", kind="notice", session="b"))
+    wait_idle(sp)
+    assert voice.voices == [picked["a"], picked["b"]]
+    sp.close()
+
+
+def test_an_explicit_voice_is_kept(tmp_path):
+    voice = FakeVoice()
+    chosen = VoiceSpec(("bf_emma",))
+    sp = Speaker(lambda t: t, voice, FakePlayer(), tmp_path, FakeVoices({}))
+    sp.submit(Utterance("Hi.", kind="notice", voice=chosen))
+    wait_idle(sp)
+    assert voice.voices == [chosen]
+    sp.close()
+
+
+def test_touch_reaches_the_voices(tmp_path):
+    voices = FakeVoices({})
+    sp = Speaker(lambda t: t, FakeVoice(), FakePlayer(), tmp_path, voices)
+    sp.touch("a")
+    assert voices.touched == ["a"]
+    sp.close()

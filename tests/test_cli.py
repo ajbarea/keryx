@@ -204,6 +204,18 @@ def test_unknown_command_prints_usage(capsys):
     assert "keryx hook" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("arg", ["all", "-1", "0"])
+def test_voices_refuses_a_bad_count(arg, sent, capsys):
+    assert cli.main(["voices", arg]) == 2
+    assert sent["spawn"] == []
+    assert "usage" in capsys.readouterr().err
+
+
+def test_voices_plays_the_first_n(sent):
+    assert cli.main(["voices", "3"]) == 0
+    assert [r["voice"] for r in sent["spawn"]] == ["af_heart", "am_michael", "bf_emma"]
+
+
 def test_every_listed_command_is_in_the_usage_text():
     assert cli.__doc__ is not None
     for cmd in cli.COMMANDS:

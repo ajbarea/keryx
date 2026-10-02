@@ -4,6 +4,7 @@ keryx hook             read a Claude Code hook payload on stdin
 keryx on | off         turn speech on or off
 keryx status           show settings and whether the daemon is up
 keryx say TEXT         speak TEXT as given
+keryx voices [N]       say a line in each of the first N voices in the catalogue
 keryx stop             cut off current speech
 keryx daemon           run the speech daemon in the foreground
 """
@@ -18,7 +19,7 @@ import sys
 from keryx import client
 from keryx.config import Config
 
-COMMANDS = ("hook", "on", "off", "status", "say", "stop", "daemon")
+COMMANDS = ("hook", "on", "off", "status", "say", "voices", "stop", "daemon")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -72,6 +73,19 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "say":
         text = " ".join(args[1:]) or sys.stdin.read()
         print(client.send_or_spawn({"op": "say", "kind": "notice", "text": text}))
+        return 0
+
+    if cmd == "voices":
+        from keryx.voices import catalogue
+
+        count = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0 if len(args) > 1 else 8
+        if count < 1:
+            print("usage: keryx voices [N], N a positive whole number", file=sys.stderr)
+            return 2
+        for n, spec in enumerate(catalogue(cfg.voice)[:count], 1):
+            text = f"Voice {n}, {spec.label().replace('_', ' ')}."
+            request = {"op": "say", "kind": "notice", "text": text, "voice": spec.label()}
+            client.send_or_spawn(request)
         return 0
 
     if cmd == "stop":

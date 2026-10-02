@@ -21,11 +21,12 @@ from pathlib import Path
 
 from keryx import version
 from keryx.client import read_all
-from keryx.config import Config, socket_path
+from keryx.config import Config, cache_dir, socket_path
 from keryx.player import WindowsPlayer
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.summarize import OllamaClient, spoken_line
 from keryx.voice import KokoroVoice
+from keryx.voices import VoiceBook, VoiceSpec
 
 log = logging.getLogger("keryx")
 
@@ -51,6 +52,8 @@ def handle(
         if request.get("session") and request.get("prompt"):
             latest[request["session"]] = request["prompt"]
         speaker.stop(request.get("session") or None)
+        if request.get("session"):
+            speaker.touch(request["session"])
         # A prompt was just sent, so a reply is coming: load the summarizer meanwhile.
         if request.get("warm"):
             start_warming(warm)
@@ -72,12 +75,17 @@ def handle(
         session, prompt = request.get("session"), request.get("prompt")
         if session and prompt and latest.get(session, prompt) != prompt:
             return {"ok": True, "dropped": "stale"}
+        try:
+            voice = VoiceSpec.parse(request["voice"]) if request.get("voice") else None
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
         speaker.submit(
             Utterance(
                 text=text,
                 kind="notice" if request.get("kind") == "notice" else "reply",
                 session=str(request.get("session") or ""),
                 source=str(request.get("source") or ""),
+                voice=voice,
             )
         )
         return {"ok": True}
@@ -123,7 +131,8 @@ def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], Non
 
     player = WindowsPlayer()
     voice = KokoroVoice(cfg.voice, cfg.speed)
-    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir))
+    book = VoiceBook(cache_dir() / "voices.json", cfg.voice) if cfg.distinct_voices else None
+    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book)
     return speaker, player, warm if client else None
 
 
@@ -202,6 +211,10 @@ def _serve_locked(
                         else {"ok": False}
                     )
                 except (json.JSONDecodeError, OSError) as exc:
+                    reply = {"ok": False, "error": str(exc)}
+                except Exception as exc:
+                    # One bad request must not take speech down for every session.
+                    log.exception("could not handle %s", request_summary(request))
                     reply = {"ok": False, "error": str(exc)}
                 log.info("%s -> %s", request_summary(request), reply)
                 with contextlib.suppress(OSError):

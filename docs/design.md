@@ -62,6 +62,26 @@ CUDA ships as the `cuda` extra (about 2 GB of NVIDIA wheels); `onnxruntime-gpu` 
 kokoro-onnx's CPU-only `onnxruntime` through a uv override, and falls back to its CPU
 provider when the CUDA libraries are missing. Synthesis runs one sentence ahead of playback.
 
+## Voices
+
+Each session gets its own voice so parallel terminals are told apart by ear; the repo name is
+still spoken when the speaker changes. The pool is Kokoro v1.0's English voices graded C or
+better in its VOICES.md, 15 of 28, ordered so neighbours differ in accent or gender, best
+grades first. British voices are phonemized as `en-gb`. Past the pool come same-gender
+blends (the weighted mean of two voices' style vectors) at 50/50, 70/30 and 30/70; blends
+across genders are reported to come out muddy. All eight first voices and three blends
+were told apart by ear on 2026-10-02.
+
+A repo keeps the voice it was first given, stored by label in `~/.cache/keryx/voices.json`.
+A session takes its repo's voice unless another session holds it; then it borrows the first
+voice that no repo heard in the last 14 days calls home and no session holds. A session
+holds its voice while it has spoken or sent a prompt within 30 minutes, so a long turn
+keeps it. Holds are saved with wall-clock times, so a daemon restart does not let two
+sessions trade voices. Hashing
+repo names to voices was rejected: with 15 voices, two of six repos already share one about
+two times in three. Claude Code does not report how many sessions are open, so the daemon
+counts the ones it has heard from.
+
 ## Playback
 
 WSLg's PulseAudio sink was tried first. One `paplay` call returned in 186 ms for a 0.5 s

@@ -12,6 +12,7 @@ class FakeSpeaker:
     def __init__(self):
         self.submitted = []
         self.stopped = []
+        self.touched = []
         self.closed = False
 
     def submit(self, utt):
@@ -19,6 +20,9 @@ class FakeSpeaker:
 
     def stop(self, session=None):
         self.stopped.append(session)
+
+    def touch(self, session):
+        self.touched.append(session)
 
     def close(self, timeout=5.0):
         self.closed = True
@@ -35,6 +39,40 @@ def test_handle_say_builds_an_utterance():
     assert reply == {"ok": True}
     utt = sp.submitted[0]
     assert (utt.text, utt.kind, utt.session, utt.source) == ("Hi.", "notice", "s", "r")
+
+
+def test_handle_say_carries_an_explicit_voice():
+    sp = FakeSpeaker()
+    handle({"op": "say", "text": "Hi.", "voice": "af_heart(0.7)+af_bella(0.3)"}, sp)
+    assert sp.submitted[0].voice.names == ("af_heart", "af_bella")
+
+
+@pytest.mark.parametrize("bad", ["af_heart(x)", 5, "a(0)+b(0)", "a(1)+"])
+def test_a_bad_voice_is_refused_not_fatal(bad):
+    sp = FakeSpeaker()
+    assert handle({"op": "say", "text": "Hi.", "voice": bad}, sp)["ok"] is False
+    assert sp.submitted == []
+
+
+def test_a_prompt_keeps_its_sessions_voice_held():
+    sp = FakeSpeaker()
+    handle({"op": "stop", "session": "s1", "prompt": "p"}, sp)
+    handle({"op": "stop"}, sp)
+    assert sp.touched == ["s1"]
+
+
+def test_an_unexpected_error_in_a_request_leaves_the_daemon_serving(running, monkeypatch):
+    from keryx import daemon
+
+    sock, _, _ = running
+
+    def boom(*a, **k):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(daemon, "handle", boom)
+    assert client.send({"op": "ping"}, sock)["ok"] is False
+    monkeypatch.undo()
+    assert client.send({"op": "ping"}, sock)["ok"] is True
 
 
 def test_handle_unknown_kind_is_a_reply():

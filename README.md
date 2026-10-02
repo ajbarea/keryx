@@ -52,6 +52,11 @@ speaking in about 1 to 2 seconds.
 | `/keryx:on` | Turns speech back on; the next prompt starts the daemon |
 | `/keryx:status` | Shows the settings and whether the daemon is running |
 
+Each session speaks in its own voice. A repo keeps its voice across sessions and restarts,
+a second session in the same repo gets another, and once the stock voices run out new
+sessions get blends of two. `keryx voices [N]` plays the first N voices in the catalogue,
+stock voices first.
+
 Turn keryx off before a long local-LLM run: Ollama sizes GPU offload when a model loads, so a
 large model loaded beside keryx can end up partly on the CPU.
 
@@ -62,7 +67,8 @@ large model loaded beside keryx can end up partly on the CPU.
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `enabled` | `true` | Speak at all |
-| `voice` | `af_heart` | Any [Kokoro voice](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md) |
+| `voice` | `af_heart` | Any [Kokoro voice](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md); the first voice handed out |
+| `distinct_voices` | `true` | Give each session its own voice; `false` speaks every session in `voice` |
 | `speed` | `1.0` | Speaking rate |
 | `model` | `gemma3:4b` | Ollama model that shortens replies; empty to speak the opening sentences instead |
 | `ollama_host` | `http://localhost:11434` | Ollama server |
