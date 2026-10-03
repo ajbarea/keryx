@@ -11,6 +11,7 @@ Last reviewed: 2026-10-02.
 
 ## Completed
 
+- 2026-10-02: "say that again", pronunciations, and speech leveled to -16 LUFS.
 - 2026-10-02: duck Spotify (or any listed app) while speaking, crash-safe.
 - 2026-10-02: a distinct voice per terminal, kept per repo; blends past the stock voices.
 - 2026-10-02: cold-start fix. A summarizer load slower than the 30 s generate timeout was

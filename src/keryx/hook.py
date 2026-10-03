@@ -18,6 +18,28 @@ SPOKEN_NOTIFICATIONS = {"permission_prompt", "elicitation_dialog", "elicitation_
 
 _CLAUDE_NEEDS = re.compile(r"^Claude (Code )?needs\b", re.IGNORECASE)
 
+# A whole prompt asking to hear the last line again: "say that again", "sorry, come again?",
+# "I didn't catch that". Anything more ("say that again in Spanish") goes to Claude.
+_REPLAY = re.compile(
+    r"^\s*(?:(?:hey|ok|okay|sorry|um|uh|please|can you|could you|would you|claude)[\s,]+)*"
+    r"(?:say (?:that|it) again|say (?:that|it) once more|repeat (?:that|it|yourself)(?: again)?"
+    r"|come again|what did you (?:just )?say"
+    r"|(?:i )?(?:didn'?t|did not) (?:catch|hear) (?:that|it|you)"
+    r"|pardon(?: me)?)"
+    r"(?:[\s,]+please)?\s*[.!?]*\s*$",
+    re.IGNORECASE,
+)
+
+
+# Words `bin/keryx-replay` screens for before starting Python; every phrase _REPLAY accepts
+# contains one (a test runs them all through the screen).
+SCREEN_WORDS = ("again", "more", "repeat", "pardon", "catch", "hear", "what did you")
+
+
+def is_replay(prompt: str) -> bool:
+    # Dictation and autocorrect write the apostrophe in "didn't" as U+2019.
+    return bool(_REPLAY.match(prompt.replace("\u2019", "'")))
+
 
 def source_name(cwd: str) -> str:
     """The repo a session works in, by its main checkout's name (worktrees included).
@@ -69,9 +91,10 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
         }
     if name == "UserPromptSubmit":
         # keryx's own commands must not restart the daemon or reload the model.
-        if str(event.get("user_input") or event.get("prompt") or "").startswith("/keryx:"):
+        typed = str(event.get("user_input") or event.get("prompt") or "")
+        if typed.startswith("/keryx:"):
             return None
-        return {
+        request = {
             "op": "stop",
             "session": session,
             "prompt": event.get("prompt_id", ""),
@@ -79,6 +102,11 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
             "source": source_name(event.get("cwd", "")),
             "warm": True,
         }
+        # The synchronous hook may answer "say that again" with a replay this stop would cut
+        # off; if it does not, Claude answers, so the prompt is still recorded.
+        if is_replay(typed):
+            request["interrupt"] = False
+        return request
     if name == "Stop":
         text = event.get("last_assistant_message") or ""
         if not text.strip():

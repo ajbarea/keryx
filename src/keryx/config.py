@@ -28,6 +28,8 @@ class Config:
     # Give each terminal its own voice; `voice` is the first one handed out.
     distinct_voices: bool = True
     speed: float = 1.0
+    # Every sentence is brought to this integrated loudness (LUFS) before it plays.
+    loudness: float = -16.0
     model: str = "gemma3:4b"
     ollama_host: str = "http://localhost:11434"
     # Apps (Windows process names) turned down to `duck_ratio` of their volume while speaking.

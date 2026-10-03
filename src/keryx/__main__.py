@@ -1,9 +1,12 @@
 """keryx: give Claude Code a voice.
 
 keryx hook             read a Claude Code hook payload on stdin
+keryx replay-hook      the same for the synchronous "say that again" prompt hook
 keryx on | off         turn speech on or off
 keryx status           show settings and whether the daemon is up
 keryx say TEXT         speak TEXT as given
+keryx again            say this terminal's last line again
+keryx pronounce [WORD [SAYING]]   list, forget (WORD only) or set how to say WORD
 keryx voices [N]       say a line in each of the first N voices in the catalogue
 keryx stop             cut off current speech
 keryx daemon           run the speech daemon in the foreground
@@ -19,7 +22,19 @@ import sys
 from keryx import client
 from keryx.config import Config
 
-COMMANDS = ("hook", "on", "off", "status", "say", "voices", "stop", "daemon")
+COMMANDS = (
+    "hook",
+    "replay-hook",
+    "on",
+    "off",
+    "status",
+    "say",
+    "again",
+    "pronounce",
+    "voices",
+    "stop",
+    "daemon",
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -103,6 +118,69 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as exc:
             print(f"the keryx daemon did not answer: {exc}", file=sys.stderr)
             return 1
+        return 0
+
+    if cmd == "replay-hook":
+        # Synchronous UserPromptSubmit: "say that again" replays instead of reaching Claude.
+        from keryx import hook
+        from keryx.procs import terminal_id
+
+        event = hook.parse(sys.stdin.read())
+        prompt = str(event.get("prompt") or "")
+        if not cfg.enabled or hook.entrypoint().startswith(hook.HEADLESS_PREFIX):
+            return 0
+        if not hook.is_replay(prompt):
+            return 0
+        request = {"op": "again", "terminal": terminal_id(), "session": event.get("session_id", "")}
+        try:
+            replayed = client.send(request).get("replayed")
+        except OSError:
+            replayed = False  # no daemon, so nothing to replay: let Claude answer
+        if replayed:
+            print(json.dumps({"decision": "block", "reason": "keryx: saying that again"}))
+        return 0
+
+    if cmd == "again":
+        from keryx.procs import terminal_id
+
+        try:
+            reply = client.send({"op": "again", "terminal": terminal_id()})
+        except OSError:
+            reply = {}
+        print("saying it again" if reply.get("replayed") else "nothing to say again yet")
+        return 0
+
+    if cmd == "pronounce":
+        from keryx import pronounce
+
+        try:
+            words = pronounce.load(strict=True)
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        if len(args) == 1:
+            for word, saying in sorted(words.items()):
+                print(f"{word} -> {saying}")
+            if not words:
+                print("no pronunciations yet")
+            return 0
+        word, saying = args[1], " ".join(args[2:]).strip()
+        saved = pronounce.same_word(words, word)
+        if not saying:
+            if saved is None:
+                print(f"{word} had no pronunciation")
+                return 0
+            del words[saved]
+            pronounce.save(words)
+            print(f"forgot {saved}")
+            return 0
+        if saved is not None:
+            del words[saved]  # one entry per word, whatever its case
+        words[word] = saying
+        pronounce.save(words)
+        print(f"{word} -> {saying}")
+        with contextlib.suppress(OSError):
+            client.send({"op": "say", "kind": "notice", "text": word})  # hear it once
         return 0
 
     if cmd == "stop":

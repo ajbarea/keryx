@@ -10,6 +10,7 @@ import numpy as np
 import soundfile as sf
 
 from keryx.config import cache_dir
+from keryx.loudness import TARGET_LUFS, normalize
 from keryx.voices import VoiceSpec
 
 log = logging.getLogger("keryx")
@@ -39,7 +40,7 @@ def ensure_models() -> Path:
 
 
 class KokoroVoice:
-    def __init__(self, voice: str, speed: float):
+    def __init__(self, voice: str, speed: float, loudness: float = TARGET_LUFS):
         import onnxruntime as ort
         from kokoro_onnx import Kokoro
 
@@ -60,6 +61,7 @@ class KokoroVoice:
         self._kokoro = Kokoro.from_session(session, str(d / VOICES))
         self.voice = VoiceSpec((voice,))
         self.speed = speed
+        self.loudness = loudness
         self._styles: dict[VoiceSpec, np.ndarray] = {}
 
     def has(self, spec: VoiceSpec) -> bool:
@@ -86,7 +88,8 @@ class KokoroVoice:
         samples, rate = self._kokoro.create(
             text, voice=self.style(spec), speed=self.speed, lang=spec.lang
         )
-        return samples, rate
+        # Kokoro's voices range from -19 to -23 LUFS; level them, loud enough for over music.
+        return normalize(samples, rate, self.loudness), rate
 
 
 def write_wav(path: Path, samples: np.ndarray, rate: int) -> float:

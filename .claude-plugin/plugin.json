@@ -1,6 +1,6 @@
 {
   "name": "keryx",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Gives Claude Code a voice: after each reply, speaks a one- or two-sentence gist through a local Kokoro voice, shortened by a local Ollama model.",
   "author": { "name": "AJ Barea" },
   "license": "MIT"

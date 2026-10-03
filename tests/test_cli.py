@@ -286,3 +286,95 @@ def test_older(theirs, ours, expected):
     from keryx import older
 
     assert older(theirs, ours) is expected
+
+
+def run_replay(monkeypatch, prompt, reply=None, fail=False):
+    sent = []
+
+    def send(req, *a, **k):
+        sent.append(req)
+        if fail:
+            raise FileNotFoundError
+        return reply or {}
+
+    monkeypatch.setattr(client, "send", send)
+    monkeypatch.setattr("keryx.procs.terminal_id", lambda: "9:1")
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": prompt}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    return cli.main(["replay-hook"]), sent
+
+
+def test_say_that_again_replays_and_keeps_the_prompt_from_claude(monkeypatch, capsys):
+    rc, sent = run_replay(monkeypatch, "say that again", {"ok": True, "replayed": True})
+    assert rc == 0
+    assert sent == [{"op": "again", "terminal": "9:1", "session": "s"}]
+    assert json.loads(capsys.readouterr().out)["decision"] == "block"
+
+
+@pytest.mark.parametrize(
+    ("reply", "fail"), [({"ok": True, "replayed": False}, False), (None, True)]
+)
+def test_nothing_to_replay_lets_claude_answer(monkeypatch, capsys, reply, fail):
+    rc, _ = run_replay(monkeypatch, "say that again", reply, fail)
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_other_prompts_never_reach_the_daemon(monkeypatch, capsys):
+    rc, sent = run_replay(monkeypatch, "say that again in Spanish")
+    assert (rc, sent, capsys.readouterr().out) == (0, [], "")
+
+
+def test_replay_is_off_when_keryx_is(monkeypatch, capsys):
+    Config(enabled=False).save()
+    rc, sent = run_replay(monkeypatch, "say that again", {"ok": True, "replayed": True})
+    assert (rc, sent, capsys.readouterr().out) == (0, [], "")
+
+
+def test_pronounce_sets_lists_and_forgets(monkeypatch, capsys):
+    said = []
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: said.append(req))
+    assert cli.main(["pronounce", "ajsoftworks", "AJ", "soft", "works"]) == 0
+    assert said == [{"op": "say", "kind": "notice", "text": "ajsoftworks"}]
+    cli.main(["pronounce"])
+    assert "ajsoftworks -> AJ soft works" in capsys.readouterr().out
+    cli.main(["pronounce", "ajsoftworks"])
+    assert "forgot ajsoftworks" in capsys.readouterr().out
+    cli.main(["pronounce"])
+    assert "no pronunciations yet" in capsys.readouterr().out
+
+
+def test_again_reports_when_there_is_nothing(monkeypatch, capsys):
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: {"ok": True, "replayed": False})
+    assert cli.main(["again"]) == 0
+    assert "nothing to say again" in capsys.readouterr().out
+
+
+def test_pronounce_will_not_overwrite_a_file_it_cannot_read(monkeypatch, capsys):
+    from keryx.pronounce import lexicon_path
+
+    path = lexicon_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"ajsoftworks": "AJ soft works",}')  # a hand edit with a trailing comma
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: None)
+    assert cli.main(["pronounce", "keryx", "KEH", "rix"]) == 1
+    assert "fix or remove" in capsys.readouterr().err
+    assert path.read_text() == '{"ajsoftworks": "AJ soft works",}'
+
+
+def test_pronounce_treats_case_variants_as_one_word(monkeypatch, capsys):
+    from keryx.pronounce import load
+
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: None)
+    cli.main(["pronounce", "ajsoftworks", "AJ", "soft", "works"])
+    cli.main(["pronounce", "Ajsoftworks", "A", "J", "soft", "works"])
+    assert load() == {"Ajsoftworks": "A J soft works"}
+    cli.main(["pronounce", "AJSOFTWORKS"])
+    assert "forgot Ajsoftworks" in capsys.readouterr().out
+    assert load() == {}
+
+
+def test_the_loudness_default_matches_the_leveler():
+    from keryx.loudness import TARGET_LUFS
+
+    assert Config().loudness == TARGET_LUFS

@@ -1,10 +1,10 @@
 # IMPL
 
-## Current: ducking other apps while speaking
+## Current: replay, pronunciations, loudness
 
-`ducker.cs` lowers listed apps' per-app volume through Core Audio from the player's
-PowerShell process, with a state file so a crash cannot leave the music down; the speaker
-ducks once per run of speech and restores after 1 s of quiet. Version 0.3.0.
+`loudness.py` levels each sentence to -16 LUFS with a peak limiter; `pronounce.py` rewrites
+listed words before synthesis; `bin/keryx-replay` is a synchronous prompt hook that answers
+"say that again" from the speaker's per-terminal last line. Version 0.4.0.
 
 ## Install state
 
