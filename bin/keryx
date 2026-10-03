@@ -1,8 +1,27 @@
 #!/usr/bin/env bash
-# Runs keryx from this checkout; the venv lives outside the plugin cache so updates keep it.
+# Runs keryx from this checkout. The venv lives outside the plugin cache so updates keep it, and
+# is named for the plugin's version and location so one version never runs another's code.
 set -euo pipefail
 root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
-export UV_PROJECT_ENVIRONMENT="${XDG_CACHE_HOME:-$HOME/.cache}/keryx/venv"
+base="${XDG_CACHE_HOME:-$HOME/.cache}/keryx"
+version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  "$root/.claude-plugin/plugin.json" 2>/dev/null | head -n 1)"
+where="$(printf '%s' "$root" | cksum | cut -d' ' -f1)"
+name="venv-${version:-unknown}-$where"
+export UV_PROJECT_ENVIRONMENT="$base/$name"
+mkdir -p "$base"
+printf '%s' "$root" >"$base/$name.root"
+# A venv whose checkout is gone (an old plugin version, cleaned up after an update) is dead
+# weight. Only a venv this script named, by its `.root` record, is ever removed.
+for record in "$base"/venv-*.root; do
+  [ -e "$record" ] || continue
+  stale="${record%.root}"
+  [ "$stale" = "$base/$name" ] && continue
+  recorded="$(cat "$record")"
+  { [ -z "$recorded" ] || [ -d "$recorded" ]; } && continue
+  [ -L "$stale" ] || rm -rf -- "$stale"
+  rm -f -- "$record"
+done
 extra=()
 # With an NVIDIA GPU, pull the CUDA runtime wheels so Kokoro runs on it.
 if command -v nvidia-smi >/dev/null 2>&1; then extra=(--extra cuda); fi

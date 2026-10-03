@@ -154,3 +154,65 @@ def test_every_third_party_import_is_a_declared_dependency():
     outside = imported - set(sys.stdlib_module_names) - {"keryx"}
     missing = {provides.get(m, m).lower().replace("_", "-") for m in outside} - declared
     assert not missing
+
+
+def run_wrapper(tmp_path, version, name="plugin"):
+    """Run a copy of bin/keryx as plugin `name` at `version`, with a stand-in `uv` that prints
+    the venv it was told to use. Returns (that venv, the cache's keryx dir)."""
+    import shutil
+    import subprocess
+
+    root = tmp_path / name
+    (root / "bin").mkdir(parents=True, exist_ok=True)
+    (root / ".claude-plugin").mkdir(exist_ok=True)
+    shutil.copy(ROOT / "bin" / "keryx", root / "bin" / "keryx")
+    (root / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": version}))
+    tools = tmp_path / "tools"
+    tools.mkdir(exist_ok=True)
+    (tools / "uv").write_text('#!/bin/sh\necho "$UV_PROJECT_ENVIRONMENT"\n')
+    os.chmod(tools / "uv", 0o755)
+    cache = tmp_path / "cache"
+    env = {
+        "PATH": f"{tools}:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "XDG_CACHE_HOME": str(cache),
+    }
+    done = subprocess.run(
+        [str(root / "bin" / "keryx"), "status"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return Path(done.stdout.strip()), cache / "keryx"
+
+
+def test_each_plugin_version_gets_its_own_venv(tmp_path):
+    old, base = run_wrapper(tmp_path, "0.5.0")
+    new, _ = run_wrapper(tmp_path, "0.5.1")
+    assert old != new and old.parent == new.parent == base
+    assert old.name.startswith("venv-0.5.0-") and new.name.startswith("venv-0.5.1-")
+    assert run_wrapper(tmp_path, "0.5.1")[0] == new  # stable between runs
+
+
+def test_the_same_version_in_another_checkout_does_not_share_a_venv(tmp_path):
+    here, _ = run_wrapper(tmp_path, "0.5.1", "one")
+    there, _ = run_wrapper(tmp_path, "0.5.1", "two")
+    assert here != there
+
+
+def test_a_venv_whose_checkout_is_removed_is_pruned_and_nothing_else_is(tmp_path):
+    import shutil
+
+    stale, base = run_wrapper(tmp_path, "0.4.0", "old")
+    stale.mkdir(parents=True)
+    kept, _ = run_wrapper(tmp_path, "0.5.0", "kept")
+    kept.mkdir(parents=True)
+    legacy, review = base / "venv", base / "venv-review"  # not named by the wrapper
+    legacy.mkdir()
+    review.mkdir()
+    shutil.rmtree(tmp_path / "old")
+    current, _ = run_wrapper(tmp_path, "0.5.1", "new")
+    assert not stale.exists() and not (base / f"{stale.name}.root").exists()
+    assert kept.exists() and legacy.exists() and review.exists()
+    assert current.parent == base

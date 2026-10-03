@@ -201,10 +201,12 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "daemon":
         from keryx import daemon
 
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr
-        )
-        return 0 if daemon.serve(cfg) else client.LOCK_BUSY_EXIT
+        daemon.configure_logging(to_terminal=sys.stderr.isatty())
+        try:
+            return 0 if daemon.serve(cfg) else client.LOCK_BUSY_EXIT
+        except Exception:
+            logging.getLogger("keryx").exception("the daemon failed")  # nobody reads stderr
+            return 1
 
     print(__doc__, file=sys.stderr)
     return 2

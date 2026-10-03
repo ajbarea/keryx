@@ -32,18 +32,15 @@ def send(request: dict, sock_path: Path | None = None, timeout: float = 5.0) -> 
 
 
 def spawn() -> subprocess.Popen:
-    """Start a detached daemon that outlives the hook process."""
-    log_file = cache_dir() / "daemon.log"
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(log_file, "ab") as out:
-        return subprocess.Popen(
-            [sys.executable, "-m", "keryx", "daemon"],
-            stdin=subprocess.DEVNULL,
-            stdout=out,
-            stderr=out,
-            start_new_session=True,
-            cwd="/",  # don't pin the session's working directory for hours
-        )
+    """Start a detached daemon that outlives the hook process; it keeps its own log."""
+    return subprocess.Popen(
+        [sys.executable, "-m", "keryx", "daemon"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        cwd="/",  # don't pin the session's working directory for hours
+    )
 
 
 # The daemon's exit status when another daemon holds the lock (EX_TEMPFAIL); that one may
@@ -87,19 +84,31 @@ def send_or_spawn(request: dict, wait: float = SPAWN_WAIT_SECONDS) -> dict:
 
 def current(request: dict) -> dict:
     """Send a `warm` or `ping`, replacing a daemon from an older keryx first."""
-    from keryx import older
-
     reply = send_or_spawn(request)
-    if older(reply.get("version"), request["version"]):
+    if predates(reply, request["version"]):
         return replace_daemon(request, reply)
     return reply
+
+
+def predates(reply: dict, ours: str) -> bool:
+    """Whether the daemon that sent `reply` runs an older keryx than `ours`.
+
+    Only a daemon from before versions are reported leaves the version out of a good reply
+    or refuses `warm` as an unknown op. A current one that failed this request, or an empty
+    reply, says nothing about its age and is left running.
+    """
+    from keryx import older
+
+    if reply.get("version"):
+        return older(reply["version"], ours)
+    return reply.get("ok") is True or str(reply.get("error", "")).startswith("unknown op")
 
 
 def replace_daemon(request: dict, reply: dict, sock_path: Path | None = None) -> dict:
     """Retire a daemon from another keryx version and send `request` to a fresh one.
 
-    A daemon keeps the code it started with. One from 0.1.0 has no `warm` op, so any reply
-    without the caller's version means an older daemon.
+    A daemon keeps the code it started with. One from 0.1.0 has no `warm` op and answers
+    without a version (see `predates`).
     """
     sock_path = sock_path or socket_path()
     if not reply.get("quit"):

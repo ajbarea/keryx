@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import subprocess
@@ -21,6 +22,11 @@ RELEASE = "model-files-v1.0"
 REPO = "thewh1teagle/kokoro-onnx"
 MODEL = "kokoro-v1.0.onnx"
 VOICES = "voices-v1.0.bin"
+# SHA-256 of the release files; a download that differs is discarded.
+CHECKSUMS = {
+    MODEL: "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5",
+    VOICES: "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
+}
 STYLE_CACHE = 64  # blends kept; each is about 0.5 MB
 _SPLICE = re.compile(f"{PHONEMES_OPEN}([^{PHONEMES_CLOSE}]*){PHONEMES_CLOSE}")
 # Closing and opening marks rejoin the word they belong to. ASCII quotes open and close
@@ -61,17 +67,53 @@ def model_dir() -> Path:
     return cache_dir() / "models"
 
 
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while chunk := fh.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def ensure_models() -> Path:
-    """Fetch the model files once; ~350 MB."""
+    """Fetch the model files once, ~350 MB, keeping only a download that matches its hash."""
     d = model_dir()
     d.mkdir(parents=True, exist_ok=True)
     for name in (MODEL, VOICES):
         if not (d / name).exists():
             url = f"https://github.com/{REPO}/releases/download/{RELEASE}/{name}"
             curl = ["curl", "-fsSL", "--connect-timeout", "20", "--max-time", "900"]
-            subprocess.run([*curl, "-o", str(d / f"{name}.part"), url], check=True)
-            (d / f"{name}.part").rename(d / name)
+            part = d / f"{name}.part"
+            subprocess.run([*curl, "-o", str(part), url], check=True)
+            if sha256(part) != CHECKSUMS[name]:
+                part.unlink()
+                raise RuntimeError(f"{name} downloaded from {url} does not match its checksum")
+            part.rename(d / name)
     return d
+
+
+def open_session(ort, model: Path):
+    """An ONNX Runtime session on CUDA when it works, else on the CPU.
+
+    CUDA can be listed and still fail to start, as when cuDNN will not load.
+    """
+    try:
+        # Loads the pip-installed CUDA/cuDNN libraries; without them only CPU remains.
+        ort.preload_dlls()
+    except Exception as exc:
+        log.warning("could not preload the CUDA libraries: %s", exc)
+    ort.set_default_logger_severity(3)
+    options = ort.SessionOptions()
+    options.log_severity_level = 3  # the CUDA provider warns about memcpy nodes on load
+    available = ort.get_available_providers()
+    providers = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in available]
+    try:
+        return ort.InferenceSession(str(model), options, providers=providers)
+    except Exception as exc:
+        if providers == ["CPUExecutionProvider"]:
+            raise
+        log.warning("could not start on CUDA (%s); using the CPU", exc)
+        return ort.InferenceSession(str(model), options, providers=["CPUExecutionProvider"])
 
 
 class KokoroVoice:
@@ -80,17 +122,7 @@ class KokoroVoice:
         from kokoro_onnx import Kokoro
 
         d = ensure_models()
-        # Loads the pip-installed CUDA/cuDNN libraries; without them only CPU remains.
-        ort.preload_dlls()
-        ort.set_default_logger_severity(3)
-        providers = [
-            p
-            for p in ("CUDAExecutionProvider", "CPUExecutionProvider")
-            if p in ort.get_available_providers()
-        ]
-        options = ort.SessionOptions()
-        options.log_severity_level = 3  # the CUDA provider warns about memcpy nodes on load
-        session = ort.InferenceSession(str(d / MODEL), options, providers=providers)
+        session = open_session(ort, d / MODEL)
         self.provider = session.get_providers()[0]
         log.info("kokoro on %s", self.provider)
         self._kokoro = Kokoro.from_session(session, str(d / VOICES))

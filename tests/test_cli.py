@@ -113,6 +113,22 @@ def test_session_start_replaces_a_daemon_from_another_version(monkeypatch, reply
     assert calls == [reply]
 
 
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"ok": False, "error": "boom"},  # a current daemon that failed this request
+        {"ok": False},
+        {},  # a reply cut short
+    ],
+)
+def test_session_start_keeps_a_daemon_whose_reply_says_nothing_of_its_age(monkeypatch, reply):
+    calls = []
+    monkeypatch.setattr(client, "send_or_spawn", lambda req, *a, **k: reply)
+    monkeypatch.setattr(client, "replace_daemon", lambda req, rep: calls.append(rep))
+    assert run_hook(monkeypatch, {"hook_event_name": "SessionStart", "session_id": "s"}) == 0
+    assert calls == []
+
+
 def test_session_start_keeps_a_current_daemon(monkeypatch):
     calls = []
     monkeypatch.setattr(
@@ -302,6 +318,13 @@ def test_a_newer_daemon_is_kept(monkeypatch):
         ("0.10.0", "0.9.0", False),
         (None, "0.2.0", True),
         ("garbage", "0.2.0", True),
+        ("0.5.1rc1", "0.5.1rc1", False),
+        ("0.5.1rc1", "0.5.1", True),
+        ("0.5.1", "0.5.1rc1", False),
+        ("0.5.1rc1", "0.5.1rc2", True),
+        ("0.5", "0.5.0", False),
+        ("0.5.1.post1", "0.5.1", False),
+        ("0.5.0", "0.5.1rc1", True),
     ],
 )
 def test_older(theirs, ours, expected):

@@ -345,3 +345,59 @@ def test_a_stop_that_does_not_interrupt_still_records_the_prompt():
     handle({"op": "stop", "session": "s", "prompt": "p2", "interrupt": False}, sp, None, latest)
     assert sp.stopped == []
     assert latest == {"s": "p2"}
+
+
+@pytest.fixture
+def clean_logging():
+    import logging
+
+    root = logging.getLogger()
+    before = root.handlers[:], root.level
+    yield
+    for h in root.handlers[:]:
+        if h not in before[0]:
+            root.removeHandler(h)
+            h.close()
+    root.setLevel(before[1])
+
+
+def test_the_daemon_log_is_private_and_bounded(tmp_path, monkeypatch, clean_logging):
+    import logging
+    import stat
+
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    log = tmp_path / "keryx" / "daemon.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("old\n")
+    log.chmod(0o644)  # left by a version that wrote it world-readable
+    monkeypatch.setattr(daemon, "LOG_BYTES", 400)
+    daemon.configure_logging(to_terminal=False)
+    for i in range(30):
+        logging.getLogger("keryx").info("line %d %s", i, "x" * 40)
+    for f in (log, log.with_name("daemon.log.1")):
+        assert stat.S_IMODE(f.stat().st_mode) == 0o600
+    assert log.stat().st_size < 1000 and not log.with_name("daemon.log.2").exists()
+
+
+def test_phonemizer_warnings_stay_out_of_the_log(tmp_path, monkeypatch, clean_logging):
+    import logging
+
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    daemon.configure_logging(to_terminal=False)
+    logging.getLogger("phonemizer").warning("words count mismatch on 1 lines")
+    logging.getLogger("phonemizer").error("real failure")
+    text = (tmp_path / "keryx" / "daemon.log").read_text()
+    assert "mismatch" not in text and "real failure" in text
+
+
+def test_a_spawned_daemon_does_not_inherit_a_log_file_to_grow(monkeypatch):
+    import subprocess
+
+    seen = {}
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: seen.update(kw))
+    client.spawn()
+    assert seen["stdout"] is subprocess.DEVNULL and seen["stderr"] is subprocess.DEVNULL

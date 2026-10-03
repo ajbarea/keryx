@@ -88,7 +88,11 @@ large model loaded beside keryx can end up partly on the CPU.
 | `duck_ratio` | `0.25` | The share of their volume ducked apps keep |
 | `audio_dir` | `/mnt/c/Windows/Temp/keryx` | Where WAVs are written; must be on a Windows drive |
 
-The daemon logs to `~/.cache/keryx/daemon.log`.
+The daemon logs to `~/.cache/keryx/daemon.log`, readable only by you, and keeps one
+older file of about 1 MB. Each plugin version runs in its own venv under `~/.cache/keryx/`;
+one whose checkout has been removed is deleted the next time keryx runs.
+`config.json` holds only what you or `keryx on`/`off` set; a file that cannot be read is
+ignored, and `on`/`off` keep it as `config.json.bad`.
 
 ## Development
 

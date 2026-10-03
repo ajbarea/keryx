@@ -60,7 +60,9 @@ The int8 model was slower than fp32 on this CPU: 11.9 to 16.0 s against 3.0 to 4
 
 CUDA ships as the `cuda` extra (about 2 GB of NVIDIA wheels); `onnxruntime-gpu` replaces
 kokoro-onnx's CPU-only `onnxruntime` through a uv override, and falls back to its CPU
-provider when the CUDA libraries are missing. Synthesis runs one sentence ahead of playback.
+provider when the CUDA libraries are missing or will not start (cuDNN failing to load
+is one case). Synthesis runs ahead of playback by the play queue's two sentences plus the one
+in flight. The model files are checked against pinned SHA-256 sums after download.
 
 ## Voices
 
@@ -134,9 +136,14 @@ Python, 0.17 s for a real replay. Python matches the whole prompt against a stri
 so "say that again in Spanish" still goes to Claude, then asks the daemon to say the
 terminal's last line again in the same voice and blocks the prompt. With nothing to replay
 (no daemon, or nothing said yet) the prompt goes to Claude, which can answer it itself. The
-asynchronous prompt hook still records these prompts, so Claude's answer is not dropped as
-stale, but without stopping speech, which would cut the replay off. A replay cuts off what
-that session is saying now and keeps a reply still with the summarizer. `keryx again` from a
+asynchronous prompt hook sees the same phrase and sends a stop that does not interrupt, record
+the prompt or warm the summarizer: an answered replay starts no turn, so its prompt must not
+make the earlier reply stale. When nothing is replayed the replay hook sends the full stop
+itself. The screen reads `prompt` or `user_input` as Python does, and prompts over 60
+characters are never replays, so the screen's 80-character caps cannot turn one away.
+A line becomes the one to say again when its first sentence starts to play, not when it is
+synthesized, and a replay cuts off only speech that has started, so a reply still queued is
+heard after it. `keryx again` from a
 shell outside Claude Code has no terminal to look up and says the newest line.
 
 Pronunciations live in `~/.config/keryx/pronounce.json` and replace whole words, without
