@@ -350,10 +350,13 @@ def test_a_stop_that_does_not_interrupt_still_records_the_prompt():
 @pytest.fixture
 def clean_logging():
     import logging
+    import threading
 
     root = logging.getLogger()
     before = root.handlers[:], root.level
+    hook = threading.excepthook
     yield
+    threading.excepthook = hook
     for h in root.handlers[:]:
         if h not in before[0]:
             root.removeHandler(h)
@@ -407,6 +410,8 @@ def test_a_spawned_daemon_keeps_what_it_writes_to_stderr_in_a_private_file(tmp_p
     client.spawn()
     assert seen["stdout"] == seen["stderr"] and seen["stderr"] != subprocess.DEVNULL
     assert err.read_text() == "" and stat.S_IMODE(err.stat().st_mode) == 0o600
+    # The last daemon's words are kept beside it, not overwritten.
+    assert (err.parent / "daemon.stderr.1").read_text() == "from the last daemon\n"
 
 
 def test_a_thread_that_dies_is_logged(tmp_path, monkeypatch, clean_logging):
@@ -428,24 +433,3 @@ def test_a_thread_that_dies_is_logged(tmp_path, monkeypatch, clean_logging):
 
 def say(reply_prompt):
     return {"op": "say", "text": "Done.", "session": "s", "prompt": reply_prompt}
-
-
-def test_a_reply_to_a_provisional_replay_prompt_is_spoken_when_no_replay_happened():
-    sp, latest, maybe = FakeSpeaker(), {}, {}
-    handle({"op": "stop", "session": "s", "prompt": "p1"}, sp, None, latest, maybe)
-    stop = {"op": "stop", "session": "s", "prompt": "p2", "interrupt": False, "provisional": True}
-    handle(stop, sp, None, latest, maybe)  # the replay hook never answered
-    assert handle(say("p2"), sp, None, latest, maybe) == {"ok": True}
-    assert len(sp.submitted) == 1 and latest["s"] == "p2"
-
-
-def test_a_replay_discards_its_provisional_prompt_so_the_earlier_reply_is_kept():
-    sp, latest, maybe = FakeSpeaker(), {}, {}
-    handle(
-        {"op": "stop", "session": "s", "prompt": "p1", "terminal": "9:1"}, sp, None, latest, maybe
-    )
-    stop = {"op": "stop", "session": "s", "prompt": "p2", "interrupt": False, "provisional": True}
-    handle(stop, sp, None, latest, maybe)
-    handle({"op": "again", "session": "s", "terminal": "9:1"}, sp, None, latest, maybe)
-    assert handle(say("p1"), sp, None, latest, maybe) == {"ok": True}
-    assert len(sp.submitted) == 1

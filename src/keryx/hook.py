@@ -142,10 +142,12 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
 def prompt_request(event: dict, replay: bool = False) -> dict:
     """The `stop` request for a prompt: cut off the speech, record the prompt, load the model.
 
-    A replay request does not interrupt, since the synchronous hook may answer it with a
-    replay the stop would cut off, and does not warm the summarizer, since no turn follows an
-    answered replay. Its prompt is only provisional: the daemon forgets it when a replay
-    happens and accepts a reply to it otherwise, even if the replay hook never reports back.
+    A replay request holds back all three. The synchronous hook may answer it with a replay
+    the stop would cut off, and no turn follows an answered one, so its prompt is not the
+    session's latest and the summarizer has nothing to load for. When nothing is replayed,
+    Claude answers and that hook sends the full request. If that hook times out instead,
+    the reply to this prompt is dropped as stale; a rare loss, preferred to tracking prompt
+    order across asynchronous hooks.
     """
     request = {
         "op": "stop",
@@ -154,12 +156,7 @@ def prompt_request(event: dict, replay: bool = False) -> dict:
         "source": source_name(event.get("cwd", "")),
     }
     if replay:
-        return {
-            **request,
-            "prompt": event.get("prompt_id", ""),
-            "interrupt": False,
-            "provisional": True,
-        }
+        return {**request, "interrupt": False}
     return {**request, "prompt": event.get("prompt_id", ""), "warm": True}
 
 

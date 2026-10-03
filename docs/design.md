@@ -136,11 +136,12 @@ Python, 0.17 s for a real replay. Python matches the whole prompt against a stri
 so "say that again in Spanish" still goes to Claude, then asks the daemon to say the
 terminal's last line again in the same voice and blocks the prompt. With nothing to replay
 (no daemon, or nothing said yet) the prompt goes to Claude, which can answer it itself. The
-asynchronous prompt hook sees the same phrase and sends a stop that does not interrupt or warm the
-summarizer and holds its prompt as provisional: a replay discards it, since an answered replay
-starts no turn and must not make the earlier reply stale, while a reply to it is accepted, so a
-replay hook that timed out costs nothing. When nothing is replayed the replay hook sends the
-full stop itself. The screen reads `prompt` or `user_input` as Python does, and prompts over 60
+asynchronous prompt hook sees the same phrase and sends a stop that does not interrupt, warm the
+summarizer or record its prompt, since an answered replay starts no turn and must not make the
+earlier reply stale. When nothing is replayed the replay hook sends the full stop itself. If the
+replay hook times out, Claude's reply to that prompt is dropped as stale. Holding the prompt
+provisionally instead was tried and let a late hook promote an old prompt over a newer one; prompt
+ids carry no order to tell them apart. The screen reads `prompt` or `user_input` as Python does, and prompts over 60
 characters are never replays, so the screen's 80-character caps cannot turn one away.
 A line becomes the one to say again when its first sentence starts to play, not when it is
 synthesized, and a replay cuts off only speech that has started, so a reply still queued is

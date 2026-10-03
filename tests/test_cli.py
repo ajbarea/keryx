@@ -331,6 +331,11 @@ def test_a_newer_daemon_is_kept(monkeypatch):
         ("0.5.1", "0.5.1+g1", False),
         ("0.5.1a2", "0.5.1b1", True),
         ("0.5.1.dev3", "0.5.1rc1", True),
+        ("0.5.1rc1.dev2", "0.5.1rc1", True),
+        ("0.5.1RC1", "0.5.1", True),
+        ("0.5.1-1", "0.5.1.post2", True),
+        ("0.5.1.post1.dev1", "0.5.1.post1", True),
+        ("0.5.0", "garbage", False),  # an unreadable version of our own retires nothing
     ],
 )
 def test_older(theirs, ours, expected):

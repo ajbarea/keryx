@@ -36,13 +36,17 @@ def spawn() -> subprocess.Popen:
     """Start a detached daemon that outlives the hook process.
 
     It logs to `daemon.log` itself. What only a dying process writes to stderr (an import
-    error, a native abort) goes to `daemon.stderr`, private and restarted with each daemon.
+    error, a native abort) goes to `daemon.stderr`, private and new with each daemon. The
+    previous one moves to `daemon.stderr.1`, where a retiring daemon keeps writing its last
+    words instead of having them overwritten.
     """
     err = cache_dir() / "daemon.stderr"
     err.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(err, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.fchmod(fd, 0o600)  # a file from an older version may be wider
+    with contextlib.suppress(FileNotFoundError):
+        os.replace(err, err.with_name("daemon.stderr.1"))
+    fd = os.open(err, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     try:
+        os.fchmod(fd, 0o600)  # umask could have narrowed nothing, but an old file was wider
         return subprocess.Popen(
             [sys.executable, "-m", "keryx", "daemon"],
             stdin=subprocess.DEVNULL,
