@@ -100,7 +100,7 @@ Timeout" ([microsoft/wslg#1392](https://github.com/microsoft/wslg/issues/1392)).
 
 PowerShell plays reliably. A fresh `powershell.exe` costs 309 to 444 ms, so one process
 stays open and takes `play`, `mode` and `stop` lines on stdin; after the first clip, each play
-adds about 6 ms. The WAV must sit on a Windows drive: loading from a `\\wsl.localhost` path
+adds about 30 ms (MCI's close, open and play, measured 29 to 32 ms). The WAV must sit on a Windows drive: loading from a `\\wsl.localhost` path
 took 10 to 12 s and logged vsock errors.
 
 Playback first used `System.Media.SoundPlayer.Play()` and waited the clip's length before the

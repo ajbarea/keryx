@@ -244,7 +244,7 @@ def test_a_failed_play_is_logged(tmp_path, on_windows_drive, caplog):
     not shutil.which("powershell.exe") or not Path("/mnt/c/Windows/Temp").is_dir(),
     reason="needs Windows PowerShell from WSL",
 )
-def test_the_real_powershell_loop_plays_a_clip_to_its_end(tmp_path):
+def test_the_real_powershell_loop_plays_a_clip_to_its_end(tmp_path, caplog):
     import numpy as np
 
     from keryx.voice import write_wav
@@ -255,9 +255,62 @@ def test_the_real_powershell_loop_plays_a_clip_to_its_end(tmp_path):
     p = WindowsPlayer()
     try:
         started = time.monotonic()
-        assert p.play(wav, seconds, threading.Event()) is True
+        played = p.play(wav, seconds, threading.Event())
+        if not played and "mci error 326" in caplog.text:
+            pytest.skip("Windows has no audio output device right now")
+        assert played is True
         assert time.monotonic() - started >= seconds
-        assert p._send("mode") in ("ok stopped", "ok ")
+        # The loop answers `mode` (the old timer loop never did) and closed the clip at its end.
+        assert p._send("mode").startswith("ok mci error")
     finally:
         p.close()
         wav.unlink(missing_ok=True)
+
+
+def scripted_shell(tmp_path, name: str, modes: list[str]):
+    """A stand-in loop that answers successive `mode` asks from `modes`, the last repeating."""
+    log = tmp_path / f"{name}.log"
+    answers = " ".join(f"'{m}'" for m in modes)
+    script = tmp_path / name
+    script.write_text(
+        "#!/bin/bash\n"
+        f"answers=({answers}); n=0\n"
+        f'while read -r line; do echo "$line" >> {log}; case "$line" in\n'
+        "  mode) last=$(( ${#answers[@]} - 1 )); i=$(( n < last ? n : last ))\n"
+        '        echo "${answers[$i]}"; n=$((n+1)) ;;\n'
+        "  *) echo ok ;;\n"
+        "esac; done\n"
+    )
+    os.chmod(script, 0o755)
+    return str(script), log
+
+
+def test_a_transient_mode_is_not_taken_for_the_end(tmp_path, on_windows_drive, monkeypatch):
+    for name, value in (("EARLY", 0.0), ("POLL", 0.01)):
+        monkeypatch.setattr(player_mod, name, value)
+    shell, log = scripted_shell(tmp_path, "transient", ["ok not ready", "ok playing", "ok stopped"])
+    p = WindowsPlayer(shell)
+    assert p.play(Path("/mnt/c/k/keryx-0.wav"), 0.0, threading.Event()) is True
+    p.close()
+    assert log.read_text().splitlines()[1:] == ["mode", "mode", "mode"]
+
+
+def test_a_clip_stopped_from_elsewhere_counts_as_interrupted(
+    tmp_path, on_windows_drive, monkeypatch, caplog
+):
+    for name, value in (("EARLY", 0.0), ("POLL", 0.01)):
+        monkeypatch.setattr(player_mod, name, value)
+    shell, _ = scripted_shell(tmp_path, "closed", ["ok playing", "ok mci error 263"])
+    p = WindowsPlayer(shell)
+    interrupt = threading.Event()
+    threading.Timer(0.0, interrupt.set).start()
+    time.sleep(0.05)
+    assert p.play(Path("/mnt/c/k/keryx-0.wav"), 0.0, interrupt) is False
+    p.close()
+    assert "could not ask" not in caplog.text
+
+
+def test_the_loop_answers_every_play_at_once_when_mci_will_not_compile():
+    script = WindowsPlayer("x")._cmd[-1]
+    assert "catch { $mciError" in script
+    assert "'err MCI unavailable: '" in script

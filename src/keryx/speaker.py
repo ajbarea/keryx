@@ -234,9 +234,13 @@ class Speaker:
                 for sentence in split_sentences(line):
                     if utt.cancelled.is_set():
                         break
-                    samples, rate = self._voice.synth(self._pronounce(sentence), utt.voice)
-                    wav = self._audio_dir / slot_name(next(self._slots))
-                    seconds = write_wav(wav, samples, rate)
+                    try:
+                        samples, rate = self._voice.synth(self._pronounce(sentence), utt.voice)
+                        wav = self._audio_dir / slot_name(next(self._slots))
+                        seconds = write_wav(wav, samples, rate)
+                    except Exception:  # one bad sentence does not cost the rest of the line
+                        log.exception("could not synthesize %r", sentence[:80])
+                        continue
                     self.spoken.append(sentence)
                     self._play_q.put((wav, seconds, utt))
             except Exception:

@@ -85,3 +85,16 @@ def test_only_a_whole_slashed_saying_is_phonemes():
     assert phonemes("a/b/c") is None
     assert phonemes("TEK nee") is None
     assert phonemes("//") is None
+
+
+def test_ascii_lookalikes_become_the_ipa_symbols_kokoro_knows():
+    from keryx.pronounce import phonemes
+
+    assert phonemes("/gɹiːk/") == "\u0261ɹiːk"
+    assert phonemes("/k'ɛɹɪks/") == f"k{S}ɛɹɪks"
+    assert phonemes("/ /") is None
+
+
+def test_marks_in_a_reply_are_not_taken_for_phonemes():
+    assert apply({}, "math ⟦x⟧") == "math x"
+    assert apply({"techne": f"/t{S}exni/"}, "⟦x⟧ techne") == f"x ⟦t{S}exni⟧"

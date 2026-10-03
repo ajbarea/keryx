@@ -23,7 +23,11 @@ MODEL = "kokoro-v1.0.onnx"
 VOICES = "voices-v1.0.bin"
 STYLE_CACHE = 64  # blends kept; each is about 0.5 MB
 _SPLICE = re.compile(f"{PHONEMES_OPEN}([^{PHONEMES_CLOSE}]*){PHONEMES_CLOSE}")
-_SPACE_BEFORE_MARK = re.compile(r"\s+([.,!?;:])")
+# Closing and opening marks rejoin the word they belong to. ASCII quotes open and close
+# alike, so they are left as they are.
+_SPACE_BEFORE_MARK = re.compile(r"\s+([.,!?;:)\]}\u201d\u2019])")
+_SPACE_AFTER_OPEN = re.compile(r"([(\[{\u201c\u2018])\s+")
+_POSSESSIVE = re.compile(r"^['\u2019]s\b")
 
 
 def splice(text: str, phonemize) -> str | None:
@@ -32,9 +36,15 @@ def splice(text: str, phonemize) -> str | None:
     parts = _SPLICE.split(text)
     if len(parts) == 1:
         return None
-    # split() alternates text and captured phonemes: even indexes are text.
+    # split() alternates text and captured phonemes: even indexes are text. A possessive
+    # 's after a marked word is said as z, joined to it.
+    for i in range(1, len(parts), 2):
+        if i + 1 < len(parts) and _POSSESSIVE.match(parts[i + 1]):
+            parts[i] += "z"
+            parts[i + 1] = parts[i + 1][2:]
     out = [phonemize(p) if i % 2 == 0 else p for i, p in enumerate(parts) if p.strip()]
-    return _SPACE_BEFORE_MARK.sub(r"\1", " ".join(o.strip() for o in out))
+    joined = " ".join(o.strip() for o in out)
+    return _SPACE_AFTER_OPEN.sub(r"\1", _SPACE_BEFORE_MARK.sub(r"\1", joined))
 
 
 def model_dir() -> Path:

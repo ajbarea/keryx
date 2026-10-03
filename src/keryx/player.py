@@ -29,18 +29,29 @@ from typing import Protocol
 
 _PS_LOOP = r"""
 $ErrorActionPreference = 'Continue'
-Add-Type -TypeDefinition @'
+$mciError = ''
+try {
+    Add-Type -TypeDefinition @'
 using System.Runtime.InteropServices; using System.Text;
 public static class KeryxMci {
     [DllImport("winmm.dll", CharSet = CharSet.Unicode)]
     static extern int mciSendString(string cmd, StringBuilder ret, int size, System.IntPtr hwnd);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    static extern uint GetShortPathName(string path, StringBuilder shortPath, uint size);
     public static string Send(string command) {
         var ret = new StringBuilder(128);
         int rc = mciSendString(command, ret, ret.Capacity, System.IntPtr.Zero);
         return rc == 0 ? ret.ToString() : "mci error " + rc;
     }
+    // MCI refuses paths of 128 characters or more; the 8.3 form is short.
+    public static string Short(string path) {
+        var ret = new StringBuilder(260);
+        uint n = GetShortPathName(path, ret, (uint)ret.Capacity);
+        return n > 0 && n < ret.Capacity ? ret.ToString() : path;
+    }
 }
 '@
+} catch { $mciError = $_.Exception.Message -replace '\s+', ' ' }
 $state = '@STATE@'
 $ducker = $false
 $duckError = 'not configured'
@@ -51,14 +62,20 @@ if ($state) {
 }
 try {
     while ($null -ne ($line = [Console]::In.ReadLine())) {
-        if ($line.StartsWith('play ')) {
+        if ($mciError -and ($line.StartsWith('play ') -or $line -eq 'mode')) {
+            [Console]::Out.WriteLine('err MCI unavailable: ' + $mciError)
+        } elseif ($line.StartsWith('play ')) {
             [void][KeryxMci]::Send('close keryx')
-            $r = [KeryxMci]::Send('open "' + $line.Substring(5) + '" type waveaudio alias keryx')
+            $path = [KeryxMci]::Short($line.Substring(5))
+            $r = [KeryxMci]::Send('open "' + $path + '" type waveaudio alias keryx')
             if (-not $r.StartsWith('mci error')) { $r = [KeryxMci]::Send('play keryx') }
             if ($r.StartsWith('mci error')) { [Console]::Out.WriteLine('err ' + $r) }
             else { [Console]::Out.WriteLine('ok') }
         } elseif ($line -eq 'mode') {
-            [Console]::Out.WriteLine('ok ' + [KeryxMci]::Send('status keryx mode'))
+            $mode = [KeryxMci]::Send('status keryx mode')
+            # A finished clip is closed at once, so its WAV is free to be written again.
+            if ($mode -eq 'stopped') { [void][KeryxMci]::Send('close keryx') }
+            [Console]::Out.WriteLine('ok ' + $mode)
         } elseif ($line -eq 'stop') {
             [void][KeryxMci]::Send('stop keryx'); [void][KeryxMci]::Send('close keryx')
             [Console]::Out.WriteLine('ok')
@@ -95,6 +112,7 @@ REPLY_TIMEOUT = 10.0  # seconds; a play or stop answers in milliseconds
 EARLY = 0.25  # seconds before a clip's end to start asking whether it has finished
 POLL = 0.03  # seconds between those asks
 OVERRUN = 3.0  # seconds past its end after which a clip still "playing" is stopped
+FINISHED = {"ok stopped"}
 CLOSE_GRACE = 2.0  # seconds for the loop to restore ducked volumes on close
 
 
@@ -195,17 +213,20 @@ class WindowsPlayer:
             self.stop()
             return False
         deadline = time.monotonic() + EARLY + OVERRUN
-        while (mode := self._send("mode")) == "ok playing":
+        # Only "stopped" is done: a transient mode such as "not ready" may still be sounding.
+        while (mode := self._send("mode")) not in FINISHED:
+            if not mode.startswith("ok ") or mode.startswith("ok mci error"):
+                if not interrupt.is_set():  # a stop from elsewhere closes the clip
+                    log.warning("could not ask whether %s finished: %s", wav.name, mode)
+                break
             if time.monotonic() > deadline:
-                log.warning("%s still playing %.1fs past its end; stopped", wav.name, OVERRUN)
+                log.warning("%s still %s %.1fs past its end; stopped", wav.name, mode[3:], OVERRUN)
                 self.stop()
-                return True
+                break
             if interrupt.wait(POLL):
                 self.stop()
-                return False
-        if not mode.startswith("ok"):
-            log.warning("could not ask whether %s finished: %s", wav.name, mode)
-        return True
+                break
+        return not interrupt.is_set()
 
     def stop(self) -> None:
         if self._proc is not None and self._proc.poll() is None:

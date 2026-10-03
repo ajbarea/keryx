@@ -21,3 +21,37 @@ def test_punctuation_after_a_marked_word_attaches_to_it():
         splice(f"Hi ⟦k{S}iɾiks⟧ and ⟦f{S}aɾos⟧!", lambda t: t.strip())
         == f"Hi k{S}iɾiks and f{S}aɾos!"
     )
+
+
+def test_a_possessive_joins_the_marked_word_and_brackets_hug_it():
+    assert splice(f"⟦t{S}exni⟧'s tools", lambda x: x.strip()) == f"t{S}exniz tools"
+    assert splice(f"(⟦t{S}exni⟧) and “⟦t{S}exni⟧”.", lambda x: x.strip()) == (
+        f"(t{S}exni) and “t{S}exni”."
+    )
+
+
+def test_kokoro_gets_phonemes_only_when_something_is_marked():
+    import numpy as np
+
+    from keryx.voice import KokoroVoice
+    from keryx.voices import VoiceSpec
+
+    calls = []
+
+    class FakeKokoro:
+        class tokenizer:  # mirrors Kokoro's attribute
+            @staticmethod
+            def phonemize(text, lang):
+                return f"<{text.strip()}>"
+
+        def create(self, text, **kw):
+            calls.append((text, kw["is_phonemes"]))
+            return np.zeros(2400, dtype=np.float32), 24000
+
+    voice = KokoroVoice.__new__(KokoroVoice)
+    voice._kokoro = FakeKokoro()
+    voice.voice, voice.speed, voice.loudness = VoiceSpec(("af_heart",)), 1.0, -16.0
+    voice._styles = {voice.voice: np.zeros(256, dtype=np.float32)}  # style() reads the cache
+    voice.synth("Plain words.")
+    voice.synth(f"Say ⟦t{S}exni⟧.")
+    assert calls == [("Plain words.", False), (f"<Say> t{S}exni <.>", True)]
