@@ -56,7 +56,7 @@ def handle(
         if request.get("session") and request.get("prompt"):
             latest[request["session"]] = request["prompt"]
         if request.get("interrupt", True):
-            speaker.stop(request.get("session") or None)
+            speaker.stop(request.get("session") or None, str(request.get("terminal") or ""))
         claim(request, speaker)
         # A prompt was just sent, so a reply is coming: load the summarizer meanwhile.
         if request.get("warm"):

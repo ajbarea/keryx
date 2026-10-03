@@ -97,3 +97,38 @@ def test_every_phrase_the_matcher_takes_gets_past_the_screen(tmp_path):
 
     for phrase in REPLAY_PHRASES:
         assert screen(tmp_path, phrase) == (0, True), phrase
+
+
+def test_the_screen_never_turns_away_what_the_matcher_takes(tmp_path):
+    from keryx.hook import MAX_REPLAY_CHARS, is_replay
+
+    word = "again"
+    longest_front = "okay, " * 7 + "say that " + word  # the word as late as it can come
+    longest_back = "come " + word + " " * (MAX_REPLAY_CHARS - 10)  # and as early
+    for phrase in (longest_front, longest_back):
+        assert len(phrase) <= MAX_REPLAY_CHARS and is_replay(phrase), phrase
+        assert screen(tmp_path, phrase) == (0, True), phrase
+
+
+def test_the_screen_caps_are_the_matchers_cap_plus_its_slack():
+    from keryx.hook import MAX_REPLAY_CHARS, SCREEN_SLACK
+
+    script = (ROOT / "bin" / "keryx-replay").read_text()
+    cap = MAX_REPLAY_CHARS + SCREEN_SLACK
+    assert f'[^"]{{0,{cap}}}(\'"$words"\')[^"]{{0,{cap}}}"' in script
+
+
+def test_the_screen_reads_user_input_as_the_matcher_does(tmp_path):
+    import subprocess
+
+    marker = tmp_path / "reached"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    import shutil
+
+    shutil.copy(ROOT / "bin" / "keryx-replay", bin_dir / "keryx-replay")
+    (bin_dir / "keryx").write_text(f"#!/bin/sh\ncat > /dev/null; touch {marker}\n")
+    os.chmod(bin_dir / "keryx", 0o755)
+    event = json.dumps({"hook_event_name": "UserPromptSubmit", "user_input": "say that again"})
+    subprocess.run([str(bin_dir / "keryx-replay")], input=event, text=True, check=True)
+    assert marker.exists()

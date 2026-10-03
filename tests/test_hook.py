@@ -229,10 +229,41 @@ def test_anything_more_goes_to_claude(prompt):
     assert not is_replay(prompt)
 
 
-def test_a_replay_request_is_recorded_without_stopping_the_speech_it_asks_for():
-    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "say that again"}
+def test_a_replay_request_holds_back_what_only_a_real_turn_needs():
+    event = {
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "s",
+        "prompt_id": "p2",
+        "prompt": "say that again",
+    }
+    request = request_for(event, "cli")
+    # No prompt id: an answered replay starts no turn, so the earlier reply is not stale.
+    # No warm: nothing is coming for the summarizer.
+    assert request is not None
+    assert request["interrupt"] is False
+    assert "prompt" not in request and "warm" not in request
+
+
+def test_a_replay_phrase_in_user_input_is_held_back_too():
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "user_input": "pardon?"}
     request = request_for(event, "cli")
     assert request is not None and request["interrupt"] is False
+
+
+def test_a_replay_phrase_in_a_headless_session_is_not_a_replay_event():
+    from keryx.hook import is_replay_event
+
+    event = {"prompt": "say that again"}
+    assert is_replay_event(event, "cli")
+    assert not is_replay_event(event, "sdk-cli")
+
+
+def test_a_long_prompt_is_never_a_replay_request():
+    from keryx.hook import MAX_REPLAY_CHARS, is_replay
+
+    assert is_replay("hey, " * 5 + "say that again")
+    assert not is_replay("hey, " * 20 + "say that again")
+    assert not is_replay("say that again" + " " * MAX_REPLAY_CHARS)
 
 
 def test_an_ordinary_prompt_interrupts():

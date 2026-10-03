@@ -41,11 +41,7 @@ class Config:
     @classmethod
     def load(cls, env: bool = True) -> Config:
         """Settings from the file, then `KERYX_*` env overrides unless `env` is False."""
-        path = config_dir() / "config.json"
-        try:
-            raw = json.loads(path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            raw = {}
+        raw = read_raw()
         defaults = cls()
         # A value of the wrong type (a string where a list belongs) falls back to the default.
         cfg = cls(
@@ -58,14 +54,45 @@ class Config:
         for f in fields(cls) if env else ():
             value = os.environ.get(f"KERYX_{f.name.upper()}")
             if value is not None:
+                # By the default's type: a file value such as `1` for a float must not make
+                # `KERYX_SPEED=1.3` an int.
                 with contextlib.suppress(ValueError):
-                    setattr(cfg, f.name, _coerce(value, type(getattr(cfg, f.name))))
+                    setattr(cfg, f.name, _coerce(value, type(getattr(defaults, f.name))))
         return cfg
 
     def save(self) -> None:
-        path = config_dir() / "config.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(asdict(self), indent=2) + "\n")
+        write_raw(asdict(self))
+
+
+def config_path() -> Path:
+    return config_dir() / "config.json"
+
+
+def read_raw() -> dict:
+    """The file's JSON object; empty when it is missing, unreadable or not an object."""
+    try:
+        raw = json.loads(config_path().read_text())
+    except (OSError, ValueError):  # ValueError: bad JSON or bytes that are not UTF-8
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def write_raw(raw: dict) -> None:
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(raw, indent=2) + "\n")
+
+
+def set_stored(**changes: object) -> None:
+    """Write `changes` into the file, leaving its other keys, and the defaults, as they are.
+
+    A file that cannot be read as an object is kept as `config.json.bad` first.
+    """
+    raw = read_raw()
+    path = config_path()
+    if not raw and path.exists() and path.read_bytes().strip() not in (b"", b"{}"):
+        path.replace(path.with_name(path.name + ".bad"))
+    write_raw({**raw, **changes})
 
 
 def _fits(value: object, default: object) -> bool:

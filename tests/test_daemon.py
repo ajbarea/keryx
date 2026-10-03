@@ -18,8 +18,9 @@ class FakeSpeaker:
     def submit(self, utt):
         self.submitted.append(utt)
 
-    def stop(self, session=None):
+    def stop(self, session=None, terminal=""):
         self.stopped.append(session)
+        self.stopped_terminals = [*getattr(self, "stopped_terminals", []), terminal]
 
     def claim(self, holder, source):
         self.claimed.append((holder, source))
@@ -118,6 +119,12 @@ def test_handle_stop_with_and_without_session():
     handle({"op": "stop", "session": "s1"}, sp)
     handle({"op": "stop"}, sp)
     assert sp.stopped == ["s1", None]
+
+
+def test_a_stop_names_its_terminal_so_speech_left_by_an_old_session_is_cut():
+    sp = FakeSpeaker()
+    handle({"op": "stop", "session": "new", "terminal": "9:1"}, sp)
+    assert (sp.stopped, sp.stopped_terminals) == (["new"], ["9:1"])
 
 
 def test_stop_with_warm_loads_the_summarizer():

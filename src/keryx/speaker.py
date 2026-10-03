@@ -1,8 +1,10 @@
 """The speech queue: shorten each utterance, synthesize it sentence by sentence, play it.
 
 Shortening has its own thread, so a notice is spoken while a reply waits on the model.
-Synthesis runs one sentence ahead of playback, so speech starts after the first
-sentence is ready instead of after the whole line. One queue serves every Claude
+Synthesis runs ahead of playback, by up to PLAY_AHEAD queued sentences plus the one in
+flight and one waiting for room, so speech starts after the first sentence is ready instead
+of after the whole line. A repo name is announced when its line starts playing, and only if
+the last line heard came from another repo. One queue serves every Claude
 session on the machine, so sessions never talk over each other.
 """
 
@@ -33,6 +35,7 @@ PLAY_AHEAD = 2
 # Other apps come back up after this much quiet, so the music does not pump between lines.
 UNDUCK_AFTER = 1.0
 LAST_LINES = 64  # holders whose last line can be said again
+ANNOUNCEMENTS = 32  # synthesized repo names kept
 
 
 class Voice(Protocol):
@@ -46,7 +49,7 @@ class Voices(Protocol):
 
 class SpeechQueue(Protocol):
     def submit(self, utt: Utterance) -> None: ...
-    def stop(self, session: str | None = None) -> None: ...
+    def stop(self, session: str | None = None, terminal: str = "") -> None: ...
     def claim(self, holder: str, source: str) -> None: ...
     def knows(self, spec: VoiceSpec) -> bool: ...
     def again(self, holder: str) -> bool: ...
@@ -64,8 +67,10 @@ class Utterance:
     cancelled: threading.Event = field(default_factory=threading.Event)
     line: str | None = None  # the words to say, once shortened
     voice: VoiceSpec | None = None  # None: the configured voice
-    announced: bool = False  # its line starts with the source name
-    played: bool = False
+    started: bool = False  # synthesis has begun
+    heard: bool = False  # its first sentence has started playing
+    announced: bool = False  # its source name was heard before the line
+    always_announce: bool = False  # a replay repeats the name it was first heard with
 
 
 class Speaker:
@@ -91,11 +96,12 @@ class Speaker:
         self._to_shorten: list[Utterance] = []  # replies waiting for the summarizer
         self._pending: list[Utterance] = []  # waiting for synthesis
         self._active: list[Utterance] = []  # submitted and not yet fully played
-        self._last_source = ""
+        self._last_source = ""  # the repo whose name was last heard
+        self._announcements: dict[tuple[str, VoiceSpec | None], tuple[np.ndarray, int]] = {}
         self._slots = itertools.cycle(range(RING))
-        # (wav, seconds, utt) to play, (None, 0, utt) once utt's audio is all queued,
-        # None to shut down.
-        self._play_q: queue.Queue[tuple[Path | None, float, Utterance] | None] = queue.Queue(
+        # (wav, seconds, utt, announcement) to play, (None, 0, utt, False) once utt's audio is
+        # all queued, None to shut down.
+        self._play_q: queue.Queue[tuple[Path | None, float, Utterance, bool] | None] = queue.Queue(
             PLAY_AHEAD
         )
         self._closed = False
@@ -125,9 +131,10 @@ class Speaker:
     def knows(self, spec: VoiceSpec) -> bool:
         return self._voice.has(spec)
 
-    def stop(self, session: str | None = None) -> None:
-        """Cancel queued and playing speech, for one session or (None) all of them."""
-        self._cancel(lambda u: session is None or u.session == session)
+    def stop(self, session: str | None = None, terminal: str = "") -> None:
+        """Cancel queued and playing speech, for one session and its terminal, which a
+        `/clear` or a resume leaves speaking under the old session, or (None) for all."""
+        self._cancel(lambda u: session is None or _owned(u, session, terminal))
 
     def _cancel(self, doomed: Callable[[Utterance], bool]) -> None:
         with self._cond:
@@ -161,9 +168,11 @@ class Speaker:
                 self._cond.wait()
             if self._closed:
                 return None
+            utt = waiting.pop(0)
             if synth:
+                utt.started = True
                 self._synthesizing = True  # in the same lock as the pop, so quiet never flickers
-            return waiting.pop(0)
+            return utt
 
     def _quiet(self) -> bool:
         """Nothing left to synthesize or play; a reply still being shortened does not count."""
@@ -185,15 +194,6 @@ class Speaker:
                 self._pending.append(utt)
                 self._cond.notify_all()
 
-    def _line(self, utt: Utterance) -> str:
-        line = utt.line if utt.line is not None else utt.text
-        with self._cond:
-            if line and utt.source and utt.source != self._last_source:
-                line = f"{utt.source}: {line}"
-                self._last_source = utt.source
-                utt.announced = True
-        return line
-
     def again(self, holder: str) -> bool:
         """Say `holder`'s last line again in the same voice (anyone's, without a holder)."""
         with self._cond:
@@ -202,16 +202,17 @@ class Speaker:
                 last = next(reversed(self._last.values()))
         if last is None or not last.line:
             return False
-        # Cut off what that session is saying now, so the replay is not heard after it; a
-        # reply still with the summarizer (no line yet) is kept.
-        session = last.session
-        self._cancel(lambda u: u.session == session and (u.kind != "reply" or u.line is not None))
+        # Cut off what that session is saying now, so the replay is not heard after it.
+        # Speech not yet started, such as a reply new from the summarizer, was never heard
+        # and follows the replay.
+        self._cancel(lambda u: u.started and _owned(u, last.session, last.terminal))
         self.submit(dataclasses.replace(last, cancelled=threading.Event()))
         return True
 
-    def _remember(self, utt: Utterance, line: str) -> None:
-        if not line:
-            return
+    def _remember(self, utt: Utterance) -> None:
+        """Record what `utt` is saying, as its first sentence starts: what was never heard
+        cannot be said again."""
+        line = utt.line if utt.line is not None else utt.text
         with self._cond:
             key = holder(utt.terminal, utt.session)
             self._last.pop(key, None)  # re-insert so the newest comes last
@@ -220,6 +221,8 @@ class Speaker:
                 kind="notice",
                 session=utt.session,
                 terminal=utt.terminal,
+                source=utt.source if utt.announced else "",
+                always_announce=utt.announced,
                 voice=utt.voice,
                 line=line,
             )
@@ -229,25 +232,49 @@ class Speaker:
     def _synth_loop(self) -> None:
         while (utt := self._next(self._pending, synth=True)) is not None:
             try:
-                line = "" if utt.cancelled.is_set() else self._line(utt)
-                self._remember(utt, line)
-                for sentence in split_sentences(line):
+                line = "" if utt.cancelled.is_set() else self._text(utt)
+                sentences = split_sentences(line)
+                if sentences and utt.source:
+                    # Whether it is said is decided as it comes up to play.
+                    self._clip(utt, f"{utt.source}:", announcement=True)
+                for sentence in sentences:
                     if utt.cancelled.is_set():
                         break
-                    try:
-                        samples, rate = self._voice.synth(self._pronounce(sentence), utt.voice)
-                        wav = self._audio_dir / slot_name(next(self._slots))
-                        seconds = write_wav(wav, samples, rate)
-                    except Exception:  # one bad sentence does not cost the rest of the line
-                        log.exception("could not synthesize %r", sentence[:80])
-                        continue
-                    self.spoken.append(sentence)
-                    self._play_q.put((wav, seconds, utt))
+                    self._clip(utt, sentence)
             except Exception:
                 log.exception("could not synthesize %r", utt.text[:80])
             finally:
-                self._play_q.put((None, 0.0, utt))
+                self._play_q.put((None, 0.0, utt, False))
         self._play_q.put(None)
+
+    @staticmethod
+    def _text(utt: Utterance) -> str:
+        return utt.line if utt.line is not None else utt.text
+
+    def _clip(self, utt: Utterance, sentence: str, announcement: bool = False) -> None:
+        """Synthesize one sentence and queue it; one bad sentence does not cost the rest."""
+        try:
+            samples, rate = self._speak(utt, sentence, announcement)
+            wav = self._audio_dir / slot_name(next(self._slots))
+            seconds = write_wav(wav, samples, rate)
+        except Exception:
+            log.exception("could not synthesize %r", sentence[:80])
+            return
+        if not announcement:
+            self.spoken.append(sentence)
+        self._play_q.put((wav, seconds, utt, announcement))
+
+    def _speak(self, utt: Utterance, sentence: str, announcement: bool) -> tuple[np.ndarray, int]:
+        said = self._pronounce(sentence)
+        if not announcement:
+            return self._voice.synth(said, utt.voice)
+        # The same few names come up again and again.
+        key = (said, utt.voice)
+        if key not in self._announcements:
+            if len(self._announcements) >= ANNOUNCEMENTS:
+                self._announcements.pop(next(iter(self._announcements)))
+            self._announcements[key] = self._voice.synth(said, utt.voice)
+        return self._announcements[key]
 
     def _play_loop(self) -> None:
         ducked = False
@@ -261,25 +288,39 @@ class Speaker:
                 continue
             if item is None:
                 break
-            wav, seconds, utt = item
+            wav, seconds, utt, announcement = item
             if wav is None:
                 with self._cond:
                     self._active.remove(utt)
-                    # Never heard, so the next line from this source must announce it.
-                    if utt.announced and not utt.played and self._last_source == utt.source:
-                        self._last_source = ""
                 continue
-            if utt.cancelled.is_set():
+            if utt.cancelled.is_set() or not self._due(utt, announcement):
                 continue
             if not ducked:
                 self._safely(self._player.duck)
                 ducked = True
             try:
-                utt.played = self._player.play(wav, seconds, utt.cancelled) or utt.played
+                heard = self._player.play(wav, seconds, utt.cancelled)
             except Exception:
                 log.exception("could not play %s", wav)
+                continue
+            if announcement and heard:
+                with self._cond:
+                    self._last_source = utt.source
+                    utt.announced = True
+                self.spoken.append(f"{utt.source}:")
         if ducked:
             self._safely(self._player.unduck)
+
+    def _due(self, utt: Utterance, announcement: bool) -> bool:
+        """Whether a clip plays now: a repo's name only when the last name heard was another's,
+        and a line's first sentence is what makes it the line to say again."""
+        with self._cond:
+            if announcement:
+                return utt.always_announce or utt.source != self._last_source
+        if not utt.heard:
+            utt.heard = True
+            self._remember(utt)
+        return True
 
     @staticmethod
     def _safely(step: Callable[[], None]) -> None:
@@ -287,6 +328,11 @@ class Speaker:
             step()
         except Exception:
             log.exception("could not change other apps' volume")
+
+
+def _owned(utt: Utterance, session: str, terminal: str) -> bool:
+    """Whether `utt` belongs to this session, or to this terminal under another session."""
+    return utt.session == session or bool(terminal and utt.terminal == terminal)
 
 
 def slot_name(i: int) -> str:

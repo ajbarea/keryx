@@ -5,7 +5,7 @@ import pytest
 
 from keryx import __main__ as cli
 from keryx import client, version
-from keryx.config import Config
+from keryx.config import Config, config_dir
 
 
 @pytest.fixture(autouse=True)
@@ -198,6 +198,28 @@ def test_on_off_never_persists_env_overrides(sent, monkeypatch):
     assert Config.load(env=False).model == Config().model
 
 
+def test_on_off_write_only_the_enabled_key(sent, monkeypatch):
+    monkeypatch.setattr("keryx.summarize.OllamaClient.unload", lambda self: None)
+    cli.main(["off"])
+    assert json.loads((config_dir() / "config.json").read_text()) == {"enabled": False}
+    cli.main(["on"])
+    assert json.loads((config_dir() / "config.json").read_text()) == {"enabled": True}
+
+
+def test_on_and_off_work_when_the_config_file_is_broken(sent, monkeypatch, capsys):
+    monkeypatch.setattr("keryx.summarize.OllamaClient.unload", lambda self: None)
+    config_dir().mkdir(parents=True)
+    (config_dir() / "config.json").write_text("[1, 2]")
+    assert cli.main(["off"]) == 0
+    assert Config.load().enabled is False
+
+
+def test_say_while_off_says_so_and_starts_nothing(sent, capsys):
+    Config(enabled=False).save()
+    assert cli.main(["say", "hello"]) == 1
+    assert sent["spawn"] == [] and "keryx is off" in capsys.readouterr().err
+
+
 def test_status_without_daemon(sent, capsys):
     assert cli.main(["status"]) == 0
     assert '"daemon": "not running"' in capsys.readouterr().out
@@ -302,6 +324,55 @@ def run_replay(monkeypatch, prompt, reply=None, fail=False):
     event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": prompt}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
     return cli.main(["replay-hook"]), sent
+
+
+def test_a_replay_prompt_that_user_input_carries_is_replayed(monkeypatch, capsys):
+    sent = []
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: sent.append(req) or {"replayed": True})
+    monkeypatch.setattr("keryx.procs.terminal_id", lambda: "9:1")
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "user_input": "pardon?"}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert cli.main(["replay-hook"]) == 0
+    assert sent[0]["op"] == "again"
+    assert json.loads(capsys.readouterr().out)["decision"] == "block"
+
+
+def test_a_truncated_daemon_reply_lets_claude_answer(monkeypatch, capsys):
+    def send(req, *a, **k):
+        raise json.JSONDecodeError("Expecting value", "", 0)
+
+    monkeypatch.setattr(client, "send", send)
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "say that again"}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert cli.main(["replay-hook"]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_a_truncated_daemon_reply_does_not_fail_the_other_commands(monkeypatch, capsys):
+    def send(req, *a, **k):
+        raise json.JSONDecodeError("Expecting value", "", 0)
+
+    monkeypatch.setattr(client, "send", send)
+    monkeypatch.setattr(client, "send_or_spawn", send)
+    assert cli.main(["status"]) == 0
+    assert cli.main(["again"]) == 0
+    event = {"hook_event_name": "Stop", "session_id": "s", "last_assistant_message": "Done."}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert cli.main(["hook"]) == 0
+
+
+def test_a_replay_nobody_answers_sends_the_prompt_the_stop_request_held_back(monkeypatch, capsys):
+    rc, sent = run_replay(monkeypatch, "say that again", {"ok": True, "replayed": False})
+    assert rc == 0
+    again, stop = sent
+    assert again["op"] == "again"
+    assert stop["op"] == "stop" and stop["session"] == "s" and stop["warm"] is True
+    assert "interrupt" not in stop and "prompt" in stop
+
+
+def test_an_answered_replay_sends_no_prompt_to_record(monkeypatch, capsys):
+    _, sent = run_replay(monkeypatch, "say that again", {"ok": True, "replayed": True})
+    assert [r["op"] for r in sent] == ["again"]
 
 
 def test_say_that_again_replays_and_keeps_the_prompt_from_claude(monkeypatch, capsys):
