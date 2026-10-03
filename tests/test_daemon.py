@@ -389,8 +389,11 @@ def test_phonemizer_warnings_stay_out_of_the_log(tmp_path, monkeypatch, clean_lo
 
     from keryx import daemon
 
+    from phonemizer.logger import get_logger
+
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     daemon.configure_logging(to_terminal=False)
+    get_logger()  # what importing the phonemizer does once Kokoro loads: level back to WARNING
     logging.getLogger("phonemizer").warning("words count mismatch on 1 lines")
     logging.getLogger("phonemizer").error("real failure")
     text = (tmp_path / "keryx" / "daemon.log").read_text()

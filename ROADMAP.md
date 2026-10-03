@@ -11,6 +11,7 @@ Last reviewed: 2026-10-03.
 
 ## Completed
 
+- 2026-10-03: phonemizer warnings stay out of `daemon.log` (0.5.2).
 - 2026-10-03: code-review fixes (0.5.1): replay says only what was heard, a venv per plugin
   version, CPU fallback when CUDA will not start, checksummed model files, a bounded private
   log, capped loudness gain, tolerant config.
