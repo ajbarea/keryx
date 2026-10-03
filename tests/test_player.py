@@ -327,3 +327,18 @@ def test_the_default_audio_dir_fits_mci():
 
     default = player_mod.windows_path(Path(Config().audio_dir) / "keryx-0.wav")
     assert len(default) < player_mod.MCI_PATH_LIMIT
+
+
+def test_the_ducker_releases_a_devices_objects_on_every_path_out_of_it():
+    """No Windows here to run it: check that no `continue` can skip the releases."""
+    source = (Path(player_mod.__file__).parent / "ducker.cs").read_text()
+    body = source[source.index("static List<Session> Sessions") :]
+    body = body[: body.index("static void Release")]
+    loop = body[body.index("for (uint d") : body.index("Marshal.ReleaseComObject(devices)")]
+    tried, finally_ = loop.split("} finally {")
+    assert "continue" in tried
+    for held in ("sessions", "manager", "dev"):
+        assert f"Marshal.ReleaseComObject({held})" in finally_
+    # Sessions the loop did not keep are released where they are skipped.
+    assert source.count("static void AddSession") == 1
+    assert "if (!keep) Marshal.ReleaseComObject(control)" in source

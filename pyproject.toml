@@ -9,10 +9,12 @@ authors = [
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "kokoro-onnx>=0.6.1",
+    "numpy>=2.0",
     # Stands in for kokoro-onnx's CPU-only `onnxruntime` (overridden below); it carries
     # the CPU provider too, so this works without CUDA.
     "onnxruntime-gpu>=1.30.0",
     "pyloudnorm>=0.2.0",
+    "scipy>=1.13",
     "soundfile>=0.14.0",
 ]
 

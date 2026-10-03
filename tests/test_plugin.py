@@ -132,3 +132,25 @@ def test_the_screen_reads_user_input_as_the_matcher_does(tmp_path):
     event = json.dumps({"hook_event_name": "UserPromptSubmit", "user_input": "say that again"})
     subprocess.run([str(bin_dir / "keryx-replay")], input=event, text=True, check=True)
     assert marker.exists()
+
+
+def test_every_third_party_import_is_a_declared_dependency():
+    import ast
+    import sys
+    import tomllib
+
+    declared = {
+        re.split(r"[<>=\[ ;]", dep, maxsplit=1)[0].lower().replace("_", "-")
+        for dep in tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["dependencies"]
+    }
+    provides = {"kokoro_onnx": "kokoro-onnx", "onnxruntime": "onnxruntime-gpu"}
+    imported = set()
+    for source in (ROOT / "src" / "keryx").glob("*.py"):
+        for node in ast.walk(ast.parse(source.read_text())):
+            if isinstance(node, ast.Import):
+                imported |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module.split(".")[0])
+    outside = imported - set(sys.stdlib_module_names) - {"keryx"}
+    missing = {provides.get(m, m).lower().replace("_", "-") for m in outside} - declared
+    assert not missing

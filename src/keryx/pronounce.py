@@ -104,22 +104,20 @@ def unmarked(text: str) -> str:
     return text.replace(PHONEMES_OPEN, "").replace(PHONEMES_CLOSE, "")
 
 
-def apply(words: dict[str, str], text: str) -> str:
-    return compile_words(words)(text)
-
-
 class Lexicon:
-    """The saved pronunciations, recompiled when the file's modification time changes."""
+    """The saved pronunciations, recompiled when the file changes: a different modification
+    time, size or inode (an editor that saves by replacing the file keeps the first two)."""
 
     def __init__(self, path: Path | None = None):
         self._path = path or lexicon_path()
-        self._stamp: int | None = None
+        self._stamp: tuple[int, int, int] | None = None
         self._rewrite: Callable[[str], str] = lambda text: text
 
     def __call__(self, text: str) -> str:
         stamp = None
         with contextlib.suppress(OSError):
-            stamp = self._path.stat().st_mtime_ns
+            st = self._path.stat()
+            stamp = (st.st_mtime_ns, st.st_size, st.st_ino)
         if stamp != self._stamp:
             self._rewrite = compile_words(load(self._path) if stamp is not None else {})
             self._stamp = stamp

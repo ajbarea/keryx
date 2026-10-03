@@ -1,7 +1,12 @@
 import os
 import time
 
-from keryx.pronounce import Lexicon, apply, load, save
+from keryx.pronounce import Lexicon, compile_words, load, save
+
+
+def apply(words, text):
+    return compile_words(words)(text)
+
 
 S = "\u02c8"  # IPA primary stress, which espeak writes before the stressed vowel
 
@@ -99,3 +104,28 @@ def test_ascii_lookalikes_become_the_ipa_symbols_kokoro_knows():
 def test_marks_in_a_reply_are_not_taken_for_phonemes():
     assert apply({}, "math ⟦x⟧") == "math x"
     assert apply({"techne": f"/t{S}exni/"}, "⟦x⟧ techne") == f"x ⟦t{S}exni⟧"
+
+
+def test_a_file_replaced_within_one_timestamp_is_reread(tmp_path):
+    path = tmp_path / "p.json"
+    path.write_text('{"keryx": "kerr ix"}')
+    stamp = path.stat().st_mtime_ns
+    lex = Lexicon(path)
+    assert lex("keryx") == "kerr ix"
+    # An editor that saves through a new file: same size and time, another inode.
+    other = tmp_path / "new.json"
+    other.write_text('{"keryx": "karr ix"}')
+    os.utime(other, ns=(stamp, stamp))
+    other.replace(path)
+    assert lex("keryx") == "karr ix"
+
+
+def test_a_file_edited_in_place_within_one_timestamp_is_reread(tmp_path):
+    path = tmp_path / "p.json"
+    path.write_text('{"keryx": "kerr ix"}')
+    stamp = path.stat().st_mtime_ns
+    lex = Lexicon(path)
+    assert lex("keryx") == "kerr ix"
+    path.write_text('{"keryx": "kerr icks"}')
+    os.utime(path, ns=(stamp, stamp))
+    assert lex("keryx") == "kerr icks"
