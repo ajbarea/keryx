@@ -62,9 +62,10 @@ def configure_logging(to_terminal: bool) -> None:
     else:
         log_path().parent.mkdir(parents=True, exist_ok=True)
         handler = PrivateRotatingFileHandler(log_path(), maxBytes=LOG_BYTES, backupCount=1)
+    # The phonemizer warns on every sentence it cannot place a stress mark in. Its own level
+    # cannot be set: importing it, which happens when Kokoro loads, resets it to WARNING.
+    handler.addFilter(lambda record: record.name != "phonemizer" or record.levelno >= logging.ERROR)
     logging.basicConfig(level=logging.INFO, format=format_, handlers=[handler], force=True)
-    # The phonemizer warns on every sentence it cannot place a stress mark in.
-    logging.getLogger("phonemizer").setLevel(logging.ERROR)
 
     def thread_failed(args: threading.ExceptHookArgs) -> None:
         log.error("thread %s failed", args.thread and args.thread.name, exc_info=args.exc_value)
