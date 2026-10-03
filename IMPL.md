@@ -1,10 +1,15 @@
 # IMPL
 
-## Current: replay, pronunciations, loudness
+## Current: closed-loop playback, phoneme pronunciations
 
-`loudness.py` levels each sentence to -16 LUFS with a peak limiter; `pronounce.py` rewrites
-listed words before synthesis; `bin/keryx-replay` is a synchronous prompt hook that answers
-"say that again" from the speaker's per-terminal last line. Version 0.4.0.
+`player.py` plays each WAV through MCI in the long-lived PowerShell loop and asks `mode` near
+the clip's end until it stops, so a late start no longer cuts the pause between sentences.
+`pronounce.py` passes a `/phonemes/` saying to `voice.py` between ⟦ ⟧ marks, and
+`voice.splice` phonemizes the sentence around it for Kokoro. Version 0.5.0.
+
+Next: the code review's remaining findings (one venv shared by every plugin version, CPU
+fallback when cuDNN is missing, config coercion and crash-on-bad-file, replay edge cases,
+uncapped loudness gain, log rotation).
 
 ## Install state
 

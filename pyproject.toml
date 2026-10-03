@@ -1,6 +1,6 @@
 [project]
 name = "keryx"
-version = "0.4.0"
+version = "0.5.0"
 description = "Gives Claude Code a voice: speaks a one- or two-sentence gist of each reply"
 readme = "README.md"
 authors = [
@@ -45,6 +45,11 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# IPA test data is full of letters that look like ASCII ones.
+"tests/test_pronounce.py" = ["RUF001"]
+"tests/test_voice_splice.py" = ["RUF001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

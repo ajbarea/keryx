@@ -6,7 +6,7 @@ keryx on | off         turn speech on or off
 keryx status           show settings and whether the daemon is up
 keryx say TEXT         speak TEXT as given
 keryx again            say this terminal's last line again
-keryx pronounce [WORD [SAYING]]   list, forget (WORD only) or set how to say WORD
+keryx pronounce [WORD [SAYING]]   list, forget (WORD only) or set how to say WORD; /ipa/ = phonemes
 keryx voices [N]       say a line in each of the first N voices in the catalogue
 keryx stop             cut off current speech
 keryx daemon           run the speech daemon in the foreground
@@ -174,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
             pronounce.save(words)
             print(f"forgot {saved}")
             return 0
+        ipa = pronounce.phonemes(saying)
+        unknown = pronounce.unknown_phonemes(ipa) if ipa else ""
+        if unknown:
+            print(f"Kokoro has no sound for {' '.join(unknown)}; not saved", file=sys.stderr)
+            return 1
         if saved is not None:
             del words[saved]  # one entry per word, whatever its case
         words[word] = saying

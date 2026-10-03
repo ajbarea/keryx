@@ -1,7 +1,10 @@
 """How to say words Kokoro gets wrong, such as repo names: `ajsoftworks` as `AJ soft works`.
 
 Kept in `$XDG_CONFIG_HOME/keryx/pronounce.json` as `{"word": "how to say it"}`, matched as a
-whole word without regard to case, and reread whenever the file changes.
+whole word without regard to case, and reread whenever the file changes. A saying written
+between slashes is phonemes, for sounds no English spelling reaches: `techne` as `/texni/`
+(stress marks go before the stressed vowel, as espeak writes them).
+Phonemes reach the voice between `PHONEMES_OPEN` and `PHONEMES_CLOSE`.
 """
 
 from __future__ import annotations
@@ -13,6 +16,37 @@ from collections.abc import Callable
 from pathlib import Path
 
 from keryx.config import config_dir
+
+PHONEMES_OPEN, PHONEMES_CLOSE = "\u27e6", "\u27e7"  # ⟦ ⟧; any in a reply are removed first
+_SLASHED = re.compile(r"/([^/]+)/")
+
+
+# ASCII look-alikes Kokoro has no token for and would drop silently: g for IPA's script g
+# (U+0261), ' for the stress mark. Commas and colons are Kokoro's pauses, kept as written.
+_LOOKALIKES = str.maketrans({"g": "\u0261", "'": "\u02c8"})
+
+
+def phonemes(saying: str) -> str | None:
+    """The phonemes in a saying written as `/.../`, else None (also when empty)."""
+    m = _SLASHED.fullmatch(saying.strip())
+    ipa = m.group(1).strip().translate(_LOOKALIKES) if m else ""
+    return ipa or None
+
+
+def unknown_phonemes(ipa: str) -> str:
+    """The symbols in `ipa` Kokoro has no token for; empty when it cannot tell."""
+    try:
+        from kokoro_onnx.tokenizer import Tokenizer
+    except ImportError:
+        return ""
+    vocab = Tokenizer().vocab
+    return "".join(sorted({ch for ch in ipa if ch not in vocab and not ch.isspace()}))
+
+
+def spoken(saying: str) -> str:
+    """What replaces the word in the text handed to the voice."""
+    ipa = phonemes(saying)
+    return saying if ipa is None else f"{PHONEMES_OPEN}{ipa}{PHONEMES_CLOSE}"
 
 
 def lexicon_path() -> Path:
@@ -55,14 +89,19 @@ def compile_words(words: dict[str, str]) -> Callable[[str], str]:
     """A rewriter for `words`, longest first. Each word is its own named group, so the
     replacement is found by group, not by mapping the matched text's case back to a key."""
     if not words:
-        return lambda text: text
+        return unmarked
     ordered = sorted(words, key=len, reverse=True)
-    says = {f"w{i}": words[w] for i, w in enumerate(ordered)}
+    says = {f"w{i}": spoken(words[w]) for i, w in enumerate(ordered)}
     pattern = re.compile(
         "|".join(rf"(?P<w{i}>(?<!\w){re.escape(w)}(?!\w))" for i, w in enumerate(ordered)),
         re.IGNORECASE,
     )
-    return lambda text: pattern.sub(lambda m: says[m.lastgroup or ""], text)
+    # Marks that came from the reply itself are dropped, so only the lexicon makes phonemes.
+    return lambda text: pattern.sub(lambda m: says[m.lastgroup or ""], unmarked(text))
+
+
+def unmarked(text: str) -> str:
+    return text.replace(PHONEMES_OPEN, "").replace(PHONEMES_CLOSE, "")
 
 
 def apply(words: dict[str, str], text: str) -> str:

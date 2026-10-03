@@ -378,3 +378,14 @@ def test_the_loudness_default_matches_the_leveler():
     from keryx.loudness import TARGET_LUFS
 
     assert Config().loudness == TARGET_LUFS
+
+
+def test_pronounce_refuses_phonemes_kokoro_cannot_voice(monkeypatch, capsys):
+    from keryx.pronounce import load
+
+    monkeypatch.setattr(cli.client, "send", lambda request: {"ok": True})
+    assert cli.main(["pronounce", "zz", "/t€x/"]) == 1
+    assert "no sound for €" in capsys.readouterr().err
+    assert "zz" not in load()
+    assert cli.main(["pronounce", "techne", "/t\u02c8exni/"]) == 0
+    assert load()["techne"] == "/t\u02c8exni/"

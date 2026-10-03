@@ -3,6 +3,8 @@ import time
 
 from keryx.pronounce import Lexicon, apply, load, save
 
+S = "\u02c8"  # IPA primary stress, which espeak writes before the stressed vowel
+
 
 def test_whole_words_are_replaced_without_regard_to_case():
     words = {"ajsoftworks": "AJ soft works"}
@@ -69,3 +71,31 @@ def test_unreadable_files_raise_only_when_strict(tmp_path):
     assert load(path) == {}
     with pytest.raises(ValueError, match="fix or remove"):
         load(path, strict=True)
+
+
+def test_a_slashed_saying_reaches_the_voice_as_marked_phonemes():
+    words = {"techne": f"/t{S}exni/", "ajsoftworks": "AJ soft works"}
+    assert apply(words, "techne, by ajsoftworks.") == f"⟦t{S}exni⟧, by AJ soft works."
+
+
+def test_only_a_whole_slashed_saying_is_phonemes():
+    from keryx.pronounce import phonemes
+
+    assert phonemes(f" /t{S}exni/ ") == f"t{S}exni"
+    assert phonemes("a/b/c") is None
+    assert phonemes("TEK nee") is None
+    assert phonemes("//") is None
+
+
+def test_ascii_lookalikes_become_the_ipa_symbols_kokoro_knows():
+    from keryx.pronounce import phonemes
+
+    assert phonemes("/gɹiːk/") == "\u0261ɹiːk"
+    assert phonemes("/k'ɛɹɪks/") == f"k{S}ɛɹɪks"
+    assert phonemes("/ /") is None
+    assert phonemes("/eɪ, dʒeɪ:/") == "eɪ, dʒeɪ:"  # Kokoro's pauses stay
+
+
+def test_marks_in_a_reply_are_not_taken_for_phonemes():
+    assert apply({}, "math ⟦x⟧") == "math x"
+    assert apply({"techne": f"/t{S}exni/"}, "⟦x⟧ techne") == f"x ⟦t{S}exni⟧"

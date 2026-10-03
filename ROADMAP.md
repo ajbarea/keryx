@@ -11,6 +11,8 @@ Last reviewed: 2026-10-02.
 
 ## Completed
 
+- 2026-10-03: sentences no longer run together: playback goes through MCI and waits for
+  each clip to stop; pronunciations take phonemes (`/tˈexni/`) for sounds English cannot spell.
 - 2026-10-02: "say that again", pronunciations, and speech leveled to -16 LUFS.
 - 2026-10-02: duck Spotify (or any listed app) while speaking, crash-safe.
 - 2026-10-02: a distinct voice per terminal, kept per repo; blends past the stock voices.
