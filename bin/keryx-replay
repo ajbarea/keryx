@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Synchronous UserPromptSubmit hook. Every prompt waits on it, so it screens in the shell
+# and starts Python only for a short prompt that could be "say that again".
+set -euo pipefail
+input="$(cat)"
+# The words are keryx.hook.SCREEN_WORDS; a test keeps the two lists equal.
+words='again|more|repeat|pardon|catch|hear|what did you'
+pattern='"prompt"[[:space:]]*:[[:space:]]*"[^"]{0,60}('"$words"')[^"]{0,20}"'
+grep -qiE "$pattern" <<<"$input" || exit 0
+exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/keryx" replay-hook <<<"$input"

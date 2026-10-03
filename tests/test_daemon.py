@@ -27,6 +27,10 @@ class FakeSpeaker:
     def knows(self, spec):
         return spec.names != ("zz_nope",)
 
+    def again(self, holder):
+        self.replays = [*getattr(self, "replays", []), holder]
+        return holder == "9:1"
+
     def close(self, timeout=5.0):
         self.closed = True
 
@@ -316,3 +320,21 @@ def test_a_reply_with_no_prompt_history_is_spoken():
     sp = FakeSpeaker()
     handle({"op": "say", "text": "Hi.", "session": "new", "prompt": "p7"}, sp, None, {})
     assert len(sp.submitted) == 1
+
+
+def test_again_replays_the_terminals_last_line():
+    sp = FakeSpeaker()
+    assert handle({"op": "again", "terminal": "9:1", "session": "s"}, sp) == {
+        "ok": True,
+        "replayed": True,
+    }
+    assert handle({"op": "again", "session": "s"}, sp)["replayed"] is False
+    assert sp.replays == ["9:1", "s"]
+
+
+def test_a_stop_that_does_not_interrupt_still_records_the_prompt():
+    sp = FakeSpeaker()
+    latest = {}
+    handle({"op": "stop", "session": "s", "prompt": "p2", "interrupt": False}, sp, None, latest)
+    assert sp.stopped == []
+    assert latest == {"s": "p2"}

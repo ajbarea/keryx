@@ -187,3 +187,61 @@ def test_silent_events_do_not_walk_the_process_tree(monkeypatch):
     assert request_for({"hook_event_name": "SubagentStop"}, "cli") is None
     event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "/keryx:off"}
     assert request_for(event, "cli") is None
+
+
+REPLAY_PHRASES = [
+    "say that again",
+    "Say that again.",
+    "sorry, say that again please",
+    "can you repeat that?",
+    "Repeat yourself",
+    "come again?",
+    "What did you just say?",
+    "I didn't catch that",
+    "I didn\u2019t hear you",
+    "pardon?",
+    "  hey claude, say it once more  ",
+    "say that once more",
+]
+
+
+@pytest.mark.parametrize("prompt", REPLAY_PHRASES)
+def test_replay_requests_are_recognized(prompt):
+    from keryx.hook import is_replay
+
+    assert is_replay(prompt)
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "say that again in Spanish",
+        "repeat that test run",
+        "why did you say that?",
+        "fix the again function",
+        "say that again but shorter",
+        "",
+    ],
+)
+def test_anything_more_goes_to_claude(prompt):
+    from keryx.hook import is_replay
+
+    assert not is_replay(prompt)
+
+
+def test_a_replay_request_is_recorded_without_stopping_the_speech_it_asks_for():
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "say that again"}
+    request = request_for(event, "cli")
+    assert request is not None and request["interrupt"] is False
+
+
+def test_an_ordinary_prompt_interrupts():
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "fix it"}
+    request = request_for(event, "cli")
+    assert request is not None and "interrupt" not in request
+
+
+def test_a_curly_apostrophe_is_still_a_replay_request():
+    from keryx.hook import is_replay
+
+    assert is_replay("I didn\u2019t catch that")

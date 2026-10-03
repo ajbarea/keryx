@@ -8,6 +8,7 @@ session on the machine, so sessions never talk over each other.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import logging
 import queue
@@ -31,6 +32,7 @@ RING = 8  # WAV slots; more than can be queued for playback at once
 PLAY_AHEAD = 2
 # Other apps come back up after this much quiet, so the music does not pump between lines.
 UNDUCK_AFTER = 1.0
+LAST_LINES = 64  # holders whose last line can be said again
 
 
 class Voice(Protocol):
@@ -47,6 +49,7 @@ class SpeechQueue(Protocol):
     def stop(self, session: str | None = None) -> None: ...
     def claim(self, holder: str, source: str) -> None: ...
     def knows(self, spec: VoiceSpec) -> bool: ...
+    def again(self, holder: str) -> bool: ...
     def close(self, timeout: float = 5.0) -> None: ...
     def idle(self) -> bool: ...
 
@@ -73,10 +76,14 @@ class Speaker:
         player: Player,
         audio_dir: Path,
         voices: Voices | None = None,
+        pronounce: Callable[[str], str] | None = None,
     ):
-        """`voices` picks each session's voice; None speaks everything in the default."""
+        """`voices` picks each session's voice; None speaks everything in the default.
+        `pronounce` rewrites each sentence just before synthesis."""
         self._shorten = shorten
         self._voices = voices
+        self._pronounce = pronounce or (lambda text: text)
+        self._last: dict[str, Utterance] = {}  # holder -> its last line, to say again
         self._voice = voice
         self._player = player
         self._audio_dir = audio_dir
@@ -120,9 +127,12 @@ class Speaker:
 
     def stop(self, session: str | None = None) -> None:
         """Cancel queued and playing speech, for one session or (None) all of them."""
+        self._cancel(lambda u: session is None or u.session == session)
+
+    def _cancel(self, doomed: Callable[[Utterance], bool]) -> None:
         with self._cond:
             for utt in self._active:
-                if session is None or utt.session == session:
+                if doomed(utt):
                     utt.cancelled.set()
             waiting = self._to_shorten + self._pending
             dropped = [u for u in waiting if u.cancelled.is_set()]
@@ -184,14 +194,47 @@ class Speaker:
                 utt.announced = True
         return line
 
+    def again(self, holder: str) -> bool:
+        """Say `holder`'s last line again in the same voice (anyone's, without a holder)."""
+        with self._cond:
+            last = self._last.get(holder) if holder else None
+            if last is None and not holder and self._last:
+                last = next(reversed(self._last.values()))
+        if last is None or not last.line:
+            return False
+        # Cut off what that session is saying now, so the replay is not heard after it; a
+        # reply still with the summarizer (no line yet) is kept.
+        session = last.session
+        self._cancel(lambda u: u.session == session and (u.kind != "reply" or u.line is not None))
+        self.submit(dataclasses.replace(last, cancelled=threading.Event()))
+        return True
+
+    def _remember(self, utt: Utterance, line: str) -> None:
+        if not line:
+            return
+        with self._cond:
+            key = holder(utt.terminal, utt.session)
+            self._last.pop(key, None)  # re-insert so the newest comes last
+            self._last[key] = Utterance(
+                text=line,
+                kind="notice",
+                session=utt.session,
+                terminal=utt.terminal,
+                voice=utt.voice,
+                line=line,
+            )
+            while len(self._last) > LAST_LINES:
+                self._last.pop(next(iter(self._last)))
+
     def _synth_loop(self) -> None:
         while (utt := self._next(self._pending, synth=True)) is not None:
             try:
                 line = "" if utt.cancelled.is_set() else self._line(utt)
+                self._remember(utt, line)
                 for sentence in split_sentences(line):
                     if utt.cancelled.is_set():
                         break
-                    samples, rate = self._voice.synth(sentence, utt.voice)
+                    samples, rate = self._voice.synth(self._pronounce(sentence), utt.voice)
                     wav = self._audio_dir / slot_name(next(self._slots))
                     seconds = write_wav(wav, samples, rate)
                     self.spoken.append(sentence)

@@ -2,9 +2,10 @@
 
 Requests are one JSON object per connection, answered with one JSON line:
 `{"op": "say", "text", "kind", "session", "prompt", "terminal", "source", "voice"}`,
-`{"op": "stop", "session", "prompt", "terminal", "source", "warm"}`,
+`{"op": "stop", "session", "prompt", "terminal", "source", "warm", "interrupt"}`,
 `{"op": "warm", "version", "session", "terminal", "source"}`, `{"op": "ping"}`,
-`{"op": "quit"}`. `warm` and `ping` answer with the daemon's version.
+`{"op": "again", "terminal", "session"}`, `{"op": "quit"}`. `warm` and `ping` answer with
+the daemon's version; `again` answers whether there was a line to say again.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from keryx import older, version
 from keryx.client import read_all
 from keryx.config import Config, cache_dir, socket_path
 from keryx.player import WindowsPlayer
+from keryx.pronounce import Lexicon
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.summarize import OllamaClient, spoken_line
 from keryx.voice import KokoroVoice
@@ -53,7 +55,8 @@ def handle(
     if op == "stop":
         if request.get("session") and request.get("prompt"):
             latest[request["session"]] = request["prompt"]
-        speaker.stop(request.get("session") or None)
+        if request.get("interrupt", True):
+            speaker.stop(request.get("session") or None)
         claim(request, speaker)
         # A prompt was just sent, so a reply is coming: load the summarizer meanwhile.
         if request.get("warm"):
@@ -69,6 +72,9 @@ def handle(
         claim(request, speaker)
         start_warming(warm)
         return {"ok": True, "version": VERSION}
+    if op == "again":
+        who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
+        return {"ok": True, "replayed": speaker.again(who)}
     if op == "say":
         text = str(request.get("text") or "")
         if not text.strip():
@@ -146,9 +152,9 @@ def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], Non
         duck_apps=tuple(cfg.duck_apps),
         duck_ratio=cfg.duck_ratio,
     )
-    voice = KokoroVoice(cfg.voice, cfg.speed)
+    voice = KokoroVoice(cfg.voice, cfg.speed, cfg.loudness)
     book = VoiceBook(cache_dir() / "voices.json", cfg.voice) if cfg.distinct_voices else None
-    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book)
+    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book, Lexicon())
     return speaker, player, warm if client else None
 
 

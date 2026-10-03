@@ -103,6 +103,39 @@ PowerShell's `System.Media.SoundPlayer` plays reliably. A fresh `powershell.exe`
 clip, each play adds about 6 ms. The WAV must sit on a Windows drive: loading from a
 `\\wsl.localhost` path took 10 to 12 s and logged vsock errors.
 
+## Loudness
+
+Kokoro's sentences measured -19.1 to -23.2 LUFS across the first four voices (2026-10-02),
+so speech sat under music that Spotify plays at about -14 LUFS and one voice sounded louder
+than the next. Each sentence is now brought to -16 LUFS (ITU-R BS.1770 through pyloudnorm
+0.2.0), in the -16 to -18 LUFS range used for speech, and a lookahead limiter keeps its
+sample peaks under -1.5 dBFS, half a dB inside the usual -1 dBTP true-peak limit. Measured on
+the same sentences afterwards: -16.0 to -16.9 LUFS with peaks at or below -1.5 dBFS. Against
+Spotify ducked to a quarter (about -26 LUFS) that puts speech about 10 LU above the music.
+A clip shorter than BS.1770's 0.4 s gating block is padded with silence to measure it, and
+the reading is raised by 10 log10(block / length) to undo the padding's dilution: without
+that, a 0.2 s tone read 3 dB quieter than the same tone at 1 s and came out 3 dB too loud.
+
+## Saying it again, and pronunciations
+
+"Say that again" is caught before it reaches Claude, by the one synchronous hook: every prompt
+waits on it, so a shell screen turns away anything that is not a short prompt naming "again",
+"repeat", "pardon", "catch", "hear" or "what did you", measured at 8 ms, and only then starts
+Python, 0.17 s for a real replay. Python matches the whole prompt against a strict pattern,
+so "say that again in Spanish" still goes to Claude, then asks the daemon to say the
+terminal's last line again in the same voice and blocks the prompt. With nothing to replay
+(no daemon, or nothing said yet) the prompt goes to Claude, which can answer it itself. The
+asynchronous prompt hook still records these prompts, so Claude's answer is not dropped as
+stale, but without stopping speech, which would cut the replay off. A replay cuts off what
+that session is saying now and keeps a reply still with the summarizer. `keryx again` from a
+shell outside Claude Code has no terminal to look up and says the newest line.
+
+Pronunciations live in `~/.config/keryx/pronounce.json` and replace whole words, without
+regard to case and longest first, in each sentence just before synthesis, so repo names in
+announcements are covered too. The daemon rereads the file when it changes. The
+`/keryx:pronounce` skill is the one Claude may invoke on its own, so "ajsoftworks should
+sound like AJ soft works" works in plain words.
+
 ## Ducking
 
 While keryx speaks, other apps (Spotify by default) drop to a quarter of their volume, then

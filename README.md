@@ -51,6 +51,13 @@ speaking in about 1 to 2 seconds.
 | `/keryx:off` | Stops speech, shuts the daemon down and unloads the summarizer, freeing about 4.4 GB of VRAM |
 | `/keryx:on` | Turns speech back on; the next prompt starts the daemon |
 | `/keryx:status` | Shows the settings and whether the daemon is running |
+| `/keryx:again` | Says this terminal's last line again |
+| `/keryx:pronounce` | Teaches keryx how to say a word; Claude also uses it when you say "X should sound like Y" |
+
+Typing or dictating "say that again" (or "come again?", "I didn't catch that") replays the
+last line without sending the prompt to Claude. `keryx pronounce ajsoftworks AJ soft works`
+sets a pronunciation from the shell, `keryx pronounce` lists them, and `keryx pronounce WORD`
+forgets one; they are kept in `~/.config/keryx/pronounce.json`.
 
 Each terminal speaks in its own voice, through `/clear` and resume too. A repo keeps its
 voice across terminals and restarts, a second terminal in the same repo gets another, and
@@ -73,6 +80,7 @@ large model loaded beside keryx can end up partly on the CPU.
 | `voice` | `af_heart` | Any [Kokoro voice](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md); the first voice handed out |
 | `distinct_voices` | `true` | Give each terminal its own voice; `false` speaks every terminal in `voice` |
 | `speed` | `1.0` | Speaking rate |
+| `loudness` | `-16.0` | Loudness (LUFS) every sentence is brought to before it plays |
 | `model` | `gemma3:4b` | Ollama model that shortens replies; empty to speak the opening sentences instead |
 | `ollama_host` | `http://localhost:11434` | Ollama server |
 | `duck_apps` | `["Spotify"]` | Windows process names turned down while keryx speaks; `[]` for none |

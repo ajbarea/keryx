@@ -421,3 +421,90 @@ def test_closing_while_ducked_brings_the_music_back(tmp_path):
     wait_idle(sp)
     sp.close()
     assert player.events == ["duck", "unduck"]
+
+
+def test_again_says_a_holders_last_line_in_the_same_voice(tmp_path):
+    voice = FakeVoice()
+    picked = {"9:1": VoiceSpec(("bm_george",)), "8:1": VoiceSpec(("af_heart",))}
+    sp = Speaker(lambda t: "The gist.", voice, FakePlayer(), tmp_path, FakeVoices(picked))
+    sp.submit(Utterance("a long reply", session="s", terminal="9:1"))
+    sp.submit(Utterance("Other.", kind="notice", session="t", terminal="8:1"))
+    wait_idle(sp)
+    assert sp.again("9:1") is True
+    wait_idle(sp)
+    assert list(sp.spoken)[-1] == "The gist."
+    assert voice.voices[-1] == picked["9:1"]
+    sp.close()
+
+
+def test_again_with_nothing_said_yet_reports_it(make):
+    sp = make()
+    assert sp.again("9:1") is False
+    assert sp.again("") is False
+
+
+def test_again_without_a_holder_says_the_latest_line(make):
+    sp = make()
+    sp.submit(Utterance("First.", kind="notice", session="a"))
+    wait_idle(sp)
+    sp.submit(Utterance("Second.", kind="notice", session="b"))
+    wait_idle(sp)
+    assert sp.again("") is True
+    wait_idle(sp)
+    assert list(sp.spoken)[-1] == "Second."
+
+
+def test_again_keeps_the_repo_announcement(make):
+    sp = make()
+    sp.submit(Utterance("Done.", kind="notice", session="a", source="ariadne"))
+    wait_idle(sp)
+    sp.again("a")
+    wait_idle(sp)
+    assert list(sp.spoken)[-2:] == ["ariadne: Done.", "ariadne: Done."]
+
+
+def test_pronunciations_change_what_is_synthesized_not_what_is_logged(tmp_path):
+    said = []
+
+    class Ears(FakeVoice):
+        def synth(self, text, voice=None):
+            said.append(text)
+            return super().synth(text, voice)
+
+    sp = Speaker(lambda t: t, Ears(), FakePlayer(), tmp_path, pronounce=str.upper)
+    sp.submit(Utterance("ajsoftworks is done.", kind="notice"))
+    wait_idle(sp)
+    assert said == ["AJSOFTWORKS IS DONE."]
+    assert list(sp.spoken) == ["ajsoftworks is done."]
+    sp.close()
+
+
+def test_again_cuts_off_the_line_it_repeats(tmp_path):
+    player = FakePlayer(hold=True)
+    sp = Speaker(lambda t: t, FakeVoice(), player, tmp_path)
+    sp.submit(Utterance("One. Two. Three.", kind="notice", session="s"))
+    assert player.started.wait(2)
+    assert sp.again("s") is True
+    player.release.set()
+    wait_idle(sp)
+    # "One." was cut off, then the whole line played again; "Two." and "Three." never twice.
+    assert player.played.count("keryx-0.wav") == 1
+    assert list(sp.spoken)[-3:] == ["One.", "Two.", "Three."]
+
+
+def test_again_keeps_a_new_reply_still_with_the_summarizer(tmp_path):
+    loaded = threading.Event()
+
+    def slow(text):
+        loaded.wait(5)
+        return "New gist."
+
+    sp = Speaker(slow, FakeVoice(), FakePlayer(), tmp_path)
+    sp.submit(Utterance("Old line.", kind="notice", session="s"))
+    wait_idle(sp)
+    sp.submit(Utterance("a new reply", session="s"))
+    assert sp.again("s") is True
+    loaded.set()
+    wait_idle(sp)
+    assert list(sp.spoken)[-2:] == ["Old line.", "New gist."]
+    sp.close()
