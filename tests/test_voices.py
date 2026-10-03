@@ -397,6 +397,11 @@ def test_saves_resume_after_the_clock_jumps_back(tmp_path):
     assert '"seen": 100' in path.read_text()
 
 
+class NotImplementedInOrt(Exception):
+    """What onnxruntime raises when the CUDA provider cannot start: a plain Exception, which
+    its own fallback does not catch."""
+
+
 class FakeOrt:
     """Stands in for onnxruntime: CUDA is listed but cannot start unless `cuda_works`."""
 
@@ -420,7 +425,7 @@ class FakeOrt:
     def InferenceSession(self, path, options, providers):
         self.started.append(providers)
         if "CUDAExecutionProvider" in providers and not self.cuda_works:
-            raise RuntimeError("Failed to load libcudnn")
+            raise NotImplementedInOrt("Failed to load libcudnn")
         return providers
 
 

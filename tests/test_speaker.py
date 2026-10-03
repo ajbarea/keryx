@@ -569,3 +569,15 @@ def test_stop_reaches_what_a_terminal_left_speaking_under_an_old_session(make):
     player.release.set()
     wait_idle(sp)
     assert player.played == ["keryx-0.wav", "keryx-1.wav"]  # Old. was cut; Elsewhere. played
+
+
+def test_a_replayed_line_keeps_its_repo_when_the_name_was_not_said_the_first_time(make):
+    sp = make()
+    sp.submit(Utterance("One.", kind="notice", session="a", source="ariadne"))
+    sp.submit(Utterance("Two.", kind="notice", session="b", source="ariadne"))
+    wait_idle(sp)  # Two. was not announced: ariadne had just been named
+    sp.submit(Utterance("Other.", kind="notice", session="c", source="pharos"))
+    wait_idle(sp)
+    sp.again("b")
+    wait_idle(sp)
+    assert list(sp.spoken)[-2:] == ["ariadne:", "Two."]

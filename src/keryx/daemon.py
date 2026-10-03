@@ -66,15 +66,24 @@ def configure_logging(to_terminal: bool) -> None:
     # The phonemizer warns on every sentence it cannot place a stress mark in.
     logging.getLogger("phonemizer").setLevel(logging.ERROR)
 
+    def thread_failed(args: threading.ExceptHookArgs) -> None:
+        log.error("thread %s failed", args.thread and args.thread.name, exc_info=args.exc_value)
+
+    threading.excepthook = thread_failed
+
 
 def handle(
     request: dict,
     speaker: SpeechQueue,
     warm: Callable[[], None] | None = None,
     latest_prompt: dict[str, str] | None = None,
+    provisional: dict[str, str] | None = None,
 ) -> dict:
-    """`latest_prompt` maps session to its newest prompt id, to drop replies that lost a race."""
+    """`latest_prompt` maps session to its newest prompt id, to drop replies that lost a race.
+    `provisional` holds a replay prompt's id until a replay (it was no turn) or a reply to it
+    (it was) settles which."""
     latest = latest_prompt if latest_prompt is not None else {}
+    maybe = provisional if provisional is not None else {}
     op = request.get("op")
     if op == "ping":
         return {"ok": True, "pid": os.getpid(), "version": VERSION}
@@ -83,7 +92,10 @@ def handle(
         return {"ok": True, "quit": True}
     if op == "stop":
         if request.get("session") and request.get("prompt"):
-            latest[request["session"]] = request["prompt"]
+            held = maybe if request.get("provisional") else latest
+            held[request["session"]] = request["prompt"]
+            if held is latest:
+                maybe.pop(request["session"], None)
         if request.get("interrupt", True):
             speaker.stop(request.get("session") or None, str(request.get("terminal") or ""))
         claim(request, speaker)
@@ -103,7 +115,10 @@ def handle(
         return {"ok": True, "version": VERSION}
     if op == "again":
         who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
-        return {"ok": True, "replayed": speaker.again(who)}
+        replayed = speaker.again(who)
+        if replayed:
+            maybe.pop(str(request.get("session") or ""), None)
+        return {"ok": True, "replayed": replayed}
     if op == "say":
         text = str(request.get("text") or "")
         if not text.strip():
@@ -111,6 +126,8 @@ def handle(
         # Hooks are async: a reply's hook can land after the next prompt's. That reply is
         # stale and would talk over the new turn.
         session, prompt = request.get("session"), request.get("prompt")
+        if session and prompt and maybe.get(session) == prompt:
+            latest[session] = maybe.pop(session)
         if session and prompt and latest.get(session, prompt) != prompt:
             return {"ok": True, "dropped": "stale"}
         try:
@@ -241,6 +258,7 @@ def _serve_locked(
     log.info("listening on %s (voice=%s, model=%s)", sock_path, cfg.voice, cfg.model)
     last_activity = time.monotonic()
     latest_prompt: dict[str, str] = {}
+    provisional: dict[str, str] = {}
     try:
         while True:
             try:
@@ -257,7 +275,7 @@ def _serve_locked(
                 try:
                     request = json.loads(read_all(conn))
                     reply = (
-                        handle(request, speaker, warm, latest_prompt)
+                        handle(request, speaker, warm, latest_prompt, provisional)
                         if isinstance(request, dict)
                         else {"ok": False}
                     )

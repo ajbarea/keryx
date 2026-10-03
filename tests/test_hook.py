@@ -237,11 +237,11 @@ def test_a_replay_request_holds_back_what_only_a_real_turn_needs():
         "prompt": "say that again",
     }
     request = request_for(event, "cli")
-    # No prompt id: an answered replay starts no turn, so the earlier reply is not stale.
-    # No warm: nothing is coming for the summarizer.
+    # The prompt is provisional: an answered replay starts no turn, so the daemon must be
+    # able to discard it. No warm: nothing is coming for the summarizer.
     assert request is not None
-    assert request["interrupt"] is False
-    assert "prompt" not in request and "warm" not in request
+    assert request["interrupt"] is False and request["provisional"] is True
+    assert request["prompt"] == "p2" and "warm" not in request
 
 
 def test_a_replay_phrase_in_user_input_is_held_back_too():

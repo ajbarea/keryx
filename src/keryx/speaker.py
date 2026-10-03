@@ -204,7 +204,7 @@ class Speaker:
             return False
         # Cut off what that session is saying now, so the replay is not heard after it.
         # Speech not yet started, such as a reply new from the summarizer, was never heard
-        # and follows the replay.
+        # and plays before the replay, which queues behind it.
         self._cancel(lambda u: u.started and _owned(u, last.session, last.terminal))
         self.submit(dataclasses.replace(last, cancelled=threading.Event()))
         return True
@@ -221,7 +221,7 @@ class Speaker:
                 kind="notice",
                 session=utt.session,
                 terminal=utt.terminal,
-                source=utt.source if utt.announced else "",
+                source=utt.source,
                 always_announce=utt.announced,
                 voice=utt.voice,
                 line=line,

@@ -88,10 +88,20 @@ def set_stored(**changes: object) -> None:
 
     A file that cannot be read as an object is kept as `config.json.bad` first.
     """
-    raw = read_raw()
     path = config_path()
-    if not raw and path.exists() and path.read_bytes().strip() not in (b"", b"{}"):
-        path.replace(path.with_name(path.name + ".bad"))
+    raw: dict = {}
+    try:
+        text = path.read_text()
+        loaded = json.loads(text) if text.strip() else {}
+        if isinstance(loaded, dict):
+            raw = loaded
+        else:
+            raise ValueError("not an object")
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError):
+        with contextlib.suppress(OSError):
+            path.replace(path.with_name(path.name + ".bad"))
     write_raw({**raw, **changes})
 
 

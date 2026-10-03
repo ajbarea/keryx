@@ -90,7 +90,9 @@ large model loaded beside keryx can end up partly on the CPU.
 
 The daemon logs to `~/.cache/keryx/daemon.log`, readable only by you, and keeps one
 older file of about 1 MB. Each plugin version runs in its own venv under `~/.cache/keryx/`;
-one whose checkout has been removed is deleted the next time keryx runs.
+one whose checkout has been removed is deleted the next time keryx runs. The unversioned
+`~/.cache/keryx/venv` from 0.5.0 and earlier is never deleted by keryx; remove it by hand
+once no daemon runs from it.
 `config.json` holds only what you or `keryx on`/`off` set; a file that cannot be read is
 ignored, and `on`/`off` keep it as `config.json.bad`.
 

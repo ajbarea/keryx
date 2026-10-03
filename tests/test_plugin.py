@@ -3,6 +3,8 @@ import os
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -216,3 +218,20 @@ def test_a_venv_whose_checkout_is_removed_is_pruned_and_nothing_else_is(tmp_path
     assert not stale.exists() and not (base / f"{stale.name}.root").exists()
     assert kept.exists() and legacy.exists() and review.exists()
     assert current.parent == base
+
+
+def test_a_venv_that_cannot_be_deleted_does_not_stop_keryx(tmp_path):
+    if os.geteuid() == 0:
+        pytest.skip("root deletes anything")
+    import shutil
+
+    stale, base = run_wrapper(tmp_path, "0.4.0", "old")
+    (stale / "inner").mkdir(parents=True)
+    (stale / "inner" / "f").write_text("x")
+    (stale / "inner").chmod(0o500)  # its files cannot be unlinked
+    shutil.rmtree(tmp_path / "old")
+    try:
+        current, _ = run_wrapper(tmp_path, "0.5.1", "new")  # check=True: must still reach uv
+        assert current.parent == base
+    finally:
+        (stale / "inner").chmod(0o700)

@@ -17,10 +17,11 @@ for record in "$base"/venv-*.root; do
   [ -e "$record" ] || continue
   stale="${record%.root}"
   [ "$stale" = "$base/$name" ] && continue
-  recorded="$(cat "$record")"
+  recorded="$(cat "$record" 2>/dev/null)" || continue
   { [ -z "$recorded" ] || [ -d "$recorded" ]; } && continue
-  [ -L "$stale" ] || rm -rf -- "$stale"
-  rm -f -- "$record"
+  # Best effort: a venv that cannot be deleted must not stop keryx from running.
+  [ -L "$stale" ] || rm -rf -- "$stale" 2>/dev/null || continue
+  rm -f -- "$record" 2>/dev/null || true
 done
 extra=()
 # With an NVIDIA GPU, pull the CUDA runtime wheels so Kokoro runs on it.

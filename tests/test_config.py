@@ -112,3 +112,24 @@ def test_set_stored_keeps_a_file_it_cannot_read_beside_the_new_one():
     set_stored(enabled=False)
     assert json.loads((config_dir() / "config.json").read_text()) == {"enabled": False}
     assert (config_dir() / "config.json.bad").read_text() == "{broken"
+
+
+def test_set_stored_does_not_move_an_empty_object_with_whitespace():
+    config_dir().mkdir(parents=True)
+    (config_dir() / "config.json").write_text("{ \n}\n")
+    set_stored(enabled=False)
+    assert not (config_dir() / "config.json.bad").exists()
+
+
+def test_set_stored_survives_a_file_it_may_not_read():
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads anything")
+    config_dir().mkdir(parents=True)
+    path = config_dir() / "config.json"
+    path.write_text('{"voice": "am_adam"}')
+    path.chmod(0o000)
+    set_stored(enabled=False)
+    assert json.loads(path.read_text()) == {"enabled": False}
+    assert (config_dir() / "config.json.bad").exists()

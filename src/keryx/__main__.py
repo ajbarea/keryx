@@ -199,13 +199,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if cmd == "daemon":
-        from keryx import daemon
+        import faulthandler
 
-        daemon.configure_logging(to_terminal=sys.stderr.isatty())
+        faulthandler.enable()  # a native abort leaves its stack in daemon.stderr
         try:
+            from keryx import daemon
+
+            daemon.configure_logging(to_terminal=sys.stderr.isatty())
             return 0 if daemon.serve(cfg) else client.LOCK_BUSY_EXIT
         except Exception:
-            logging.getLogger("keryx").exception("the daemon failed")  # nobody reads stderr
+            logging.getLogger("keryx").exception("the daemon failed")
             return 1
 
     print(__doc__, file=sys.stderr)

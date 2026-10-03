@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -32,15 +33,26 @@ def send(request: dict, sock_path: Path | None = None, timeout: float = 5.0) -> 
 
 
 def spawn() -> subprocess.Popen:
-    """Start a detached daemon that outlives the hook process; it keeps its own log."""
-    return subprocess.Popen(
-        [sys.executable, "-m", "keryx", "daemon"],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        cwd="/",  # don't pin the session's working directory for hours
-    )
+    """Start a detached daemon that outlives the hook process.
+
+    It logs to `daemon.log` itself. What only a dying process writes to stderr (an import
+    error, a native abort) goes to `daemon.stderr`, private and restarted with each daemon.
+    """
+    err = cache_dir() / "daemon.stderr"
+    err.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(err, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)  # a file from an older version may be wider
+    try:
+        return subprocess.Popen(
+            [sys.executable, "-m", "keryx", "daemon"],
+            stdin=subprocess.DEVNULL,
+            stdout=fd,
+            stderr=fd,
+            start_new_session=True,
+            cwd="/",  # don't pin the session's working directory for hours
+        )
+    finally:
+        os.close(fd)
 
 
 # The daemon's exit status when another daemon holds the lock (EX_TEMPFAIL); that one may

@@ -394,10 +394,58 @@ def test_phonemizer_warnings_stay_out_of_the_log(tmp_path, monkeypatch, clean_lo
     assert "mismatch" not in text and "real failure" in text
 
 
-def test_a_spawned_daemon_does_not_inherit_a_log_file_to_grow(monkeypatch):
+def test_a_spawned_daemon_keeps_what_it_writes_to_stderr_in_a_private_file(tmp_path, monkeypatch):
+    import stat
     import subprocess
 
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    err = tmp_path / "keryx" / "daemon.stderr"
+    err.parent.mkdir(parents=True)
+    err.write_text("from the last daemon\n")
     seen = {}
     monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: seen.update(kw))
     client.spawn()
-    assert seen["stdout"] is subprocess.DEVNULL and seen["stderr"] is subprocess.DEVNULL
+    assert seen["stdout"] == seen["stderr"] and seen["stderr"] != subprocess.DEVNULL
+    assert err.read_text() == "" and stat.S_IMODE(err.stat().st_mode) == 0o600
+
+
+def test_a_thread_that_dies_is_logged(tmp_path, monkeypatch, clean_logging):
+    import threading
+
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    daemon.configure_logging(to_terminal=False)
+
+    def boom():
+        raise RuntimeError("synth thread died")
+
+    t = threading.Thread(target=boom, name="synth")
+    t.start()
+    t.join()
+    assert "synth thread died" in (tmp_path / "keryx" / "daemon.log").read_text()
+
+
+def say(reply_prompt):
+    return {"op": "say", "text": "Done.", "session": "s", "prompt": reply_prompt}
+
+
+def test_a_reply_to_a_provisional_replay_prompt_is_spoken_when_no_replay_happened():
+    sp, latest, maybe = FakeSpeaker(), {}, {}
+    handle({"op": "stop", "session": "s", "prompt": "p1"}, sp, None, latest, maybe)
+    stop = {"op": "stop", "session": "s", "prompt": "p2", "interrupt": False, "provisional": True}
+    handle(stop, sp, None, latest, maybe)  # the replay hook never answered
+    assert handle(say("p2"), sp, None, latest, maybe) == {"ok": True}
+    assert len(sp.submitted) == 1 and latest["s"] == "p2"
+
+
+def test_a_replay_discards_its_provisional_prompt_so_the_earlier_reply_is_kept():
+    sp, latest, maybe = FakeSpeaker(), {}, {}
+    handle(
+        {"op": "stop", "session": "s", "prompt": "p1", "terminal": "9:1"}, sp, None, latest, maybe
+    )
+    stop = {"op": "stop", "session": "s", "prompt": "p2", "interrupt": False, "provisional": True}
+    handle(stop, sp, None, latest, maybe)
+    handle({"op": "again", "session": "s", "terminal": "9:1"}, sp, None, latest, maybe)
+    assert handle(say("p1"), sp, None, latest, maybe) == {"ok": True}
+    assert len(sp.submitted) == 1
