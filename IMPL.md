@@ -21,7 +21,9 @@ users or cache homes, and the ducker's crash recovery relies on a fixed path.
 
 ## Install state
 
-- Installed from the local marketplace (`claude plugin marketplace add ~/ajsoftworks/keryx`).
+- Installed from the `ajsoftworks` marketplace (`ajbarea/ajsoftworks`). To test local
+  changes, add this clone as its own marketplace (`claude plugin marketplace add .`) and
+  install `keryx@keryx`.
 - The plugin cache is keyed by version: after changing code, bump `version` in
   `.claude-plugin/plugin.json` and `pyproject.toml`, or `claude plugin uninstall` then
   `install`, or `claude plugin update` reports "already at the latest version".

@@ -36,8 +36,8 @@ daemon exits.
 ## Install
 
 ```bash
-claude plugin marketplace add ~/ajsoftworks/keryx
-claude plugin install keryx@keryx
+claude plugin marketplace add ajbarea/ajsoftworks
+claude plugin install keryx@ajsoftworks
 ```
 
 Then restart Claude Code. The first prompt after install builds the environment and downloads
