@@ -55,3 +55,9 @@ def test_kokoro_gets_phonemes_only_when_something_is_marked():
     voice.synth("Plain words.")
     voice.synth(f"Say ⟦t{S}exni⟧.")
     assert calls == [("Plain words.", False), (f"<Say> t{S}exni <.>", True)]
+
+
+def test_the_possessive_follows_the_last_sound():
+    from keryx.voice import possessive
+
+    assert (possessive(f"t{S}exni"), possessive("bæʃ"), possessive("pˈaɪtɛst")) == ("z", "ɪz", "s")

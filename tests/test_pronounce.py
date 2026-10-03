@@ -93,6 +93,7 @@ def test_ascii_lookalikes_become_the_ipa_symbols_kokoro_knows():
     assert phonemes("/gɹiːk/") == "\u0261ɹiːk"
     assert phonemes("/k'ɛɹɪks/") == f"k{S}ɛɹɪks"
     assert phonemes("/ /") is None
+    assert phonemes("/eɪ, dʒeɪ:/") == "eɪ, dʒeɪ:"  # Kokoro's pauses stay
 
 
 def test_marks_in_a_reply_are_not_taken_for_phonemes():

@@ -21,8 +21,9 @@ PHONEMES_OPEN, PHONEMES_CLOSE = "\u27e6", "\u27e7"  # ⟦ ⟧; any in a reply ar
 _SLASHED = re.compile(r"/([^/]+)/")
 
 
-# ASCII look-alikes of IPA symbols Kokoro has no token for, which it would drop silently.
-_LOOKALIKES = str.maketrans({"g": "\u0261", "'": "\u02c8", ",": "\u02cc", ":": "\u02d0"})
+# ASCII look-alikes Kokoro has no token for and would drop silently: g for IPA's script g
+# (U+0261), ' for the stress mark. Commas and colons are Kokoro's pauses, kept as written.
+_LOOKALIKES = str.maketrans({"g": "\u0261", "'": "\u02c8"})
 
 
 def phonemes(saying: str) -> str | None:

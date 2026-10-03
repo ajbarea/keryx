@@ -314,3 +314,16 @@ def test_the_loop_answers_every_play_at_once_when_mci_will_not_compile():
     script = WindowsPlayer("x")._cmd[-1]
     assert "catch { $mciError" in script
     assert "'err MCI unavailable: '" in script
+
+
+def test_an_audio_dir_too_long_for_mci_is_reported_at_start(tmp_path, caplog, monkeypatch):
+    monkeypatch.setattr(player_mod, "windows_path", lambda p: "C:\\" + "x" * 130)
+    WindowsPlayer("x", tmp_path)
+    assert "too long for Windows' MCI" in caplog.text
+
+
+def test_the_default_audio_dir_fits_mci():
+    from keryx.config import Config
+
+    default = player_mod.windows_path(Path(Config().audio_dir) / "keryx-0.wav")
+    assert len(default) < player_mod.MCI_PATH_LIMIT

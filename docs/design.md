@@ -109,7 +109,8 @@ Kokoro ends a sentence with only 59 to 127 ms of silence, and through MCI a 5.10
 5.22 s from `play` to stopped, so a late start ate the pause. `PlaySync` on a worker thread
 reports the end but cannot be stopped from another thread. MCI (`mciSendString`) can do
 both, so the loop plays through MCI and the daemon asks `mode` from 0.25 s before a clip's
-end until it reads `stopped`.
+end until it reads `stopped`. MCI refuses a path of 128 characters or more, even as a bare name
+from its folder, so the player warns at start when `audio_dir` is that long.
 
 ## Loudness
 

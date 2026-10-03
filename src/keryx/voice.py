@@ -28,6 +28,16 @@ _SPLICE = re.compile(f"{PHONEMES_OPEN}([^{PHONEMES_CLOSE}]*){PHONEMES_CLOSE}")
 _SPACE_BEFORE_MARK = re.compile(r"\s+([.,!?;:)\]}\u201d\u2019])")
 _SPACE_AFTER_OPEN = re.compile(r"([(\[{\u201c\u2018])\s+")
 _POSSESSIVE = re.compile(r"^['\u2019]s\b")
+_SIBILANTS = ("s", "z", "ʃ", "ʒ", "tʃ", "dʒ")
+_VOICELESS = ("p", "t", "k", "f", "θ", "x", "ç")
+
+
+def possessive(ipa: str) -> str:
+    """The 's ending English gives a word ending in `ipa`: "iz", s or z."""
+    end = ipa.rstrip("ˈˌː")
+    if end.endswith(_SIBILANTS):
+        return "\u026az"  # the vowel of "kit", then z
+    return "s" if end.endswith(_VOICELESS) else "z"
 
 
 def splice(text: str, phonemize) -> str | None:
@@ -37,10 +47,10 @@ def splice(text: str, phonemize) -> str | None:
     if len(parts) == 1:
         return None
     # split() alternates text and captured phonemes: even indexes are text. A possessive
-    # 's after a marked word is said as z, joined to it.
+    # 's after a marked word joins it.
     for i in range(1, len(parts), 2):
         if i + 1 < len(parts) and _POSSESSIVE.match(parts[i + 1]):
-            parts[i] += "z"
+            parts[i] += possessive(parts[i])
             parts[i + 1] = parts[i + 1][2:]
     out = [phonemize(p) if i % 2 == 0 else p for i, p in enumerate(parts) if p.strip()]
     joined = " ".join(o.strip() for o in out)

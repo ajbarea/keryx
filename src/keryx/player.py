@@ -36,18 +36,10 @@ using System.Runtime.InteropServices; using System.Text;
 public static class KeryxMci {
     [DllImport("winmm.dll", CharSet = CharSet.Unicode)]
     static extern int mciSendString(string cmd, StringBuilder ret, int size, System.IntPtr hwnd);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    static extern uint GetShortPathName(string path, StringBuilder shortPath, uint size);
     public static string Send(string command) {
         var ret = new StringBuilder(128);
         int rc = mciSendString(command, ret, ret.Capacity, System.IntPtr.Zero);
         return rc == 0 ? ret.ToString() : "mci error " + rc;
-    }
-    // MCI refuses paths of 128 characters or more; the 8.3 form is short.
-    public static string Short(string path) {
-        var ret = new StringBuilder(260);
-        uint n = GetShortPathName(path, ret, (uint)ret.Capacity);
-        return n > 0 && n < ret.Capacity ? ret.ToString() : path;
     }
 }
 '@
@@ -66,8 +58,7 @@ try {
             [Console]::Out.WriteLine('err MCI unavailable: ' + $mciError)
         } elseif ($line.StartsWith('play ')) {
             [void][KeryxMci]::Send('close keryx')
-            $path = [KeryxMci]::Short($line.Substring(5))
-            $r = [KeryxMci]::Send('open "' + $path + '" type waveaudio alias keryx')
+            $r = [KeryxMci]::Send('open "' + $line.Substring(5) + '" type waveaudio alias keryx')
             if (-not $r.StartsWith('mci error')) { $r = [KeryxMci]::Send('play keryx') }
             if ($r.StartsWith('mci error')) { [Console]::Out.WriteLine('err ' + $r) }
             else { [Console]::Out.WriteLine('ok') }
@@ -113,6 +104,8 @@ EARLY = 0.25  # seconds before a clip's end to start asking whether it has finis
 POLL = 0.03  # seconds between those asks
 OVERRUN = 3.0  # seconds past its end after which a clip still "playing" is stopped
 FINISHED = {"ok stopped"}
+# MCI refuses a path of this many characters or more, even when given a relative name.
+MCI_PATH_LIMIT = 128
 CLOSE_GRACE = 2.0  # seconds for the loop to restore ducked volumes on close
 
 
@@ -148,6 +141,15 @@ class WindowsPlayer:
         ducking needs `audio_dir` on a Windows drive for its source and state files."""
         state = source = ""
         self._duck = ""
+        with contextlib.suppress(ValueError):
+            longest = windows_path(audio_dir / "keryx-0.wav") if audio_dir else ""
+            if len(longest) >= MCI_PATH_LIMIT:
+                log.warning(
+                    "audio_dir %s is too long for Windows' MCI (%d characters or more); "
+                    "nothing will play until it is shorter",
+                    audio_dir,
+                    MCI_PATH_LIMIT,
+                )
         if audio_dir is not None and duck_apps and duck_ratio < 1:
             with contextlib.suppress(OSError, ValueError):
                 audio_dir.mkdir(parents=True, exist_ok=True)
@@ -215,7 +217,7 @@ class WindowsPlayer:
         deadline = time.monotonic() + EARLY + OVERRUN
         # Only "stopped" is done: a transient mode such as "not ready" may still be sounding.
         while (mode := self._send("mode")) not in FINISHED:
-            if not mode.startswith("ok ") or mode.startswith("ok mci error"):
+            if not mode.startswith("ok") or mode.startswith("ok mci error"):
                 if not interrupt.is_set():  # a stop from elsewhere closes the clip
                     log.warning("could not ask whether %s finished: %s", wav.name, mode)
                 break
