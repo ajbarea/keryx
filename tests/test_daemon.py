@@ -18,8 +18,9 @@ class FakeSpeaker:
     def submit(self, utt):
         self.submitted.append(utt)
 
-    def stop(self, session=None):
+    def stop(self, session=None, terminal=""):
         self.stopped.append(session)
+        self.stopped_terminals = [*getattr(self, "stopped_terminals", []), terminal]
 
     def claim(self, holder, source):
         self.claimed.append((holder, source))
@@ -118,6 +119,12 @@ def test_handle_stop_with_and_without_session():
     handle({"op": "stop", "session": "s1"}, sp)
     handle({"op": "stop"}, sp)
     assert sp.stopped == ["s1", None]
+
+
+def test_a_stop_names_its_terminal_so_speech_left_by_an_old_session_is_cut():
+    sp = FakeSpeaker()
+    handle({"op": "stop", "session": "new", "terminal": "9:1"}, sp)
+    assert (sp.stopped, sp.stopped_terminals) == (["new"], ["9:1"])
 
 
 def test_stop_with_warm_loads_the_summarizer():
@@ -338,3 +345,91 @@ def test_a_stop_that_does_not_interrupt_still_records_the_prompt():
     handle({"op": "stop", "session": "s", "prompt": "p2", "interrupt": False}, sp, None, latest)
     assert sp.stopped == []
     assert latest == {"s": "p2"}
+
+
+@pytest.fixture
+def clean_logging():
+    import logging
+    import threading
+
+    root = logging.getLogger()
+    before = root.handlers[:], root.level
+    hook = threading.excepthook
+    yield
+    threading.excepthook = hook
+    for h in root.handlers[:]:
+        if h not in before[0]:
+            root.removeHandler(h)
+            h.close()
+    root.setLevel(before[1])
+
+
+def test_the_daemon_log_is_private_and_bounded(tmp_path, monkeypatch, clean_logging):
+    import logging
+    import stat
+
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    log = tmp_path / "keryx" / "daemon.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("old\n")
+    log.chmod(0o644)  # left by a version that wrote it world-readable
+    monkeypatch.setattr(daemon, "LOG_BYTES", 400)
+    daemon.configure_logging(to_terminal=False)
+    for i in range(30):
+        logging.getLogger("keryx").info("line %d %s", i, "x" * 40)
+    for f in (log, log.with_name("daemon.log.1")):
+        assert stat.S_IMODE(f.stat().st_mode) == 0o600
+    assert log.stat().st_size < 1000 and not log.with_name("daemon.log.2").exists()
+
+
+def test_phonemizer_warnings_stay_out_of_the_log(tmp_path, monkeypatch, clean_logging):
+    import logging
+
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    daemon.configure_logging(to_terminal=False)
+    logging.getLogger("phonemizer").warning("words count mismatch on 1 lines")
+    logging.getLogger("phonemizer").error("real failure")
+    text = (tmp_path / "keryx" / "daemon.log").read_text()
+    assert "mismatch" not in text and "real failure" in text
+
+
+def test_a_spawned_daemon_keeps_what_it_writes_to_stderr_in_a_private_file(tmp_path, monkeypatch):
+    import stat
+    import subprocess
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    err = tmp_path / "keryx" / "daemon.stderr"
+    err.parent.mkdir(parents=True)
+    err.write_text("from the last daemon\n")
+    seen = {}
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: seen.update(kw))
+    client.spawn()
+    assert seen["stdout"] == seen["stderr"] and seen["stderr"] != subprocess.DEVNULL
+    assert err.read_text() == "" and stat.S_IMODE(err.stat().st_mode) == 0o600
+    # The last daemon's words are kept beside it, not overwritten.
+    assert (err.parent / "daemon.stderr.1").read_text() == "from the last daemon\n"
+
+
+def test_a_thread_that_dies_is_logged(tmp_path, monkeypatch, clean_logging):
+    import threading
+
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    daemon.configure_logging(to_terminal=False)
+
+    def boom():
+        raise RuntimeError("synth thread died")
+
+    t = threading.Thread(target=boom, name="synth")
+    t.start()
+    t.join()
+    assert "synth thread died" in (tmp_path / "keryx" / "daemon.log").read_text()
+
+
+def say(reply_prompt):
+    return {"op": "say", "text": "Done.", "session": "s", "prompt": reply_prompt}

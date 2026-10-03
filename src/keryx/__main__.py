@@ -20,7 +20,7 @@ import logging
 import sys
 
 from keryx import client
-from keryx.config import Config
+from keryx.config import Config, set_stored
 
 COMMANDS = (
     "hook",
@@ -42,17 +42,18 @@ def main(argv: list[str] | None = None) -> int:
     cmd = args[0] if args else "status"
     cfg = Config.load()
 
+    if cmd in ("hook", "replay-hook") and not cfg.enabled:
+        return 0
+
     if cmd == "hook":
         from keryx import hook
 
-        if not cfg.enabled:
-            return 0
         request = hook.request_for(hook.parse(sys.stdin.read()), hook.entrypoint())
         if request is None:
             return 0
         # Spawning on a prompt, not just a reply, loads the voice while Claude works.
         # No daemon to answer (turned off, or it failed to start): nothing to say.
-        with contextlib.suppress(OSError):
+        with contextlib.suppress(OSError, ValueError):  # ValueError: a truncated reply
             if request["op"] == "warm":
                 client.current(request)
             else:
@@ -60,10 +61,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if cmd in ("on", "off"):
-        stored = Config.load(env=False)  # don't persist env overrides into the file
-        stored.enabled = cmd == "on"
-        stored.save()
-        if not stored.enabled:
+        # Only this key is written: neither env overrides nor defaults belong in the file.
+        enabled = cmd == "on"
+        set_stored(enabled=enabled)
+        if not enabled:
             # Off frees the GPU: the daemon exits (releasing Kokoro) and the model unloads.
             with contextlib.suppress(OSError):
                 client.send({"op": "quit"})
@@ -73,20 +74,23 @@ def main(argv: list[str] | None = None) -> int:
                 with contextlib.suppress(OSError):
                     OllamaClient(cfg.model, cfg.ollama_host).unload()
         print(f"keryx is {cmd}")
-        if Config.load().enabled != stored.enabled:
+        if Config.load().enabled != enabled:
             print("note: KERYX_ENABLED in the environment overrides this")
         return 0
 
     if cmd == "status":
         try:
             daemon = client.send({"op": "ping"})
-        except OSError:
+        except (OSError, ValueError):
             daemon = None
         state = {**vars(cfg), "daemon": daemon or "not running"}
         print(json.dumps(state, indent=2))
         return 0
 
     if cmd == "say":
+        if not cfg.enabled:
+            print("keryx is off; `keryx on` first", file=sys.stderr)
+            return 1
         text = " ".join(args[1:]) or sys.stdin.read()
         print(client.send_or_spawn({"op": "say", "kind": "notice", "text": text}))
         return 0
@@ -115,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
                 reply = client.send_or_spawn(request)
                 if not reply.get("ok"):
                     print(f"{spec.label()}: {reply.get('error')}", file=sys.stderr)
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             print(f"the keryx daemon did not answer: {exc}", file=sys.stderr)
             return 1
         return 0
@@ -126,18 +130,19 @@ def main(argv: list[str] | None = None) -> int:
         from keryx.procs import terminal_id
 
         event = hook.parse(sys.stdin.read())
-        prompt = str(event.get("prompt") or "")
-        if not cfg.enabled or hook.entrypoint().startswith(hook.HEADLESS_PREFIX):
+        if not hook.is_replay_event(event, hook.entrypoint()):
             return 0
-        if not hook.is_replay(prompt):
-            return 0
-        request = {"op": "again", "terminal": terminal_id(), "session": event.get("session_id", "")}
+        who = {"terminal": terminal_id(), "session": event.get("session_id", "")}
         try:
-            replayed = client.send(request).get("replayed")
-        except OSError:
-            replayed = False  # no daemon, so nothing to replay: let Claude answer
+            replayed = client.send({"op": "again", **who}).get("replayed")
+        except (OSError, ValueError):  # no daemon or a truncated reply
+            replayed = False
         if replayed:
             print(json.dumps({"decision": "block", "reason": "keryx: saying that again"}))
+            return 0
+        # Claude answers, so this prompt is the turn the held-back stop request stood for.
+        with contextlib.suppress(OSError, ValueError):
+            client.send(hook.prompt_request(event))
         return 0
 
     if cmd == "again":
@@ -145,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             reply = client.send({"op": "again", "terminal": terminal_id()})
-        except OSError:
+        except (OSError, ValueError):
             reply = {}
         print("saying it again" if reply.get("replayed") else "nothing to say again yet")
         return 0
@@ -194,12 +199,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if cmd == "daemon":
-        from keryx import daemon
+        import faulthandler
 
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr
-        )
-        return 0 if daemon.serve(cfg) else client.LOCK_BUSY_EXIT
+        faulthandler.enable()  # a native abort leaves its stack in daemon.stderr
+        try:
+            from keryx import daemon
+
+            daemon.configure_logging(to_terminal=sys.stderr.isatty())
+            return 0 if daemon.serve(cfg) else client.LOCK_BUSY_EXIT
+        except Exception:
+            logging.getLogger("keryx").exception("the daemon failed")
+            return 1
 
     print(__doc__, file=sys.stderr)
     return 2

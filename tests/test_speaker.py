@@ -93,7 +93,7 @@ def test_source_announced_only_when_it_changes(make):
     for src in ["ariadne", "ariadne", "pharos"]:
         sp.submit(Utterance("Done.", source=src))
     wait_idle(sp)
-    assert list(sp.spoken) == ["ariadne: Done.", "Done.", "pharos: Done."]
+    assert list(sp.spoken) == ["ariadne:", "Done.", "Done.", "pharos:", "Done."]
 
 
 def test_empty_line_is_silent(make):
@@ -222,16 +222,13 @@ def test_a_cancelled_announcement_is_repeated_next_time(make):
     sp.submit(Utterance("First.", session="x", source="other"))
     assert player.started.wait(2)
     sp.submit(Utterance("Never heard.", session="a", source="ariadne"))
-    deadline = time.time() + 2
-    while "ariadne: Never heard." not in sp.spoken:
-        assert time.time() < deadline
-        time.sleep(0.01)
+    wait_for(lambda: sp._play_q.full() and not sp._pending)  # it is synthesizing, blocked
     sp.stop("a")
     player.release.set()
     wait_idle(sp)
     sp.submit(Utterance("Heard.", session="a", source="ariadne"))
     wait_idle(sp)
-    assert sp.spoken[-1] == "ariadne: Heard."
+    assert list(sp.spoken)[-2:] == ["ariadne:", "Heard."]
 
 
 def test_a_notice_is_spoken_while_a_reply_waits_on_the_summarizer(make):
@@ -460,7 +457,7 @@ def test_again_keeps_the_repo_announcement(make):
     wait_idle(sp)
     sp.again("a")
     wait_idle(sp)
-    assert list(sp.spoken)[-2:] == ["ariadne: Done.", "ariadne: Done."]
+    assert list(sp.spoken)[-4:] == ["ariadne:", "Done.", "ariadne:", "Done."]
 
 
 def test_pronunciations_change_what_is_synthesized_not_what_is_logged(tmp_path):
@@ -508,3 +505,79 @@ def test_again_keeps_a_new_reply_still_with_the_summarizer(tmp_path):
     wait_idle(sp)
     assert list(sp.spoken)[-2:] == ["Old line.", "New gist."]
     sp.close()
+
+
+def test_the_name_is_announced_when_the_line_before_it_was_cut_off_unheard(make):
+    player = FakePlayer(hold=True)
+    sp = make(player)
+    sp.submit(Utterance("X.", session="a", source="ariadne"))
+    assert player.started.wait(2)
+    sp.submit(Utterance("Y.", session="b", source="ariadne"))
+    wait_for(lambda: sp._play_q.full() and not sp._pending)  # Y is synthesizing, blocked
+    sp.stop("a")
+    player.release.set()
+    wait_idle(sp)
+    assert list(sp.spoken)[-2:] == ["ariadne:", "Y."]
+
+
+def test_again_keeps_a_reply_waiting_behind_the_line_being_said(make):
+    player = FakePlayer(hold=True)
+    sp = make(player)
+    sp.submit(Utterance("One. Two. Three. Four. Five.", kind="notice", session="s"))
+    assert player.started.wait(2)
+    sp.submit(Utterance("Later.", kind="notice", session="s"))
+    wait_for(lambda: len(sp._pending) == 1)  # shortened, not yet synthesizing
+    assert sp.again("s") is True
+    player.release.set()
+    wait_idle(sp)
+    assert "Later." in sp.spoken
+    assert list(sp.spoken)[-6:] == ["Later.", "One.", "Two.", "Three.", "Four.", "Five."]
+
+
+def test_a_line_not_yet_playing_cannot_be_said_again(make):
+    player = FakePlayer(hold=True)
+    sp = make(player)
+    sp.submit(Utterance("Heard.", kind="notice", session="a"))
+    assert player.started.wait(2)
+    sp.submit(Utterance("Not yet.", kind="notice", session="b"))
+    wait_for(lambda: "Not yet." in sp.spoken)  # synthesized, queued behind the first
+    assert sp.again("b") is False
+    player.release.set()
+    wait_idle(sp)
+    assert sp.again("b") is True
+
+
+def test_a_replayed_line_is_announced_even_when_its_name_was_just_heard(make):
+    sp = make()
+    sp.submit(Utterance("Done.", kind="notice", session="a", source="ariadne"))
+    wait_idle(sp)
+    sp.submit(Utterance("More.", kind="notice", session="b", source="ariadne"))
+    wait_idle(sp)
+    sp.again("a")
+    wait_idle(sp)
+    assert list(sp.spoken)[-2:] == ["ariadne:", "Done."]
+
+
+def test_stop_reaches_what_a_terminal_left_speaking_under_an_old_session(make):
+    player = FakePlayer(hold=True)
+    sp = make(player)
+    sp.submit(Utterance("Old.", session="old", terminal="9:1"))
+    assert player.started.wait(2)
+    sp.submit(Utterance("Elsewhere.", session="other", terminal="8:1"))
+    wait_for(lambda: "Elsewhere." in sp.spoken)
+    sp.stop("new", "9:1")  # /clear: the terminal's new session sends the next prompt
+    player.release.set()
+    wait_idle(sp)
+    assert player.played == ["keryx-0.wav", "keryx-1.wav"]  # Old. was cut; Elsewhere. played
+
+
+def test_a_replayed_line_keeps_its_repo_when_the_name_was_not_said_the_first_time(make):
+    sp = make()
+    sp.submit(Utterance("One.", kind="notice", session="a", source="ariadne"))
+    sp.submit(Utterance("Two.", kind="notice", session="b", source="ariadne"))
+    wait_idle(sp)  # Two. was not announced: ariadne had just been named
+    sp.submit(Utterance("Other.", kind="notice", session="c", source="pharos"))
+    wait_idle(sp)
+    sp.again("b")
+    wait_idle(sp)
+    assert list(sp.spoken)[-2:] == ["ariadne:", "Two."]

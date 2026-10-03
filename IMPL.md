@@ -1,15 +1,23 @@
 # IMPL
 
-## Current: closed-loop playback, phoneme pronunciations
+## Current: review fixes
 
-`player.py` plays each WAV through MCI in the long-lived PowerShell loop and asks `mode` near
-the clip's end until it stops, so a late start no longer cuts the pause between sentences.
-`pronounce.py` passes a `/phonemes/` saying to `voice.py` between ⟦ ⟧ marks, and
-`voice.splice` phonemizes the sentence around it for Kokoro. Version 0.5.0.
+Replay says only what was heard. `speaker.py` records a line, and decides whether to announce
+its repo, when the line's first sentence starts to play; the repo name is its own clip,
+synthesized with the line and played only if the last name heard was another repo's. `again`
+cuts only speech that has started, and `stop` also reaches a terminal's speech left under an
+older session. A replay prompt holds back its prompt id and the warm-up until the replay
+hook finds nothing to replay.
 
-Next: the code review's remaining findings (one venv shared by every plugin version, CPU
-fallback when cuDNN is missing, config coercion and crash-on-bad-file, replay edge cases,
-uncapped loudness gain, log rotation).
+`bin/keryx` runs each plugin version and checkout in its own venv
+(`~/.cache/keryx/venv-<version>-<checksum of the path>`) and removes one whose checkout is
+gone. Kokoro falls back to the CPU when CUDA will not start, the model files are checked
+against pinned SHA-256 sums, `daemon.log` is private and rotates, and `normalize` lifts a
+clip by at most 30 dB. Config tolerates a malformed file and `on`/`off` write only `enabled`.
+Version 0.5.1.
+
+Not done: the shared `audio_dir`. One daemon serves each user, so it matters only across
+users or cache homes, and the ducker's crash recovery relies on a fixed path.
 
 ## Install state
 

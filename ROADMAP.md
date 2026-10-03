@@ -1,6 +1,6 @@
 # Roadmap
 
-Last reviewed: 2026-10-02.
+Last reviewed: 2026-10-03.
 
 ## Possible next steps
 
@@ -11,6 +11,9 @@ Last reviewed: 2026-10-02.
 
 ## Completed
 
+- 2026-10-03: code-review fixes (0.5.1): replay says only what was heard, a venv per plugin
+  version, CPU fallback when CUDA will not start, checksummed model files, a bounded private
+  log, capped loudness gain, tolerant config.
 - 2026-10-03: sentences no longer run together: playback goes through MCI and waits for
   each clip to stop; pronunciations take phonemes (`/tˈexni/`) for sounds English cannot spell.
 - 2026-10-02: "say that again", pronunciations, and speech leveled to -16 LUFS.

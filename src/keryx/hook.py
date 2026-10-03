@@ -36,9 +36,26 @@ _REPLAY = re.compile(
 SCREEN_WORDS = ("again", "more", "repeat", "pardon", "catch", "hear", "what did you")
 
 
+# Longer prompts are never replay requests. The shell screen allows `SCREEN_SLACK` more
+# characters either side of its word, for JSON escapes, so it never turns one away.
+MAX_REPLAY_CHARS = 60
+SCREEN_SLACK = 20
+
+
 def is_replay(prompt: str) -> bool:
+    if len(prompt) > MAX_REPLAY_CHARS:
+        return False
     # Dictation and autocorrect write the apostrophe in "didn't" as U+2019.
     return bool(_REPLAY.match(prompt.replace("\u2019", "'")))
+
+
+def prompt_text(event: dict) -> str:
+    return str(event.get("user_input") or event.get("prompt") or "")
+
+
+def is_replay_event(event: dict, entrypoint: str) -> bool:
+    """Whether a hook payload is an interactive prompt asking to hear the last line again."""
+    return not entrypoint.startswith(HEADLESS_PREFIX) and is_replay(prompt_text(event))
 
 
 def source_name(cwd: str) -> str:
@@ -91,22 +108,9 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
         }
     if name == "UserPromptSubmit":
         # keryx's own commands must not restart the daemon or reload the model.
-        typed = str(event.get("user_input") or event.get("prompt") or "")
-        if typed.startswith("/keryx:"):
+        if prompt_text(event).startswith("/keryx:"):
             return None
-        request = {
-            "op": "stop",
-            "session": session,
-            "prompt": event.get("prompt_id", ""),
-            "terminal": terminal_id(),
-            "source": source_name(event.get("cwd", "")),
-            "warm": True,
-        }
-        # The synchronous hook may answer "say that again" with a replay this stop would cut
-        # off; if it does not, Claude answers, so the prompt is still recorded.
-        if is_replay(typed):
-            request["interrupt"] = False
-        return request
+        return prompt_request(event, replay=is_replay_event(event, entrypoint))
     if name == "Stop":
         text = event.get("last_assistant_message") or ""
         if not text.strip():
@@ -133,6 +137,27 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
             "source": source_name(event.get("cwd", "")),
         }
     return None
+
+
+def prompt_request(event: dict, replay: bool = False) -> dict:
+    """The `stop` request for a prompt: cut off the speech, record the prompt, load the model.
+
+    A replay request holds back all three. The synchronous hook may answer it with a replay
+    the stop would cut off, and no turn follows an answered one, so its prompt is not the
+    session's latest and the summarizer has nothing to load for. When nothing is replayed,
+    Claude answers and that hook sends the full request. If that hook times out instead,
+    the reply to this prompt is dropped as stale; a rare loss, preferred to tracking prompt
+    order across asynchronous hooks.
+    """
+    request = {
+        "op": "stop",
+        "session": event.get("session_id", ""),
+        "terminal": terminal_id(),
+        "source": source_name(event.get("cwd", "")),
+    }
+    if replay:
+        return {**request, "interrupt": False}
+    return {**request, "prompt": event.get("prompt_id", ""), "warm": True}
 
 
 def entrypoint() -> str:

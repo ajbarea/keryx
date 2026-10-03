@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from keryx.config import Config, config_dir
+from keryx.config import Config, config_dir, set_stored
 
 
 @pytest.fixture(autouse=True)
@@ -74,3 +74,62 @@ def test_a_whole_number_speed_is_kept(tmp_path, monkeypatch):
     (tmp_path / "keryx" / "config.json").write_text('{"speed": 1, "duck_ratio": 0}')
     cfg = Config.load(env=False)
     assert (cfg.speed, cfg.duck_ratio) == (1, 0)
+
+
+def test_an_env_override_follows_the_defaults_type_not_the_files(monkeypatch):
+    config_dir().mkdir(parents=True)
+    (config_dir() / "config.json").write_text('{"speed": 1}')
+    monkeypatch.setenv("KERYX_SPEED", "1.3")
+    assert Config.load().speed == 1.3
+
+
+@pytest.mark.parametrize("text", ["[1, 2]", '"text"', "null", "42", "{broken", ""])
+def test_a_config_file_that_is_not_an_object_is_ignored(text):
+    config_dir().mkdir(parents=True)
+    (config_dir() / "config.json").write_text(text)
+    assert Config.load() == Config()
+
+
+def test_a_config_file_that_is_not_text_is_ignored():
+    config_dir().mkdir(parents=True)
+    (config_dir() / "config.json").write_bytes(b"\xff\xfe\x00")
+    assert Config.load() == Config()
+
+
+def test_set_stored_writes_only_what_it_is_given():
+    config_dir().mkdir(parents=True)
+    (config_dir() / "config.json").write_text('{"voice": "am_adam"}')
+    set_stored(enabled=False)
+    assert json.loads((config_dir() / "config.json").read_text()) == {
+        "voice": "am_adam",
+        "enabled": False,
+    }
+
+
+def test_set_stored_keeps_a_file_it_cannot_read_beside_the_new_one():
+    config_dir().mkdir(parents=True)
+    (config_dir() / "config.json").write_text("{broken")
+    set_stored(enabled=False)
+    assert json.loads((config_dir() / "config.json").read_text()) == {"enabled": False}
+    assert (config_dir() / "config.json.bad").read_text() == "{broken"
+
+
+def test_set_stored_does_not_move_an_empty_object_with_whitespace():
+    config_dir().mkdir(parents=True)
+    (config_dir() / "config.json").write_text("{ \n}\n")
+    set_stored(enabled=False)
+    assert not (config_dir() / "config.json.bad").exists()
+
+
+def test_set_stored_survives_a_file_it_may_not_read():
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads anything")
+    config_dir().mkdir(parents=True)
+    path = config_dir() / "config.json"
+    path.write_text('{"voice": "am_adam"}')
+    path.chmod(0o000)
+    set_stored(enabled=False)
+    assert json.loads(path.read_text()) == {"enabled": False}
+    assert (config_dir() / "config.json.bad").exists()

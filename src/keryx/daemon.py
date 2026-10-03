@@ -15,8 +15,10 @@ import fcntl
 import http.client
 import json
 import logging
+import logging.handlers
 import os
 import socket
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -35,7 +37,39 @@ from keryx.voices import VoiceBook, VoiceSpec, holder
 log = logging.getLogger("keryx")
 
 IDLE_EXIT_SECONDS = 4 * 3600
+LOG_BYTES = 1_000_000  # per file; one older file is kept
 VERSION = version()
+
+
+class PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """A rotating log only its owner can read; replies are summarized there, not quoted."""
+
+    def _open(self):
+        fd = os.open(self.baseFilename, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        os.chmod(self.baseFilename, 0o600)  # a file from before this was kept private
+        return os.fdopen(fd, "a", encoding=self.encoding)
+
+
+def log_path() -> Path:
+    return cache_dir() / "daemon.log"
+
+
+def configure_logging(to_terminal: bool) -> None:
+    """Log to the terminal in the foreground, else to the bounded `daemon.log`."""
+    format_ = "%(asctime)s %(levelname)s %(message)s"
+    if to_terminal:
+        handler: logging.Handler = logging.StreamHandler(sys.stderr)
+    else:
+        log_path().parent.mkdir(parents=True, exist_ok=True)
+        handler = PrivateRotatingFileHandler(log_path(), maxBytes=LOG_BYTES, backupCount=1)
+    logging.basicConfig(level=logging.INFO, format=format_, handlers=[handler], force=True)
+    # The phonemizer warns on every sentence it cannot place a stress mark in.
+    logging.getLogger("phonemizer").setLevel(logging.ERROR)
+
+    def thread_failed(args: threading.ExceptHookArgs) -> None:
+        log.error("thread %s failed", args.thread and args.thread.name, exc_info=args.exc_value)
+
+    threading.excepthook = thread_failed
 
 
 def handle(
@@ -56,7 +90,7 @@ def handle(
         if request.get("session") and request.get("prompt"):
             latest[request["session"]] = request["prompt"]
         if request.get("interrupt", True):
-            speaker.stop(request.get("session") or None)
+            speaker.stop(request.get("session") or None, str(request.get("terminal") or ""))
         claim(request, speaker)
         # A prompt was just sent, so a reply is coming: load the summarizer meanwhile.
         if request.get("warm"):

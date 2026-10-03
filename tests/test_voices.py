@@ -395,3 +395,118 @@ def test_saves_resume_after_the_clock_jumps_back(tmp_path):
     clock.now = 100  # jumped back
     b.assign("t1", "a")
     assert '"seen": 100' in path.read_text()
+
+
+class NotImplementedInOrt(Exception):
+    """What onnxruntime raises when the CUDA provider cannot start: a plain Exception, which
+    its own fallback does not catch."""
+
+
+class FakeOrt:
+    """Stands in for onnxruntime: CUDA is listed but cannot start unless `cuda_works`."""
+
+    def __init__(self, providers, cuda_works=False, preload_fails=False):
+        self.providers, self.cuda_works, self.preload_fails = providers, cuda_works, preload_fails
+        self.started = []
+
+    def preload_dlls(self):
+        if self.preload_fails:
+            raise OSError("libcudnn.so.9: cannot open shared object file")
+
+    def set_default_logger_severity(self, level):
+        pass
+
+    class SessionOptions:
+        log_severity_level = 0
+
+    def get_available_providers(self):
+        return self.providers
+
+    def InferenceSession(self, path, options, providers):
+        self.started.append(providers)
+        if "CUDAExecutionProvider" in providers and not self.cuda_works:
+            raise NotImplementedInOrt("Failed to load libcudnn")
+        return providers
+
+
+def test_cuda_that_will_not_start_falls_back_to_the_cpu(tmp_path):
+    from keryx.voice import open_session
+
+    ort = FakeOrt(["CUDAExecutionProvider", "CPUExecutionProvider"])
+    assert open_session(ort, tmp_path / "m.onnx") == ["CPUExecutionProvider"]
+    assert ort.started == [
+        ["CUDAExecutionProvider", "CPUExecutionProvider"],
+        ["CPUExecutionProvider"],
+    ]
+
+
+def test_cuda_that_starts_is_used(tmp_path):
+    from keryx.voice import open_session
+
+    ort = FakeOrt(["CUDAExecutionProvider", "CPUExecutionProvider"], cuda_works=True)
+    assert open_session(ort, tmp_path / "m.onnx")[0] == "CUDAExecutionProvider"
+
+
+def test_a_cpu_failure_is_not_retried_or_hidden(tmp_path):
+    from keryx.voice import open_session
+
+    class Broken(FakeOrt):
+        def InferenceSession(self, path, options, providers):
+            raise RuntimeError("bad model file")
+
+    with pytest.raises(RuntimeError, match="bad model"):
+        open_session(Broken(["CPUExecutionProvider"]), tmp_path / "m.onnx")
+
+
+def test_missing_cuda_libraries_do_not_stop_the_cpu_session(tmp_path):
+    from keryx.voice import open_session
+
+    ort = FakeOrt(["CUDAExecutionProvider", "CPUExecutionProvider"], preload_fails=True)
+    assert open_session(ort, tmp_path / "m.onnx") == ["CPUExecutionProvider"]
+
+
+def fake_curl(monkeypatch, payloads):
+    """Make `curl -o PATH URL` write `payloads[name]`."""
+    from pathlib import Path
+
+    import keryx.voice as voice
+
+    def run(cmd, check):
+        out = Path(cmd[cmd.index("-o") + 1])
+        out.write_bytes(payloads[cmd[-1].rsplit("/", 1)[1]])
+
+    monkeypatch.setattr(voice.subprocess, "run", run)
+
+
+def test_a_download_that_matches_its_checksum_is_kept(tmp_path, monkeypatch):
+    import hashlib
+
+    import keryx.voice as voice
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    payloads = {voice.MODEL: b"model", voice.VOICES: b"voices"}
+    monkeypatch.setattr(
+        voice, "CHECKSUMS", {n: hashlib.sha256(b).hexdigest() for n, b in payloads.items()}
+    )
+    fake_curl(monkeypatch, payloads)
+    d = voice.ensure_models()
+    assert (d / voice.MODEL).read_bytes() == b"model"
+    assert not list(d.glob("*.part"))
+
+
+def test_a_download_that_differs_is_discarded_and_refused(tmp_path, monkeypatch):
+    import keryx.voice as voice
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    fake_curl(monkeypatch, {voice.MODEL: b"tampered", voice.VOICES: b"voices"})
+    with pytest.raises(RuntimeError, match="checksum"):
+        voice.ensure_models()
+    d = voice.model_dir()
+    assert not (d / voice.MODEL).exists() and not list(d.glob("*.part"))
+
+
+def test_the_pinned_checksums_name_the_files_downloaded():
+    import keryx.voice as voice
+
+    assert set(voice.CHECKSUMS) == {voice.MODEL, voice.VOICES}
+    assert all(len(h) == 64 for h in voice.CHECKSUMS.values())

@@ -161,12 +161,14 @@ wheels = [
 
 [[package]]
 name = "keryx"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "." }
 dependencies = [
     { name = "kokoro-onnx" },
+    { name = "numpy" },
     { name = "onnxruntime-gpu" },
     { name = "pyloudnorm" },
+    { name = "scipy" },
     { name = "soundfile" },
 ]
 
@@ -186,9 +188,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "kokoro-onnx", specifier = ">=0.6.1" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "onnxruntime-gpu", specifier = ">=1.30.0" },
     { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "extra == 'cuda'", specifier = ">=1.30.0" },
     { name = "pyloudnorm", specifier = ">=0.2.0" },
+    { name = "scipy", specifier = ">=1.13" },
     { name = "soundfile", specifier = ">=0.14.0" },
 ]
 provides-extras = ["cuda"]

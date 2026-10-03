@@ -12,17 +12,19 @@ import functools
 import math
 
 import numpy as np
+import pyloudnorm
+from scipy.ndimage import minimum_filter1d, uniform_filter1d
 
 TARGET_LUFS = -16.0
 CEILING_DBFS = -1.5
 LOOKAHEAD_SECONDS = 0.005
-BLOCK_SECONDS = 0.4  # BS.1770's gating block; a shorter clip is padded with silence to it
+# A clip this far below the target is mostly noise or a breath; lifting it all the way would
+# make that the loudest thing on the machine.
+MAX_GAIN_DB = 30.0
 
 
 @functools.cache
-def _meter(rate: int):
-    import pyloudnorm
-
+def _meter(rate: int) -> pyloudnorm.Meter:
     return pyloudnorm.Meter(rate)
 
 
@@ -32,7 +34,8 @@ def loudness(samples: np.ndarray, rate: int) -> float:
     A clip shorter than one gating block is padded with silence to measure it. The padding
     dilutes the block's mean square by len/block, so the reading is raised by that ratio.
     """
-    block = int(BLOCK_SECONDS * rate)
+    block_seconds = _meter(rate).block_size  # BS.1770's gating block
+    block = int(block_seconds * rate)
     if samples.size == 0:
         return float("-inf")
     if len(samples) >= block:
@@ -49,8 +52,6 @@ def limit(samples: np.ndarray, rate: int, ceiling_dbfs: float = CEILING_DBFS) ->
     smoothed over the lookahead; every term of that average is at most the gain the sample
     itself needs, so no sample can end above the ceiling.
     """
-    from scipy.ndimage import minimum_filter1d, uniform_filter1d
-
     ceiling = 10 ** (ceiling_dbfs / 20)
     peaks = np.abs(samples)
     if peaks.size == 0 or peaks.max() <= ceiling:
@@ -62,11 +63,12 @@ def limit(samples: np.ndarray, rate: int, ceiling_dbfs: float = CEILING_DBFS) ->
 
 
 def normalize(samples: np.ndarray, rate: int, target_lufs: float = TARGET_LUFS) -> np.ndarray:
-    """`samples` at `target_lufs`, peaks limited; silence and empty clips come back as given."""
+    """`samples` at `target_lufs` (at most `MAX_GAIN_DB` of lift), peaks limited; silence and
+    empty clips come back as given."""
     if samples.size == 0:
         return samples
     measured = loudness(samples, rate)
     if not math.isfinite(measured):
         return samples
-    gain = 10 ** ((target_lufs - measured) / 20)
+    gain = 10 ** (min(target_lufs - measured, MAX_GAIN_DB) / 20)
     return limit((samples * gain).astype(samples.dtype), rate)

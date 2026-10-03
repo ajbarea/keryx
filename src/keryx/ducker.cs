@@ -77,49 +77,63 @@ public static class KeryxDucker {
         } catch { return null; }
     }
 
+    // Adds session `i` to `found` if it is wanted; releases it otherwise.
+    static void AddSession(IKeryxSessionEnumerator sessions, int i, ICollection<string> apps,
+                           List<Session> found) {
+        IKeryxSessionControl2 control;
+        if (sessions.GetSession(i, out control) != 0) return;
+        bool keep = false;
+        try {
+            uint pid;
+            control.GetProcessId(out pid);
+            bool wanted = apps == null;
+            if (!wanted) {
+                string name = ProcessName(pid);
+                foreach (var app in apps)
+                    if (name != null && string.Equals(name, app.Trim(), StringComparison.OrdinalIgnoreCase))
+                        wanted = true;
+            }
+            IntPtr raw;
+            if (!wanted || control.GetSessionInstanceIdentifier(out raw) != 0) return;
+            string id = Marshal.PtrToStringUni(raw);
+            Marshal.FreeCoTaskMem(raw);
+            found.Add(new Session { Id = id, Volume = (IKeryxSimpleVolume)control });
+            keep = true;
+        } finally {
+            if (!keep) Marshal.ReleaseComObject(control);
+        }
+    }
+
     // Audio sessions on every active output device, filtered by process name unless `apps` is
     // null; null when the devices cannot be listed at all.
     static List<Session> Sessions(ICollection<string> apps) {
         var found = new List<Session>();
         var en = (IKeryxDeviceEnumerator)new KeryxDeviceEnumerator();
         IKeryxDeviceCollection devices;
-        if (en.EnumAudioEndpoints(0, 1, out devices) != 0) return null;  // eRender, ACTIVE
+        if (en.EnumAudioEndpoints(0, 1, out devices) != 0) {  // eRender, ACTIVE
+            Marshal.ReleaseComObject(en);
+            return null;
+        }
         uint count;
         devices.GetCount(out count);
         for (uint d = 0; d < count; d++) {
             IKeryxDevice dev;
             if (devices.Item(d, out dev) != 0) continue;
-            Guid iid = typeof(IKeryxSessionManager2).GUID;
-            object manager;
-            if (dev.Activate(ref iid, 23, IntPtr.Zero, out manager) != 0) continue;  // CLSCTX_ALL
-            IKeryxSessionEnumerator sessions;
-            if (((IKeryxSessionManager2)manager).GetSessionEnumerator(out sessions) != 0) continue;
-            int n;
-            sessions.GetCount(out n);
-            for (int i = 0; i < n; i++) {
-                IKeryxSessionControl2 control;
-                if (sessions.GetSession(i, out control) != 0) continue;
-                uint pid;
-                control.GetProcessId(out pid);
-                bool wanted = apps == null;
-                if (!wanted) {
-                    string name = ProcessName(pid);
-                    foreach (var app in apps)
-                        if (name != null && string.Equals(name, app.Trim(), StringComparison.OrdinalIgnoreCase))
-                            wanted = true;
-                }
-                IntPtr raw;
-                if (!wanted || control.GetSessionInstanceIdentifier(out raw) != 0) {
-                    Marshal.ReleaseComObject(control);
-                    continue;
-                }
-                string id = Marshal.PtrToStringUni(raw);
-                Marshal.FreeCoTaskMem(raw);
-                found.Add(new Session { Id = id, Volume = (IKeryxSimpleVolume)control });
+            object manager = null;
+            IKeryxSessionEnumerator sessions = null;
+            try {
+                Guid iid = typeof(IKeryxSessionManager2).GUID;
+                if (dev.Activate(ref iid, 23, IntPtr.Zero, out manager) != 0) continue;  // CLSCTX_ALL
+                if (((IKeryxSessionManager2)manager).GetSessionEnumerator(out sessions) != 0) continue;
+                int n;
+                sessions.GetCount(out n);
+                for (int i = 0; i < n; i++) AddSession(sessions, i, apps, found);
+            } finally {
+                // Every path out of the device, `continue` included, hands its objects back.
+                if (sessions != null) Marshal.ReleaseComObject(sessions);
+                if (manager != null) Marshal.ReleaseComObject(manager);
+                Marshal.ReleaseComObject(dev);
             }
-            Marshal.ReleaseComObject(sessions);
-            Marshal.ReleaseComObject(manager);
-            Marshal.ReleaseComObject(dev);
         }
         Marshal.ReleaseComObject(devices);
         Marshal.ReleaseComObject(en);
