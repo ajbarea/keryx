@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import soundfile as sf
 
 from keryx.config import cache_dir
 from keryx.loudness import TARGET_LUFS, normalize
+from keryx.pronounce import PHONEMES_CLOSE, PHONEMES_OPEN
 from keryx.voices import VoiceSpec
 
 log = logging.getLogger("keryx")
@@ -20,6 +22,19 @@ REPO = "thewh1teagle/kokoro-onnx"
 MODEL = "kokoro-v1.0.onnx"
 VOICES = "voices-v1.0.bin"
 STYLE_CACHE = 64  # blends kept; each is about 0.5 MB
+_SPLICE = re.compile(f"{PHONEMES_OPEN}([^{PHONEMES_CLOSE}]*){PHONEMES_CLOSE}")
+_SPACE_BEFORE_MARK = re.compile(r"\s+([.,!?;:])")
+
+
+def splice(text: str, phonemize) -> str | None:
+    """`text` as phonemes, with each marked word's phonemes kept as given; None when
+    nothing is marked, so plain text keeps Kokoro's own path."""
+    parts = _SPLICE.split(text)
+    if len(parts) == 1:
+        return None
+    # split() alternates text and captured phonemes: even indexes are text.
+    out = [phonemize(p) if i % 2 == 0 else p for i, p in enumerate(parts) if p.strip()]
+    return _SPACE_BEFORE_MARK.sub(r"\1", " ".join(o.strip() for o in out))
 
 
 def model_dir() -> Path:
@@ -85,15 +100,20 @@ class KokoroVoice:
 
     def synth(self, text: str, voice: VoiceSpec | None = None) -> tuple[np.ndarray, int]:
         spec = voice or self.voice
+        spliced = splice(text, lambda part: self._kokoro.tokenizer.phonemize(part, spec.lang))
         samples, rate = self._kokoro.create(
-            text, voice=self.style(spec), speed=self.speed, lang=spec.lang
+            text if spliced is None else spliced,
+            voice=self.style(spec),
+            speed=self.speed,
+            lang=spec.lang,
+            is_phonemes=spliced is not None,
         )
         # Kokoro's voices range from -19 to -23 LUFS; level them, loud enough for over music.
         return normalize(samples, rate, self.loudness), rate
 
 
 def write_wav(path: Path, samples: np.ndarray, rate: int) -> float:
-    """Write 16-bit PCM (what `SoundPlayer` accepts) and return its length in seconds."""
+    """Write 16-bit PCM (what MCI's waveaudio plays) and return its length in seconds."""
     path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(path, samples, rate, subtype="PCM_16")
     return len(samples) / rate

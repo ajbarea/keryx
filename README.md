@@ -57,7 +57,8 @@ speaking in about 1 to 2 seconds.
 Typing or dictating "say that again" (or "come again?", "I didn't catch that") replays the
 last line without sending the prompt to Claude. `keryx pronounce ajsoftworks AJ soft works`
 sets a pronunciation from the shell, `keryx pronounce` lists them, and `keryx pronounce WORD`
-forgets one; they are kept in `~/.config/keryx/pronounce.json`.
+forgets one; they are kept in `~/.config/keryx/pronounce.json`. A saying between slashes is
+phonemes, for sounds English spelling cannot reach: `keryx pronounce techne /tˈexni/`.
 
 Each terminal speaks in its own voice, through `/clear` and resume too. A repo keeps its
 voice across terminals and restarts, a second terminal in the same repo gets another, and

@@ -98,10 +98,18 @@ WSLg's PulseAudio sink was tried first. One `paplay` call returned in 186 ms for
 clip, too fast to have played it, and the next hung for 30 s with "Failed to drain stream:
 Timeout" ([microsoft/wslg#1392](https://github.com/microsoft/wslg/issues/1392)).
 
-PowerShell's `System.Media.SoundPlayer` plays reliably. A fresh `powershell.exe` costs 309 to
-444 ms, so one process stays open and takes `play` and `stop` lines on stdin; after the first
-clip, each play adds about 6 ms. The WAV must sit on a Windows drive: loading from a
-`\\wsl.localhost` path took 10 to 12 s and logged vsock errors.
+PowerShell plays reliably. A fresh `powershell.exe` costs 309 to 444 ms, so one process
+stays open and takes `play`, `mode` and `stop` lines on stdin; after the first clip, each play
+adds about 6 ms. The WAV must sit on a Windows drive: loading from a `\\wsl.localhost` path
+took 10 to 12 s and logged vsock errors.
+
+Playback first used `System.Media.SoundPlayer.Play()` and waited the clip's length before the
+next `play`, which began with `Stop()`. Sentences then ran together now and then (2026-10-03):
+Kokoro ends a sentence with only 59 to 127 ms of silence, and through MCI a 5.10 s clip took
+5.22 s from `play` to stopped, so a late start ate the pause. `PlaySync` on a worker thread
+reports the end but cannot be stopped from another thread. MCI (`mciSendString`) can do
+both, so the loop plays through MCI and the daemon asks `mode` from 0.25 s before a clip's
+end until it reads `stopped`.
 
 ## Loudness
 
@@ -135,6 +143,11 @@ regard to case and longest first, in each sentence just before synthesis, so rep
 announcements are covered too. The daemon rereads the file when it changes. The
 `/keryx:pronounce` skill is the one Claude may invoke on its own, so "ajsoftworks should
 sound like AJ soft works" works in plain words.
+
+A saying between slashes is phonemes, for sounds no English spelling reaches. espeak reads
+`techne` as /tˈɛkn/ and no respelling yields the Greek χ, so `keryx pronounce techne
+/tˈexni/` keeps the phonemes: the sentence is phonemized around the word and handed to
+Kokoro as phonemes. Kokoro's phoneme set has the Greek x, θ, ð, ɣ and ʝ.
 
 ## Ducking
 

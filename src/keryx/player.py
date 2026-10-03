@@ -2,9 +2,13 @@
 
 WSLg's PulseAudio sink suspends when idle and drops or hangs streams on resume
 (microsoft/wslg#1392), so audio goes to the Windows side instead: one long-lived
-PowerShell process owns a `System.Media.SoundPlayer` and takes `play`/`stop`
+PowerShell process plays each WAV through MCI (winmm) and takes `play`/`mode`/`stop`
 commands on stdin. The file must sit on a Windows drive; `\\\\wsl.localhost` paths
 stall for seconds.
+
+A clip is done when MCI says it stopped, not when its length has passed since `play`
+answered: Windows starts a clip up to ~150 ms late, about as long as the silence that
+ends a sentence, so a timer cut that pause off and ran sentences together.
 
 The same process ducks other apps (Spotify by default) while keryx speaks, through
 `ducker.cs`, which it compiles once at start. It restores anything a crashed predecessor
@@ -18,13 +22,25 @@ import logging
 import select
 import subprocess
 import threading
+import time
 from importlib import resources
 from pathlib import Path
 from typing import Protocol
 
 _PS_LOOP = r"""
 $ErrorActionPreference = 'Continue'
-$p = New-Object System.Media.SoundPlayer
+Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices; using System.Text;
+public static class KeryxMci {
+    [DllImport("winmm.dll", CharSet = CharSet.Unicode)]
+    static extern int mciSendString(string cmd, StringBuilder ret, int size, System.IntPtr hwnd);
+    public static string Send(string command) {
+        var ret = new StringBuilder(128);
+        int rc = mciSendString(command, ret, ret.Capacity, System.IntPtr.Zero);
+        return rc == 0 ? ret.ToString() : "mci error " + rc;
+    }
+}
+'@
 $state = '@STATE@'
 $ducker = $false
 $duckError = 'not configured'
@@ -36,13 +52,16 @@ if ($state) {
 try {
     while ($null -ne ($line = [Console]::In.ReadLine())) {
         if ($line.StartsWith('play ')) {
-            $p.Stop()
-            try {
-                $p.SoundLocation = $line.Substring(5); $p.Load(); $p.Play()
-                [Console]::Out.WriteLine('ok')
-            } catch { [Console]::Out.WriteLine('err ' + $_.Exception.Message) }
+            [void][KeryxMci]::Send('close keryx')
+            $r = [KeryxMci]::Send('open "' + $line.Substring(5) + '" type waveaudio alias keryx')
+            if (-not $r.StartsWith('mci error')) { $r = [KeryxMci]::Send('play keryx') }
+            if ($r.StartsWith('mci error')) { [Console]::Out.WriteLine('err ' + $r) }
+            else { [Console]::Out.WriteLine('ok') }
+        } elseif ($line -eq 'mode') {
+            [Console]::Out.WriteLine('ok ' + [KeryxMci]::Send('status keryx mode'))
         } elseif ($line -eq 'stop') {
-            $p.Stop(); [Console]::Out.WriteLine('ok')
+            [void][KeryxMci]::Send('stop keryx'); [void][KeryxMci]::Send('close keryx')
+            [Console]::Out.WriteLine('ok')
         } elseif ($line.StartsWith('duck ')) {
             $f = $line.Split(' ', 3)
             if ($ducker) {
@@ -73,6 +92,9 @@ DUCK_STATE = "keryx-ducked.txt"
 
 
 REPLY_TIMEOUT = 10.0  # seconds; a play or stop answers in milliseconds
+EARLY = 0.25  # seconds before a clip's end to start asking whether it has finished
+POLL = 0.03  # seconds between those asks
+OVERRUN = 3.0  # seconds past its end after which a clip still "playing" is stopped
 CLOSE_GRACE = 2.0  # seconds for the loop to restore ducked volumes on close
 
 
@@ -164,12 +186,25 @@ class WindowsPlayer:
             return "err"
 
     def play(self, wav: Path, seconds: float, interrupt: threading.Event) -> bool:
-        """Start `wav` and block for its length; False if interrupted or it failed to start."""
-        if self._send(f"play {windows_path(wav)}") != "ok":
+        """Play `wav` to its end; False if interrupted or it failed to start."""
+        reply = self._send(f"play {windows_path(wav)}")
+        if reply != "ok":
+            log.warning("could not play %s: %s", wav.name, reply)
             return False
-        if interrupt.wait(seconds):
+        if interrupt.wait(max(0.0, seconds - EARLY)):
             self.stop()
             return False
+        deadline = time.monotonic() + EARLY + OVERRUN
+        while (mode := self._send("mode")) == "ok playing":
+            if time.monotonic() > deadline:
+                log.warning("%s still playing %.1fs past its end; stopped", wav.name, OVERRUN)
+                self.stop()
+                return True
+            if interrupt.wait(POLL):
+                self.stop()
+                return False
+        if not mode.startswith("ok"):
+            log.warning("could not ask whether %s finished: %s", wav.name, mode)
         return True
 
     def stop(self) -> None:
