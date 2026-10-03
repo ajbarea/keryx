@@ -13,4 +13,5 @@ hears it. To forget one, run `keryx pronounce "<word>"` with nothing after it. W
 should sound as plain words or spelled-out letters (`AJ`, `F L`). Only when no spelling can
 reach a sound, such as the Greek χ in `techne`, write phonemes between slashes in espeak's
 IPA, with the stress mark before the stressed vowel: `keryx pronounce techne /tˈexni/`.
+keryx refuses a symbol Kokoro cannot voice and names it.
 Report what changed in one line.

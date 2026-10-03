@@ -174,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
             pronounce.save(words)
             print(f"forgot {saved}")
             return 0
+        ipa = pronounce.phonemes(saying)
+        unknown = pronounce.unknown_phonemes(ipa) if ipa else ""
+        if unknown:
+            print(f"Kokoro has no sound for {' '.join(unknown)}; not saved", file=sys.stderr)
+            return 1
         if saved is not None:
             del words[saved]  # one entry per word, whatever its case
         words[word] = saying
