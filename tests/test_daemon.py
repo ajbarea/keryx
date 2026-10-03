@@ -387,9 +387,9 @@ def test_the_daemon_log_is_private_and_bounded(tmp_path, monkeypatch, clean_logg
 def test_phonemizer_warnings_stay_out_of_the_log(tmp_path, monkeypatch, clean_logging):
     import logging
 
-    from keryx import daemon
-
     from phonemizer.logger import get_logger
+
+    from keryx import daemon
 
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     daemon.configure_logging(to_terminal=False)
