@@ -1,5 +1,6 @@
 {
-  "description": "Load the voice when a session starts, speak each reply's gist, speak permission prompts, stop speaking when the user sends a prompt, and say the last line again when asked",
+  "description": "Load the voice when a session starts, speak each reply's gist, speak permission prompts, stop speaking when the user sends a prompt, and say the last line again when asked; the hooks module serves /keryx on, off, again and status",
+  "modules": ["./register.ts"],
   "hooks": {
     "SessionStart": [
       { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/keryx\" hook", "async": true } ] }

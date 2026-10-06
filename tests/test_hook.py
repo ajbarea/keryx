@@ -93,9 +93,18 @@ def test_headless_session_start_is_silent():
 
 # Claude Code sends the text as `prompt` (seen live, 2026-10-02); the docs say `user_input`.
 @pytest.mark.parametrize("field", ["prompt", "user_input"])
-def test_keryx_commands_do_not_wake_the_daemon(field):
-    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", field: "/keryx:off"}
+@pytest.mark.parametrize(
+    "command", ["/keryx off", "/keryx", "  /keryx status", "/keryx:pronounce x y"]
+)
+def test_keryx_commands_do_not_wake_the_daemon(field, command):
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", field: command}
     assert request_for(event, "cli") is None
+
+
+@pytest.mark.parametrize("prompt", ["/keryxify this", "explain /keryx off", "keryx off"])
+def test_prompts_that_only_mention_keryx_still_wake_it(prompt):
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": prompt}
+    assert request_for(event, "cli") is not None
 
 
 def test_permission_prompt_is_spoken_in_first_person():
@@ -185,7 +194,7 @@ def test_silent_events_do_not_walk_the_process_tree(monkeypatch):
     monkeypatch.setattr("keryx.hook.terminal_id", walked)
     assert request_for(stop("  "), "cli") is None
     assert request_for({"hook_event_name": "SubagentStop"}, "cli") is None
-    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "/keryx:off"}
+    event = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "/keryx off"}
     assert request_for(event, "cli") is None
 
 

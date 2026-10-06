@@ -53,6 +53,14 @@ def prompt_text(event: dict) -> str:
     return str(event.get("user_input") or event.get("prompt") or "")
 
 
+# `/keryx on` and the rest come from the hooks module; `/keryx:pronounce` is a skill.
+KERYX_COMMAND = re.compile(r"/keryx(?::|\s|$)")
+
+
+def is_keryx_command(prompt: str) -> bool:
+    return KERYX_COMMAND.match(prompt.lstrip()) is not None
+
+
 def is_replay_event(event: dict, entrypoint: str) -> bool:
     """Whether a hook payload is an interactive prompt asking to hear the last line again."""
     return not entrypoint.startswith(HEADLESS_PREFIX) and is_replay(prompt_text(event))
@@ -108,7 +116,7 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
         }
     if name == "UserPromptSubmit":
         # keryx's own commands must not restart the daemon or reload the model.
-        if prompt_text(event).startswith("/keryx:"):
+        if is_keryx_command(prompt_text(event)):
             return None
         return prompt_request(event, replay=is_replay_event(event, entrypoint))
     if name == "Stop":
