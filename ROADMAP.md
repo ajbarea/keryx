@@ -11,6 +11,8 @@ Last reviewed: 2026-10-03.
 
 ## Completed
 
+- 2026-10-06: `/keryx on`, `off`, `again` and `status` are one mod command (0.6.0): it runs at
+  once with no Claude turn, even mid-turn, in place of four skills that each cost one.
 - 2026-10-05: listed in the `techne` marketplace (`keryx@techne`); this repo no longer
   carries a marketplace of its own.
 - 2026-10-03: phonemizer warnings stay out of `daemon.log` (0.5.2).

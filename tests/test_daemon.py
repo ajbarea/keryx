@@ -202,9 +202,26 @@ def test_daemon_turned_off_while_starting_exits_before_listening(tmp_path, monke
     sp, player = FakeSpeaker(), FakePlayer()
     monkeypatch.setattr(daemon, "build_speaker", lambda cfg: (sp, player, None))
     sock = tmp_path / "k.sock"
-    serve(Config(), sock, idle_exit=0.2, poll=0.05)
+    started = time.monotonic()
+    serve(Config(), sock, idle_exit=30, poll=0.05)
+    assert time.monotonic() - started < 5  # exited, not idled out
     assert not sock.exists()
     assert sp.closed and player.closed
+
+
+def test_daemon_turned_off_as_it_starts_listening_exits(tmp_path, monkeypatch):
+    # `keryx off` saved the setting after the voice loaded but before the socket listened, so
+    # its quit found no socket; the check after listen() catches it.
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.delenv("KERYX_ENABLED", raising=False)
+    Config(enabled=False).save()
+    sp = FakeSpeaker()
+    sock = tmp_path / "k.sock"
+    started = time.monotonic()
+    serve(Config(), sock, speaker=sp, idle_exit=30, poll=0.05)
+    assert time.monotonic() - started < 5  # exited, not idled out
+    assert not sock.exists()
+    assert sp.closed
 
 
 def test_request_summary_omits_text():

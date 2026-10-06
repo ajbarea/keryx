@@ -48,11 +48,15 @@ speaking in about 1 to 2 seconds.
 
 | Command | What it does |
 | --- | --- |
-| `/keryx:off` | Stops speech, shuts the daemon down and unloads the summarizer, freeing about 4.4 GB of VRAM |
-| `/keryx:on` | Turns speech back on; the next prompt starts the daemon |
-| `/keryx:status` | Shows the settings and whether the daemon is running |
-| `/keryx:again` | Says this terminal's last line again |
+| `/keryx off` | Stops speech, shuts the daemon down and unloads the summarizer, freeing about 4.4 GB of VRAM |
+| `/keryx on` | Turns speech back on; the next prompt starts the daemon |
+| `/keryx status` | Shows the settings and whether the daemon is running |
+| `/keryx again` | Says this terminal's last line again |
 | `/keryx:pronounce` | Teaches keryx how to say a word; Claude also uses it when you say "X should sound like Y" |
+
+`/keryx` is a [mod](https://code.claude.com/docs/en/plugins/mods/overview) command (Claude Code
+2.1.287 or later): it runs at once, without a Claude turn, even while Claude is working. On an
+older Claude Code it is an unknown command; run `keryx on`, `off`, `again` or `status` in a shell.
 
 Typing or dictating "say that again" (or "come again?", "I didn't catch that") replays the
 last line without sending the prompt to Claude. `keryx pronounce ajsoftworks AJ soft works`

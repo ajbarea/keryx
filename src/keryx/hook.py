@@ -107,7 +107,8 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
             "source": source_name(event.get("cwd", "")),
         }
     if name == "UserPromptSubmit":
-        # keryx's own commands must not restart the daemon or reload the model.
+        # `/keryx:pronounce` must not restart the daemon or reload the model. `/keryx on` and
+        # the rest are mod commands, which never reach this hook.
         if prompt_text(event).startswith("/keryx:"):
             return None
         return prompt_request(event, replay=is_replay_event(event, entrypoint))

@@ -213,7 +213,7 @@ unduck started a new player that restored it 3.1 s later. AJ confirmed the 25% l
 - **Late replies.** Hooks run async, so a reply's hook can land after the next prompt's.
   Each request carries its `prompt_id`, and the daemon drops a reply from an older prompt
   than the session's latest.
-- **Off frees the GPU**: `/keryx:off` shuts the daemon down and unloads the summarizer,
+- **Off frees the GPU**: `/keryx off` shuts the daemon down and unloads the summarizer,
   freeing 4,464 MiB measured (3,791 for `gemma3:4b`, the rest Kokoro).
   With two summarizer models and Kokoro loaded, the GPU sat at 7.6 of 8 GB and one reply took
   4.98 s instead of about 1 s.
