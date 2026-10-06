@@ -233,31 +233,21 @@ def _serve_locked(
     player = None
     if speaker is None:
         speaker, player, warm = build_speaker(cfg)
-        # `keryx off` while the voice loaded found no socket to send its quit to.
-        if not Config.load().enabled:
-            log.info("turned off while starting, exiting")
-            speaker.close()
-            player.close()
-            return
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(sock_path))
     os.chmod(sock_path, 0o600)
     server.listen(16)
-    # `keryx off` saves the setting, then sends quit. Saved before this check: exit here. Saved
-    # after it: the quit finds this socket listening.
-    if not Config.load().enabled:
-        log.info("turned off while starting, exiting")
-        server.close()
-        sock_path.unlink(missing_ok=True)
-        speaker.close()
-        if player is not None:
-            player.close()
-        return
     server.settimeout(poll)
     log.info("listening on %s (voice=%s, model=%s)", sock_path, cfg.voice, cfg.model)
     last_activity = time.monotonic()
     latest_prompt: dict[str, str] = {}
     try:
+        # `keryx off` saves the setting, then sends quit. Saved before this check (even while
+        # the voice loaded, with no socket to quit): exit here. Saved after it: the quit finds
+        # this socket listening.
+        if not Config.load().enabled:
+            log.info("turned off while starting, exiting")
+            return
         while True:
             try:
                 conn, _ = server.accept()

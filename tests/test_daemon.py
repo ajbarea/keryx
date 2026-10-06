@@ -202,7 +202,9 @@ def test_daemon_turned_off_while_starting_exits_before_listening(tmp_path, monke
     sp, player = FakeSpeaker(), FakePlayer()
     monkeypatch.setattr(daemon, "build_speaker", lambda cfg: (sp, player, None))
     sock = tmp_path / "k.sock"
-    serve(Config(), sock, idle_exit=0.2, poll=0.05)
+    started = time.monotonic()
+    serve(Config(), sock, idle_exit=30, poll=0.05)
+    assert time.monotonic() - started < 5  # exited, not idled out
     assert not sock.exists()
     assert sp.closed and player.closed
 
