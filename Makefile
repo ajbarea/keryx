@@ -14,11 +14,15 @@ lint:                       ## ruff format --check, ruff check, ty
 test:                       ## Run the test suite with coverage
 	uv run pytest --cov=keryx --cov-branch --cov-report=term-missing
 
-# tsc reads the types the engine writes into .claude-plugin/types/ when it loads the plugin; an
-# unauthenticated -p run, in a fresh config directory, loads it and stops before calling a model.
-mod-test:                   ## claude plugin test + strict tsc on hooks/register.ts
+# `claude -p "/keryx"` loads the plugin in a real engine, writing the types tsc reads into
+# .claude-plugin/types/, and answers from the hooks module without calling a model. It runs in a
+# bare environment and a fresh config, so no login or installed copy of keryx takes part.
+mod-test:                   ## claude plugin test, a real-engine /keryx, and strict tsc on hooks/register.ts
 	$(CLAUDE) plugin test .
-	cfg=$$(mktemp -d); env -u ANTHROPIC_API_KEY CLAUDE_CONFIG_DIR=$$cfg \
-		$(CLAUDE) -p --plugin-dir . "load only" >/dev/null 2>&1; rm -rf $$cfg
+	rm -rf .claude-plugin/types
+	cfg=$$(mktemp -d); out=$$(env -i PATH="$$PATH" HOME="$$HOME" CLAUDE_CONFIG_DIR=$$cfg \
+		timeout 120 $(CLAUDE) -p --plugin-dir . "/keryx" 2>&1); rm -rf $$cfg; \
+		printf '%s\n' "$$out" | grep -q "Usage: /keryx" \
+		|| { printf '%s\n' "$$out"; echo "FAIL: /keryx did not answer from the hooks module"; exit 1; }
 	@test -f .claude-plugin/types/tsconfig.json || { echo "FAIL: loading the plugin wrote no types"; exit 1; }
 	npx --yes -p typescript@$(TYPESCRIPT_VERSION) tsc --noEmit -p .

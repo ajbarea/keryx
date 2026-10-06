@@ -43,7 +43,9 @@ describe('/keryx', () => {
       expect(runs).toHaveLength(1)
       expect(runs[0]!.argv[0]).toMatch(/\/bin\/keryx$/)
       expect(runs[0]!.argv.slice(1)).toEqual([sub])
+      expect(runs[0]!.init?.timeoutMs).toBe(600_000)  // `on` may build the venv first
       expect(out.text).toBe(`did ${sub}`)
+      expect(out.exitCode).toBe(0)
     })
   }
 
@@ -56,10 +58,19 @@ describe('/keryx', () => {
     expect(runs).toEqual([])
   })
 
+  test('a CLI that cannot run says so instead of failing the command', async ($, on) => {
+    on('process.run', () => ({ deny: 'spawn bin/keryx ENOENT' }))
+    const out = await $.command.run(run('off'))
+    expect(out.text).toContain('keryx off failed')
+    expect(out.text).toContain('ENOENT')
+    expect(out.exitCode).toBe(1)
+  })
+
   test('a CLI that prints nothing reports its exit status', async ($, on) => {
     engine(on, { exitCode: 3, stdout: '', stderr: '' })
     const out = await $.command.run(run('status'))
     expect(out.text).toBe('keryx status exited 3')
+    expect(out.exitCode).toBe(3)
   })
 
   test('stderr is shown after stdout', async ($, on) => {

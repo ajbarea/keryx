@@ -26,8 +26,14 @@ export const register: Register = on => {
   on('command.run', { command: 'keryx' }, async ($, e) => {
     const sub = e.args.trim()
     if (!Object.hasOwn(SUBCOMMANDS, sub)) return { text: USAGE }
-    const run = await $.process.run([`${$.plugin.root}/bin/keryx`, sub], { timeoutMs: RUN_TIMEOUT_MS })
+    let run
+    try {
+      run = await $.process.run([`${$.plugin.root}/bin/keryx`, sub], { timeoutMs: RUN_TIMEOUT_MS })
+    } catch (err) {
+      return { text: `keryx ${sub} failed: ${err instanceof Error ? err.message : String(err)}`, exitCode: 1 }
+    }
     const out = [run.stdout.trim(), run.stderr.trim()].filter(Boolean).join('\n')
-    return { text: out || `keryx ${sub} exited ${run.exitCode}` }
+    // exitCode is what `claude -p "/keryx off"` exits with; an interactive session ignores it.
+    return { text: out || `keryx ${sub} exited ${run.exitCode}`, exitCode: Math.min(Math.max(run.exitCode, 0), 255) }
   })
 }
