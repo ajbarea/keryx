@@ -32,6 +32,8 @@ daemon exits.
   pulled: `ollama pull gemma3:4b`
 - Optional: an NVIDIA GPU. The first run downloads the CUDA runtime wheels (about 2 GB)
   and the Kokoro model files (about 350 MB).
+  While it runs, keryx holds about 4.4 GB of GPU memory: 3.7 GB for the summarizer and
+  0.7 GB for Kokoro, measured on an 8 GB card.
 
 ## Install
 
@@ -74,6 +76,10 @@ the last line; set `duck_apps` to turn down other apps instead.
 
 Turn keryx off before a long local-LLM run: Ollama sizes GPU offload when a model loads, so a
 large model loaded beside keryx can end up partly on the CPU.
+
+If keryx goes silent, check `~/.cache/keryx/daemon.log`: `mci error 326` means Windows has
+no audio output device, for example because the speakers are off. Nothing needs restarting;
+the next reply plays once a device is back.
 
 ## Settings
 
