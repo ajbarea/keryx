@@ -9,6 +9,8 @@ hide:
 
 <div class="hero" markdown>
 
+<div class="hero-copy" markdown>
+
 # keryx
 
 **Gives Claude Code a voice.**
@@ -24,6 +26,8 @@ hide:
 <div class="hero-tagline" markdown>
 
 <p class="hero-modes" markdown><span class="hero-chip">:octicons-cpu-24: Runs locally</span> <span class="hero-chip">:octicons-no-entry-24: Costs no tokens</span> <span class="hero-chip">:octicons-terminal-24: Claude Code plugin</span></p>
+
+</div>
 
 </div>
 
