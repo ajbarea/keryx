@@ -1,4 +1,4 @@
-.PHONY: lint test mod-test
+.PHONY: lint test mod-test docs docs-build
 
 # The Claude Code and TypeScript builds the hooks module is tested and type-checked on, through
 # npx, so local runs and CI judge the same output. Mods need Claude Code 2.1.287 or later.
@@ -26,3 +26,9 @@ mod-test:                   ## claude plugin test, a real-engine /keryx, and str
 		|| { printf '%s\n' "$$out"; echo "FAIL: /keryx did not answer from the hooks module"; exit 1; }
 	@test -f .claude-plugin/types/tsconfig.json || { echo "FAIL: loading the plugin wrote no types"; exit 1; }
 	npx --yes -p typescript@$(TYPESCRIPT_VERSION) tsc --noEmit -p .
+
+docs:                       ## Serve the documentation site with live reload
+	uv run zensical serve
+
+docs-build:                 ## Build the documentation site into site/; warnings fail the build
+	uv run zensical build --clean --strict

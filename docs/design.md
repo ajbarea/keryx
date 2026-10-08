@@ -27,7 +27,7 @@ point is to follow the conversation without reading it.
 Twenty end-of-turn replies were drawn from local Claude Code transcripts, spread by length;
 17 were long enough to reach the model. Each round, an independent Opus agent scored every
 output blind on faithful, useful and speakable (0 to 2 each, 102 maximum per candidate).
-Scripts and tallies are in [eval/](../eval/).
+Scripts and tallies are in [the evaluation folder](https://github.com/ajbarea/keryx/tree/main/eval).
 
 - **Round 1**, a system prompt alone, 8 models: the best total was 70 (`qwen3:1.7b`). The
   main failure was invented requests. `qwen3:4b` scored 0 because its reasoning leaked into

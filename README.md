@@ -1,4 +1,18 @@
+<div align="center">
+
 # keryx
+
+### Gives Claude Code a voice.
+
+*After each reply, keryx says its gist out loud: a local model writes it, a local voice speaks it.*
+
+[![CI](https://img.shields.io/github/actions/workflow/status/ajbarea/keryx/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/ajbarea/keryx/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-ajbarea.github.io%2Fkeryx-0b6e7a?style=flat-square)](https://ajbarea.github.io/keryx/)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+
+</div>
+
+---
 
 Gives Claude Code a voice. After each reply, keryx says its gist out loud in one or two
 sentences: what happened, and what Claude needs from you. Everything runs locally and costs
@@ -111,9 +125,10 @@ ignored, and `on`/`off` keep it as `config.json.bad`.
 ```bash
 make lint   # ruff format --check, ruff check, ty
 make test   # pytest with coverage
+make docs-build   # build the docs site strictly
 ```
 
-[docs/design.md](docs/design.md) records the design decisions and the measurements behind
+The [documentation site](https://ajbarea.github.io/keryx/) covers install, commands and settings. [docs/design.md](docs/design.md) records the design decisions and the measurements behind
 them; [eval/](eval/) holds the summarizer evaluation.
 
 ## Why "keryx"
