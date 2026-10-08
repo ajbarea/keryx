@@ -61,19 +61,18 @@ body.hero-page .md-content__inner {
 }
 
 /* The hero spans the viewport, so its stage has no edge against the page. Text and the
-   herald's horn are two grid columns, so they cannot overlap at any width. On a wide
-   screen both hold to a 72rem band rather than the screen's edges; rem, because the
+   herald's horn are two grid cells, so they cannot overlap at any width. On a wide
+   screen both hold to a 64rem band rather than the screen's edges; rem, because the
    theme raises the root font size there and the buttons and chips grow with it. */
 .md-typeset .hero {
-  --hero-band: calc(50vw - 36rem);
+  --hero-band: calc(50vw - 32rem);
   position: relative;
   min-height: 82vh;
   min-height: 82dvh;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 35%);
-  grid-auto-rows: min-content;
   align-content: center;
-  justify-items: start;
+  align-items: center;
   column-gap: 1.5rem;
   text-align: left;
   padding: 6rem max(8vw, var(--hero-band)) 5rem;
@@ -82,18 +81,20 @@ body.hero-page .md-content__inner {
   box-sizing: border-box;
   overflow: hidden;
   background:
+    linear-gradient(to bottom, transparent 70%, var(--kx-night) 100%),
     radial-gradient(ellipse 60% 70% at 12% 85%, color-mix(in srgb, var(--kx-teal-light) 16%, transparent) 0%, transparent 70%),
     var(--kx-night);
 }
 
-.md-typeset .hero>:not(.hero-art) {
+.md-typeset .hero .hero-copy {
   grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
 }
 
 .md-typeset .hero .hero-art {
   grid-column: 2;
-  grid-row: 1 / span 4;
-  align-self: center;
+  grid-row: 1;
   justify-self: end;
   width: 100%;
   max-width: 600px;
@@ -228,8 +229,8 @@ body.hero-page .md-content__inner {
     padding: 1.5rem 1.5rem 3.5rem;
   }
 
-  .md-typeset .hero>:not(.hero-art) {
-    grid-column: 1;
+  .md-typeset .hero .hero-copy {
+    grid-row: 2;
   }
 
   .md-typeset .hero .hero-art {
