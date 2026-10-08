@@ -14,8 +14,8 @@ alternatives that were rejected.
 graph LR
   A[Hook] --> B[Daemon]
   B --> C[Shorten]
-  C --> D[Kokoro]
-  D --> E[Player]
+  C --> D[Speak]
+  D --> E[Play]
 ```
 
 The hook is Claude Code's `Stop` hook, calling the daemon over a Unix socket. Shortening goes

@@ -20,6 +20,7 @@
   --kx-text: #f4f1e8;
   --kx-text-soft: rgba(244, 241, 232, 0.78);
   --kx-text-muted: rgba(244, 241, 232, 0.62);
+  --hero-art: url('../assets/herald-hero.svg');
 }
 
 [data-md-color-scheme="slate"] {
@@ -60,7 +61,8 @@ body.hero-page .md-content__inner {
   margin-top: 0 !important;
 }
 
-/* The hero is type on a lit stage: two soft lights, no artwork. */
+/* The hero spans the viewport, so its stage has no edge against the page. The herald's
+   horn sits on the right; in the 16:9 artwork it spans 790-1583 by 103-735 of 1600x900. */
 .md-typeset .hero {
   position: relative;
   min-height: 82vh;
@@ -71,11 +73,15 @@ body.hero-page .md-content__inner {
   justify-content: center;
   text-align: left;
   padding: 6rem 8vw 5rem;
-  margin: -1.2rem -0.8rem 0;
+  width: 100vw;
+  margin: -1.2rem 0 0 calc(-50vw + 50%);
+  box-sizing: border-box;
   overflow: hidden;
   background:
-    radial-gradient(ellipse 50% 60% at 82% 40%, color-mix(in srgb, var(--kx-gold) 20%, transparent) 0%, transparent 70%),
+    linear-gradient(to right, var(--kx-night) 0%, var(--kx-night) 30%, transparent 55%),
+    linear-gradient(to bottom, transparent 75%, var(--kx-night) 100%),
     radial-gradient(ellipse 60% 70% at 12% 85%, color-mix(in srgb, var(--kx-teal-light) 16%, transparent) 0%, transparent 70%),
+    var(--hero-art) right 1vw center / auto 92% no-repeat,
     var(--kx-night);
 }
 
@@ -188,12 +194,20 @@ body.hero-page .md-content__inner {
   white-space: nowrap;
 }
 
+/* Tablet and phone: the horn stands whole above the title. The image is sized from one
+   width and shifted so the horn's centre (74.2% across) lands on the page's. */
 @media (max-width: 960px) {
   .md-typeset .hero {
+    --art-w: min(150vw, 900px);
+    --art-top: 1rem;
     min-height: 0;
     align-items: center;
     text-align: center;
-    padding: 4.5rem 1.5rem 3.5rem;
+    padding: calc(var(--art-top) + 0.4 * var(--art-w)) 1.5rem 3.5rem;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 100%, color-mix(in srgb, var(--kx-teal-light) 12%, transparent) 0%, transparent 70%),
+      var(--hero-art) calc(50vw - 0.742 * var(--art-w)) calc(var(--art-top) - 0.064 * var(--art-w)) / var(--art-w) auto no-repeat,
+      var(--kx-night);
   }
 
   .md-typeset .hero .hero-buttons,
@@ -385,20 +399,38 @@ body.hero-page .md-content__inner {
   line-height: 1.35;
 }
 
+/* Phone: the five steps read top to bottom, one row each, joined by downward arrows. */
 @media (max-width: 768px) {
   .pipeline-flow {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.6rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+    max-width: 22rem;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   .pipeline-arrow {
-    display: none;
+    transform: rotate(90deg);
+    font-size: 1.2rem;
   }
 
   .pipeline-step {
+    display: grid;
+    grid-template-columns: 2.4rem 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 0.8rem;
+    row-gap: 0.1rem;
+    align-items: center;
+    text-align: left;
     min-width: 0;
-    padding: 0.8rem 0.5rem;
+    padding: 0.7rem 1rem;
+  }
+
+  .step-icon {
+    grid-row: 1 / span 2;
+    font-size: 1.6rem;
+    justify-self: center;
   }
 
   .step-note {
@@ -412,17 +444,36 @@ body.hero-page .md-content__inner {
   color: var(--kx-gold-pale);
 }
 
+/* Five cards: three over two on a six-column track, the second row centred; two columns
+   on a tablet, with the fifth card spanning the row. */
 .feature-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 1.2rem;
   margin-top: 2.5rem;
   text-align: left;
 }
 
+.feature-grid>.feature-card {
+  grid-column: span 2;
+}
+
+.feature-grid>.feature-card:nth-child(4) {
+  grid-column: 2 / span 2;
+}
+
 @media (max-width: 900px) {
   .feature-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .feature-grid>.feature-card,
+  .feature-grid>.feature-card:nth-child(4) {
+    grid-column: auto;
+  }
+
+  .feature-grid>.feature-card:last-child {
+    grid-column: 1 / -1;
   }
 }
 
@@ -523,11 +574,8 @@ body.hero-page[data-md-color-scheme="default"] {
   background-color: var(--kx-night);
 }
 
-[data-md-color-scheme="default"] .md-typeset .hero {
-  background:
-    radial-gradient(ellipse 50% 60% at 82% 40%, rgba(224, 165, 38, 0.2) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 70% at 12% 85%, rgba(11, 110, 122, 0.12) 0%, transparent 70%),
-    var(--kx-night);
+[data-md-color-scheme="default"] {
+  --hero-art: url('../assets/herald-hero-light.svg');
 }
 
 [data-md-color-scheme="default"] .md-typeset .hero h1 {
