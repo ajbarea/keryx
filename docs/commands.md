@@ -52,7 +52,7 @@ as usual.
 ## Voices
 
 Each terminal speaks in its own voice, through `/clear` and resume too. A repo keeps its voice
-across terminals and restarts. A second terminal in the same repo gets another voice, and once
+across restarts. A second terminal open in the same repo borrows another voice, and once
 the stock voices run out, new terminals get blends of two. Set `distinct_voices` to `false` to
 speak every terminal in `voice`.
 

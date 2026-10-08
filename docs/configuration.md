@@ -36,9 +36,9 @@ back to the default.
 | `XDG_CACHE_HOME` | Moves the cache directory; the daemon socket, `daemon.log`, `voices.json` and the venvs live in `$XDG_CACHE_HOME/keryx` |
 | `CLAUDE_CODE_ENTRYPOINT` | Read, not set: a value starting with `sdk` marks a headless session (`claude -p`, the Agent SDK), which keryx keeps silent |
 
-An environment value is read as the type of its field. Booleans accept `1`, `true`, `yes` and
-`on`. A list such as `duck_apps` is comma-separated: `KERYX_DUCK_APPS=Spotify,vlc`. A value
-that does not parse is ignored.
+An environment value is read as the type of its field. A boolean is true for `1`, `true`, `yes` and
+`on`, and false for anything else. A list such as `duck_apps` is comma-separated:
+`KERYX_DUCK_APPS=Spotify,vlc`. A number that does not parse is ignored.
 
 ## Files
 

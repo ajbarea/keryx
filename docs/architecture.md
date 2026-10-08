@@ -19,12 +19,15 @@ graph LR
 ```
 
 The hook is Claude Code's `Stop` hook, calling the daemon over a Unix socket. Shortening goes
-to Ollama `gemma3:4b` only for replies over 200 characters. The player is PowerShell on
+to Ollama `gemma3:4b` only for replies over 200 characters once code, tables and paths are
+stripped. The player is PowerShell on
 Windows, reading the WAV that Kokoro wrote to `audio_dir`.
 
-1. **Hook.** The plugin's hooks are `async`, so Claude Code never waits on them. `Stop` sends
-   the reply, `Notification` sends permission and elicitation prompts, and `SessionStart` and
-   `UserPromptSubmit` start the daemon and preload the summarizer.
+1. **Hook.** The `keryx hook` entries are async, so Claude Code never waits on them. `Stop`
+   sends the reply, `Notification` sends permission and elicitation prompts, and
+   `SessionStart` and `UserPromptSubmit` start the daemon and preload the summarizer.
+   `bin/keryx-replay` runs synchronously on `UserPromptSubmit`, screens the prompt in the
+   shell, and starts Python only for a short prompt that could be "say that again".
 2. **Daemon.** One daemon per machine listens on a Unix socket, guarded by a lock file so a
    second daemon exits instead of taking over the socket. One queue serves every session.
 3. **Shorten.** The daemon strips code, tables, headings and paths. A reply of 200 characters
@@ -33,7 +36,7 @@ Windows, reading the WAV that Kokoro wrote to `audio_dir`.
    instead, up to 320 characters.
 4. **Speak.** Kokoro-82M, through `kokoro-onnx`, turns each sentence into audio. It runs on
    CUDA when the `cuda` extra is installed and falls back to the CPU provider otherwise.
-   Synthesis runs one sentence ahead of playback. Each sentence is brought to the configured
+   Synthesis runs up to two sentences ahead of playback. Each sentence is brought to the configured
    loudness (-16 LUFS by default) and limited so sample peaks stay under -1.5 dBFS.
 5. **Play.** One long-lived PowerShell process plays each WAV through MCI and reports when
    the clip stops. The WAV must sit on a Windows drive.
@@ -43,14 +46,15 @@ Windows, reading the WAV that Kokoro wrote to `audio_dir`.
 WSLg's PulseAudio sink suspends when idle and then drops or hangs streams
 ([microsoft/wslg#1392](https://github.com/microsoft/wslg/issues/1392)). PowerShell plays
 reliably. A fresh `powershell.exe` costs 309 to 444 ms, so one process stays open and takes
-`play`, `mode` and `stop` lines on stdin.
+`play`, `mode`, `stop`, `duck` and `unduck` lines on stdin.
 
 ## Sessions and terminals
 
-- A new prompt cancels only that session's speech.
+- A new prompt cancels speech owned by that session or by the same terminal.
 - Each request carries a `prompt_id`. Hooks run async, so a reply's hook can land after the
   next prompt's, and the daemon drops a reply from an older prompt than the session's latest.
-- A terminal is its Claude Code process, found as the hook's nearest ancestor named `claude`.
+- A terminal is its Claude Code process, found as the hook's nearest ancestor named `claude` or `claude-code`. An npm install,
+  which runs as `node .../@anthropic-ai/claude-code/cli.js`, counts too.
   It holds its voice while that process runs, through `/clear` and resume.
 - A repo keeps the voice it was first given, stored by label in `voices.json`. The repo name
   is read from `.git` directly, so a prompt never waits on a `git` subprocess.

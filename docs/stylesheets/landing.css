@@ -414,10 +414,22 @@ body.hero-page .md-content__inner {
 
 .feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.2rem;
   margin-top: 2.5rem;
   text-align: left;
+}
+
+@media (max-width: 900px) {
+  .feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .md-typeset .feature-card,
@@ -454,6 +466,7 @@ body.hero-page .md-content__inner {
   font-weight: 700;
   color: var(--kx-text);
   margin-bottom: 0.4rem;
+  overflow-wrap: normal;
 }
 
 .feature-card p {

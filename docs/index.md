@@ -74,7 +74,7 @@ hide:
         <span class="step-note">Windows, through WSL2</span>
       </div>
     </div>
-    <p class="pipeline-caption">A reply of 200 characters or fewer skips the shortening step and is spoken as written.</p>
+    <p class="pipeline-caption">A reply of 200 characters or fewer, once code, tables and paths are stripped, skips the shortening step and is spoken as written.</p>
   </div>
 </section>
 

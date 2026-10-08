@@ -15,7 +15,7 @@ Repo-specific facts the techne skills read. Logic lives in the skills; only fact
 - language: Python (>=3.12,<3.14); CI matrix covers 3.12 and 3.13. TypeScript for the hooks
   module.
 - toolchain: uv, ruff (format + lint), ty (types), pytest
-- cli_entrypoint: `bin/keryx <hook|on|off|status|say|again|pronounce|voices|stop|daemon>`
+- cli_entrypoint: `bin/keryx <hook|replay-hook|on|off|status|say|again|pronounce|voices|stop|daemon>`
 - runner: none. Targets run directly via `make`; there is no `logs/dev-<ts>-*.log` archive
   convention, so the audit's log-reconciliation phase is N/A.
 - has: a `cuda` extra (about 2 GB of NVIDIA wheels, not installed in CI), WSL2-only playback

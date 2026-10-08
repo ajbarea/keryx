@@ -17,8 +17,9 @@ description: Requirements, install and first run of keryx.
 The first run downloads the Kokoro model files (about 350 MB). With an NVIDIA GPU it also
 downloads the CUDA runtime wheels (about 2 GB).
 
-While it runs, keryx holds about 4.4 GB of GPU memory: 3.7 GB for the summarizer and 0.7 GB
-for Kokoro, measured on an 8 GB card.
+While it runs, keryx holds about 4.4 GB of GPU memory. On an 8 GB card, turning keryx off
+freed 4,464 MiB, of which 3,791 MiB was the summarizer and the rest Kokoro
+([design record](design.md#process-model)).
 
 ## Install
 

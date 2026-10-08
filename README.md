@@ -22,11 +22,11 @@ no tokens.
 
 1. **Hook.** When Claude finishes a turn, the plugin's `Stop` hook sends the reply to a
    background daemon and returns at once.
-2. **Shorten.** The daemon strips code, tables and paths. A reply under 200 characters is
+2. **Shorten.** The daemon strips code, tables and paths. A reply of 200 characters or fewer is
    spoken as written; anything longer goes to a local Ollama model (`gemma3:4b`), which
    rewrites it as one or two sentences.
 3. **Speak.** Kokoro-82M turns each sentence into audio on the GPU (CPU if there is none),
-   one sentence ahead of playback.
+   up to two sentences ahead of playback.
 4. **Play.** A long-lived PowerShell process plays each WAV on the Windows side.
 
 It also speaks permission prompts ("I need your permission to use Bash"), and stops talking
@@ -81,7 +81,7 @@ forgets one; they are kept in `~/.config/keryx/pronounce.json`. A saying between
 phonemes, for sounds English spelling cannot reach: `keryx pronounce techne /tˈexni/`.
 
 Each terminal speaks in its own voice, through `/clear` and resume too. A repo keeps its
-voice across terminals and restarts, a second terminal in the same repo gets another, and
+voice across restarts, a second terminal open in the same repo borrows another, and
 once the stock voices run out new terminals get blends of two. `keryx voices [N]` plays the first N voices in the catalogue,
 stock voices first.
 

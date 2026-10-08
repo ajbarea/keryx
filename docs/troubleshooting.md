@@ -9,7 +9,8 @@ The daemon logs to `~/.cache/keryx/daemon.log`. Check it first.
 
 ## keryx is silent
 
-Open `daemon.log` and look for `mci error 326`. It means Windows has no audio output device,
+Open `daemon.log` and look for `mci error 326`. The README documents it, and the player test
+skips on it. It means Windows has no audio output device,
 for example because the speakers are off. Nothing needs restarting. The next reply plays once
 a device is back.
 
@@ -20,8 +21,8 @@ Other things that silence keryx:
 - The session is headless (`claude -p` or the Agent SDK). keryx stays silent there on purpose.
 - `audio_dir` is not on a Windows drive. Windows can only play from its own drives. A
   `\\wsl.localhost` path loaded in 10 to 12 s in the measurements and logged vsock errors.
-- `audio_dir` is 128 characters or longer. MCI refuses such a path, and the player warns at
-  start.
+- The Windows form of the WAV path (`audio_dir` plus `\keryx-0.wav`) is 128 characters or
+  longer. MCI refuses such a path, and the player warns at start.
 
 ## The first reply takes minutes
 
