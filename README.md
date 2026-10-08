@@ -1,4 +1,18 @@
+<div align="center">
+
 # keryx
+
+### Gives Claude Code a voice.
+
+*After each reply, keryx says its gist out loud: a local model writes it, a local voice speaks it.*
+
+[![CI](https://img.shields.io/github/actions/workflow/status/ajbarea/keryx/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/ajbarea/keryx/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-ajbarea.github.io%2Fkeryx-0b6e7a?style=flat-square)](https://ajbarea.github.io/keryx/)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+
+</div>
+
+---
 
 Gives Claude Code a voice. After each reply, keryx says its gist out loud in one or two
 sentences: what happened, and what Claude needs from you. Everything runs locally and costs
@@ -8,11 +22,11 @@ no tokens.
 
 1. **Hook.** When Claude finishes a turn, the plugin's `Stop` hook sends the reply to a
    background daemon and returns at once.
-2. **Shorten.** The daemon strips code, tables and paths. A reply under 200 characters is
+2. **Shorten.** The daemon strips code, tables and paths. A reply of 200 characters or fewer is
    spoken as written; anything longer goes to a local Ollama model (`gemma3:4b`), which
    rewrites it as one or two sentences.
 3. **Speak.** Kokoro-82M turns each sentence into audio on the GPU (CPU if there is none),
-   one sentence ahead of playback.
+   up to two sentences ahead of playback.
 4. **Play.** A long-lived PowerShell process plays each WAV on the Windows side.
 
 It also speaks permission prompts ("I need your permission to use Bash"), and stops talking
@@ -67,7 +81,7 @@ forgets one; they are kept in `~/.config/keryx/pronounce.json`. A saying between
 phonemes, for sounds English spelling cannot reach: `keryx pronounce techne /tˈexni/`.
 
 Each terminal speaks in its own voice, through `/clear` and resume too. A repo keeps its
-voice across terminals and restarts, a second terminal in the same repo gets another, and
+voice across restarts, a second terminal open in the same repo borrows another, and
 once the stock voices run out new terminals get blends of two. `keryx voices [N]` plays the first N voices in the catalogue,
 stock voices first.
 
@@ -111,9 +125,10 @@ ignored, and `on`/`off` keep it as `config.json.bad`.
 ```bash
 make lint   # ruff format --check, ruff check, ty
 make test   # pytest with coverage
+make docs-build   # build the docs site strictly
 ```
 
-[docs/design.md](docs/design.md) records the design decisions and the measurements behind
+The [documentation site](https://ajbarea.github.io/keryx/) covers install, commands and settings. [docs/design.md](docs/design.md) records the design decisions and the measurements behind
 them; [eval/](eval/) holds the summarizer evaluation.
 
 ## Why "keryx"

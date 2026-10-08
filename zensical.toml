@@ -1,0 +1,87 @@
+[project]
+site_name = "keryx"
+site_description = "Gives Claude Code a voice: a local, spoken gist of each reply"
+site_author = "AJ Barea"
+site_url = "https://ajbarea.github.io/keryx/"
+repo_url = "https://github.com/ajbarea/keryx"
+repo_name = "ajbarea/keryx"
+copyright = "AJ Barea"
+
+# Zensical publishes every page under docs/, so every page is named here.
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = "getting-started.md" },
+  { "Commands" = "commands.md" },
+  { "Configuration" = "configuration.md" },
+  { "Architecture" = "architecture.md" },
+  { "Design record" = "design.md" },
+  { "Troubleshooting" = "troubleshooting.md" },
+]
+
+extra_css = ["stylesheets/landing.css", "stylesheets/extra.css"]
+extra_javascript = ["javascripts/reveal.js"]
+
+# No [project.markdown_extensions]: defining one replaces Zensical's defaults, which already
+# carry md_in_html, attr_list, emoji and the mermaid fence this site uses.
+
+# ---------------------------------------------------------------------------
+# Theme
+# ---------------------------------------------------------------------------
+[project.theme]
+name = "material"
+language = "en"
+custom_dir = "overrides"
+
+features = [
+    "announce.dismiss",
+    "content.code.annotate",
+    "content.code.copy",
+    "content.code.select",
+    "content.footnote.tooltips",
+    "content.tabs.link",
+    "content.tooltips",
+    "navigation.footer",
+    "navigation.indexes",
+    "navigation.instant",
+    "navigation.instant.prefetch",
+    "navigation.instant.progress",
+    "navigation.path",
+    "navigation.sections",
+    "navigation.top",
+    "navigation.tracking",
+    "search.highlight",
+    "search.suggest",
+]
+
+# ---------------------------------------------------------------------------
+# Color palette: bronze gold against night teal, a herald's horn. The sisters take
+# indigo/amber, teal/deep-purple and deep-orange/indigo.
+# ---------------------------------------------------------------------------
+[[project.theme.palette]]
+scheme = "slate"
+primary = "teal"
+accent = "amber"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "teal"
+accent = "amber"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to dark mode"
+
+[project.theme.font]
+text = "Inter"
+code = "JetBrains Mono"
+
+[project.theme.icon]
+logo = "material/bullhorn"
+
+[project.extra]
+generator = false
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/ajbarea/keryx"
+name = "keryx on GitHub"

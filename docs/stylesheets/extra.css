@@ -1,0 +1,36 @@
+/* ==========================================================================
+   keryx
+
+   Rules for the reference pages. The landing page's styles are in landing.css.
+   ========================================================================== */
+
+/* Setting names, defaults and commands are columns of short literals; a monospace
+   second column keeps them comparable. */
+.md-typeset table:not([class]) td:first-child code {
+  white-space: nowrap;
+}
+
+/* The brand mark in the footer copyright, when a site sets one. */
+.md-copyright .brand-mark,
+.landing-footer .brand-mark {
+  height: 1em;
+  width: auto;
+  vertical-align: -0.18em;
+  margin: 0 0.15rem;
+  opacity: 0.75;
+  filter: invert(1);
+}
+
+[data-md-color-scheme="default"] .md-copyright .brand-mark {
+  filter: none;
+}
+
+/* The permalink mark belongs on reference headings, not on the hero title. */
+.md-typeset .hero h1 .headerlink {
+  display: none;
+}
+
+/* The Greek word on the etymology section. */
+.md-typeset .greek {
+  font-weight: 600;
+}
