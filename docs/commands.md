@@ -63,9 +63,12 @@ A line starts with the repo's name when it comes from a different repo than the 
 Kokoro gets some words wrong, repo names especially. `keryx pronounce` teaches it.
 
 ```bash
-keryx pronounce ajsoftworks AJ soft works     # set, then keryx says the word once
-keryx pronounce                               # list
-keryx pronounce ajsoftworks                   # forget
+# set, then keryx says the word once
+keryx pronounce ajsoftworks AJ soft works
+# list
+keryx pronounce
+# forget
+keryx pronounce ajsoftworks
 ```
 
 Pronunciations live in `~/.config/keryx/pronounce.json` (under `$XDG_CONFIG_HOME` when set) as
