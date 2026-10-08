@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img" aria-label="A herald’s horn sounding">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="740 20 880 800" width="880" height="800" role="img" aria-label="A herald’s horn sounding">
 <defs>
-  <radialGradient id="glow" cx="1230" cy="400" r="470" gradientUnits="userSpaceOnUse">
+  <radialGradient id="glow" cx="1200" cy="420" r="380" gradientUnits="userSpaceOnUse">
     <stop offset="0" stop-color="#e0a526" stop-opacity="0.32"/>
     <stop offset="0.6" stop-color="#e0a526" stop-opacity="0.080"/>
     <stop offset="1" stop-color="#e0a526" stop-opacity="0"/>
@@ -16,7 +16,7 @@
     <stop offset="1" stop-color="#e0a526"/>
   </radialGradient>
 </defs>
-<rect width="1600" height="900" fill="url(#glow)"/>
+<rect x="740" y="20" width="880" height="800" fill="url(#glow)"/>
 <g transform="translate(800 720) rotate(-36)">
     <path d="M 654.6 -73.9 A 120 120 0 0 1 654.6 73.9" stroke="#3bc0cf" stroke-opacity="0.85" stroke-width="5" stroke-linecap="round" fill="none"/>
     <path d="M 701.8 -110.8 A 180 180 0 0 1 701.8 110.8" stroke="#3bc0cf" stroke-opacity="0.6" stroke-width="4.5" stroke-linecap="round" fill="none"/>

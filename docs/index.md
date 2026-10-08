@@ -27,6 +27,11 @@ hide:
 
 </div>
 
+<div class="hero-art">
+  <img class="hero-art--dark" src="assets/herald-hero.svg" alt="" width="880" height="800">
+  <img class="hero-art--light" src="assets/herald-hero-light.svg" alt="" width="880" height="800">
+</div>
+
 </div>
 
 <div class="scroll-hint" aria-hidden="true">
