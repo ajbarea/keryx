@@ -430,6 +430,19 @@ body.hero-page .md-content__inner {
   line-height: 1.35;
 }
 
+/* Desktop: the five steps share one row at every width, shrinking rather than wrapping. */
+@media (min-width: 769px) {
+  .pipeline-flow {
+    flex-wrap: nowrap;
+  }
+
+  .pipeline-step {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 11rem;
+  }
+}
+
 /* Phone: the five steps read top to bottom, one row each, joined by downward arrows. */
 @media (max-width: 768px) {
   .pipeline-flow {
