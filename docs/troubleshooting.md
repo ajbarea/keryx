@@ -24,6 +24,7 @@ a device is back.
 
 Other things that silence keryx:
 
+- uv is missing. Run `/keryx status`, which says so and prints the installer.
 - `/keryx status` shows `"enabled": false`. Run `/keryx on`. If `KERYX_ENABLED` is set in the
   environment, it overrides the file.
 - The session is headless (`claude -p` or the Agent SDK). keryx stays silent there on purpose.

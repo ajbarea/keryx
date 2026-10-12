@@ -11,6 +11,8 @@ Last reviewed: 2026-10-03.
 
 ## Completed
 
+- 2026-10-12: `keryx status` runs setup checks with fixes; `bin/keryx` names the uv installer;
+  an AGENTS.md setup runbook (0.7.0).
 - 2026-10-07: a Zensical documentation site at ajbarea.github.io/keryx, deployed from `main`
   by `.github/workflows/docs.yml`.
 - 2026-10-06: `/keryx on`, `off`, `again` and `status` are one mod command (0.6.0): it runs at

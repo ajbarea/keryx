@@ -1,3 +1,4 @@
+import http.client
 import json
 import urllib.error
 
@@ -87,3 +88,16 @@ def test_non_object_tags_payload_is_not_a_traceback():
     )
     assert lines(found)["ollama"] == "missing"
     assert doctor.exit_code(found) == 1
+
+
+def test_http_errors_are_a_missing_ollama_not_a_traceback():
+    def bad_status(url: str) -> bytes:
+        raise http.client.BadStatusLine("SSH-2.0")
+
+    def bad_port(url: str) -> bytes:
+        raise http.client.InvalidURL("nonnumeric port: 'abc'")
+
+    for fetch in (bad_status, bad_port):
+        found = doctor.checks(Config(), which=which_all, fetch=fetch)
+        assert lines(found)["ollama"] == "missing"
+        assert "  fix: ollama serve" in doctor.render(found).splitlines()

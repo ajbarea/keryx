@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import shutil
@@ -57,7 +58,7 @@ def checks(cfg: Config, which: Which = shutil.which, fetch: Fetch = _fetch) -> l
             fetch(f"{host}/api/version")
             tags = json.loads(fetch(f"{host}/api/tags")).get("models", [])
             names = {m.get("name", "") for m in tags}
-        except (OSError, ValueError, AttributeError) as exc:
+        except (OSError, ValueError, AttributeError, http.client.HTTPException) as exc:
             fix = "fix: ollama serve" if which("ollama") else f"fix: {OLLAMA_INSTALL}"
             found.append(Check("missing", "ollama", f"{host} did not answer ({exc})", (fix,)))
             found.append(Check("n/a", "model", "Ollama is not reachable"))
