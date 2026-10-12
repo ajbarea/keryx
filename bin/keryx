@@ -2,6 +2,10 @@
 # Runs keryx from this checkout. The venv lives outside the plugin cache so updates keep it, and
 # is named for the plugin's version and location so one version never runs another's code.
 set -euo pipefail
+command -v uv >/dev/null 2>&1 || {
+  printf 'keryx needs uv, which is not on PATH.\n  fix: curl -LsSf https://astral.sh/uv/install.sh | sh\nOpen a new terminal, then run this command again.\n' >&2
+  exit 127
+}
 root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 base="${XDG_CACHE_HOME:-$HOME/.cache}/keryx"
 version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \

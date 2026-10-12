@@ -66,7 +66,7 @@ speaking in about 1 to 2 seconds.
 | --- | --- |
 | `/keryx off` | Stops speech, shuts the daemon down and unloads the summarizer, freeing about 4.4 GB of VRAM |
 | `/keryx on` | Turns speech back on; the next prompt starts the daemon |
-| `/keryx status` | Shows the settings and whether the daemon is running |
+| `/keryx status` | Shows the settings, whether the daemon is running, and one line per setup check |
 | `/keryx again` | Says this terminal's last line again |
 | `/keryx:pronounce` | Teaches keryx how to say a word; Claude also uses it when you say "X should sound like Y" |
 
@@ -130,6 +130,10 @@ make docs-build   # build the docs site strictly
 
 The [documentation site](https://ajbarea.github.io/keryx/) covers install, commands and settings. [docs/design.md](docs/design.md) records the design decisions and the measurements behind
 them; [eval/](eval/) holds the summarizer evaluation.
+
+## Cite
+
+keryx ships in the techne marketplace and is cited through it. Cite techne with its [CITATION.cff](https://github.com/ajbarea/techne/blob/main/CITATION.cff); the docs are at <https://ajbarea.github.io/techne/>.
 
 ## Why "keryx"
 

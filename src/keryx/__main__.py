@@ -3,7 +3,7 @@
 keryx hook             read a Claude Code hook payload on stdin
 keryx replay-hook      the same for the synchronous "say that again" prompt hook
 keryx on | off         turn speech on or off
-keryx status           show settings and whether the daemon is up
+keryx status           show settings, daemon state and setup checks; exit 1 if one is missing
 keryx say TEXT         speak TEXT as given
 keryx again            say this terminal's last line again
 keryx pronounce [WORD [SAYING]]   list, forget (WORD only) or set how to say WORD; /ipa/ = phonemes
@@ -79,13 +79,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if cmd == "status":
+        from keryx import doctor
+
         try:
             daemon = client.send({"op": "ping"})
         except (OSError, ValueError):
             daemon = None
         state = {**vars(cfg), "daemon": daemon or "not running"}
         print(json.dumps(state, indent=2))
-        return 0
+        found = doctor.checks(cfg)
+        print()
+        print(doctor.render(found))
+        return doctor.exit_code(found)
 
     if cmd == "say":
         if not cfg.enabled:

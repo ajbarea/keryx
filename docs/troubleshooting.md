@@ -7,6 +7,14 @@ description: What to check when keryx is silent, slow or speaking the wrong thin
 
 The daemon logs to `~/.cache/keryx/daemon.log`. Check it first.
 
+## keryx says it needs uv
+
+`bin/keryx` runs through uv. Install it with `curl -LsSf https://astral.sh/uv/install.sh | sh`, open a new terminal, and run the command again.
+
+## `keryx status` ends with `result: missing`
+
+Each `missing` line names the check and the command that fixes it. The [setup runbook](https://github.com/ajbarea/keryx/blob/main/AGENTS.md) explains each one.
+
 ## keryx is silent
 
 Open `daemon.log` and look for `mci error 326`. The README documents it, and the player test

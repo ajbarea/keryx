@@ -11,7 +11,7 @@ description: The /keryx command, replaying a line, voices and pronunciations.
 | --- | --- |
 | `/keryx off` | Stops speech, shuts the daemon down and unloads the summarizer, freeing about 4.4 GB of VRAM |
 | `/keryx on` | Turns speech back on; the next prompt starts the daemon |
-| `/keryx status` | Shows the settings and whether the daemon is running |
+| `/keryx status` | Shows the settings, whether the daemon is running, and one line per setup check |
 | `/keryx again` | Says this terminal's last line again |
 | `/keryx:pronounce` | Teaches keryx how to say a word |
 
@@ -30,7 +30,7 @@ The same `keryx` binary runs from a shell:
 | Command | What it does |
 | --- | --- |
 | `keryx on`, `keryx off` | Turn speech on or off |
-| `keryx status` | Show settings and whether the daemon is up |
+| `keryx status` | Show settings, whether the daemon is up, and one line per setup check (exit 1 if one is missing) |
 | `keryx say TEXT` | Speak TEXT as given |
 | `keryx again` | Say this terminal's last line again |
 | `keryx pronounce [WORD [SAYING]]` | List, forget or set how to say WORD |

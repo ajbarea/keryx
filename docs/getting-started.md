@@ -14,6 +14,8 @@ description: Requirements, install and first run of keryx.
   speaks, and you control it from a shell.
 - Optional: an NVIDIA GPU. Without one, Kokoro runs on the CPU.
 
+`keryx status` checks each requirement and prints the fix for anything missing. Claude can walk you through setup with the [setup runbook](https://github.com/ajbarea/keryx/blob/main/AGENTS.md).
+
 The first run downloads the Kokoro model files (about 350 MB). With an NVIDIA GPU it also
 downloads the CUDA runtime wheels (about 2 GB).
 
@@ -50,8 +52,8 @@ Check that the daemon is up:
 keryx status
 ```
 
-`status` prints the settings as JSON and a `daemon` field that reads `not running` until a
-prompt has started it. Say something aloud from a shell to hear the voice:
+`status` prints the settings as JSON, a `daemon` field that reads `not running` until a
+prompt has started it, and one line per setup check. Say something aloud from a shell to hear the voice:
 
 ```bash
 keryx say "keryx is working"
