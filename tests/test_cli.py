@@ -17,6 +17,13 @@ def isolated(tmp_path, monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _no_setup_checks(monkeypatch):
+    from keryx import doctor
+
+    monkeypatch.setattr(doctor, "checks", lambda cfg: [])
+
+
 @pytest.fixture
 def sent(monkeypatch):
     calls = {"send": [], "spawn": []}
@@ -494,3 +501,13 @@ def test_pronounce_refuses_phonemes_kokoro_cannot_voice(monkeypatch, capsys):
     assert "zz" not in load()
     assert cli.main(["pronounce", "techne", "/t\u02c8exni/"]) == 0
     assert load()["techne"] == "/t\u02c8exni/"
+
+
+def test_status_exits_1_when_a_check_is_missing(monkeypatch, capsys):
+    from keryx import doctor
+
+    monkeypatch.setattr(
+        doctor, "checks", lambda cfg: [doctor.Check("missing", "uv", "not on PATH")]
+    )
+    assert cli.main(["status"]) == 1
+    assert "missing uv: not on PATH" in capsys.readouterr().out

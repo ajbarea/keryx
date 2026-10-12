@@ -8,6 +8,13 @@ from keryx.config import Config
 from keryx.daemon import VERSION, handle, one_at_a_time, request_summary, serve
 
 
+@pytest.fixture(autouse=True)
+def _own_config(tmp_path, monkeypatch):
+    """The daemon reads Config.load(); keep the machine's config.json and env out of it."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg-isolated"))
+    monkeypatch.delenv("KERYX_ENABLED", raising=False)
+
+
 class FakeSpeaker:
     def __init__(self):
         self.submitted = []
