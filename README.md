@@ -9,6 +9,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/ajbarea/keryx/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/ajbarea/keryx/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-ajbarea.github.io%2Fkeryx-0b6e7a?style=flat-square)](https://ajbarea.github.io/keryx/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23327640.svg)](https://doi.org/10.5281/zenodo.23327640)
 
 </div>
 
@@ -133,7 +134,7 @@ them; [eval/](eval/) holds the summarizer evaluation.
 
 ## Cite
 
-keryx ships in the techne marketplace and is cited through it. Cite techne with its [CITATION.cff](https://github.com/ajbarea/techne/blob/main/CITATION.cff); the docs are at <https://ajbarea.github.io/techne/>.
+Cite keryx by its Zenodo DOI, [10.5281/zenodo.23327640](https://doi.org/10.5281/zenodo.23327640), which resolves to the latest release. keryx also ships in the techne marketplace, whose [CITATION.cff](https://github.com/ajbarea/techne/blob/main/CITATION.cff) covers it.
 
 ## Why "keryx"
 
