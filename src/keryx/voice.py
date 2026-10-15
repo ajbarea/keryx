@@ -6,6 +6,7 @@ import hashlib
 import logging
 import re
 import subprocess
+from collections.abc import Container
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +15,7 @@ import soundfile as sf
 from keryx.config import cache_dir
 from keryx.loudness import TARGET_LUFS, normalize
 from keryx.pronounce import PHONEMES_CLOSE, PHONEMES_OPEN
-from keryx.voices import VoiceSpec
+from keryx.voices import POOL, VoiceSpec
 
 log = logging.getLogger("keryx")
 
@@ -116,6 +117,13 @@ def open_session(ort, model: Path):
         return ort.InferenceSession(str(model), options, providers=["CPUExecutionProvider"])
 
 
+def default_voice(requested: str, available: Container[str]) -> str:
+    """The configured voice if Kokoro can synthesize it, else the pool's lead. A config `voice`
+    that is a typo, or a voice since removed from Kokoro, falls back instead of failing the
+    default-synth path with a KeyError."""
+    return requested if requested in available else POOL[0]
+
+
 class KokoroVoice:
     def __init__(self, voice: str, speed: float, loudness: float = TARGET_LUFS):
         import onnxruntime as ort
@@ -126,7 +134,10 @@ class KokoroVoice:
         self.provider = session.get_providers()[0]
         log.info("kokoro on %s", self.provider)
         self._kokoro = Kokoro.from_session(session, str(d / VOICES))
-        self.voice = VoiceSpec((voice,))
+        chosen = default_voice(voice, self._kokoro.voices)
+        if chosen != voice:
+            log.warning("voice %r is not available; using %s", voice, chosen)
+        self.voice = VoiceSpec((chosen,))
         self.speed = speed
         self.loudness = loudness
         self._styles: dict[VoiceSpec, np.ndarray] = {}

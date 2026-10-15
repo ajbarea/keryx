@@ -200,7 +200,13 @@ def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], Non
         duck_ratio=cfg.duck_ratio,
     )
     voice = KokoroVoice(cfg.voice, cfg.speed, cfg.loudness)
-    book = VoiceBook(cache_dir() / "voices.json", cfg.voice) if cfg.distinct_voices else None
+    # `voice.voice` is the configured voice, or the fallback when it is not a real Kokoro voice,
+    # so the per-terminal catalogue is seeded from a voice that can actually be synthesized.
+    book = (
+        VoiceBook(cache_dir() / "voices.json", voice.voice.names[0])
+        if cfg.distinct_voices
+        else None
+    )
     speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book, Lexicon())
     return speaker, player, warm if client else None
 
