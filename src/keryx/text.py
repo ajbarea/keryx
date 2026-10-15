@@ -14,6 +14,14 @@ _QUOTE = re.compile(r"^\s*>\s?")
 _LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 _URL = re.compile(r"https?://\S+")
 _INLINE_CODE = re.compile(r"`([^`]*)`")
+# A git commit SHA read aloud is noise ("four eight one eight oh three e"); say "a commit".
+# 7 to 40 hex digits as a whole token, with at least one a-f letter and one digit, so plain
+# numbers (1234567) and hex-looking words (deadbed) are left alone. A `-` before it (a hashed
+# asset name like chunk-a1b2c3d4.js) also excludes it, since that is not a commit reference.
+_SHA = re.compile(r"(?<![\w-])(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}(?!\w)")
+# "#123" reads as "hash 123"; after a PR/issue word the "#" just goes, else say "number".
+_TICKET_LABELLED = re.compile(r"(?i)\b(PR|pull request|issue)\s*#(\d+)\b")
+_TICKET_BARE = re.compile(r"(?<!\w)#(\d+)(?!\w)")
 # Emphasis markers hug a word on both sides; a lone `*` in `*.py` does not.
 _BOLD = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
 _ITALIC = re.compile(r"(?<![\w*])([*_])(?=\S)(.+?)(?<=\S)\1(?![\w*])")
@@ -34,7 +42,12 @@ def _inline(text: str) -> str:
     text = _LINK.sub(r"\1", text)
     text = _URL.sub("a link", text)
     text = _INLINE_CODE.sub(r"\1", text)
+    # Paths first, so a hex segment inside one (/var/cache/a1b2c3d4/log.txt) collapses with the
+    # path instead of being read as "a commit".
     text = _PATH.sub(lambda m: m.group(1) or m.group(2), text)
+    text = _SHA.sub("a commit", text)
+    text = _TICKET_LABELLED.sub(r"\1 \2", text)
+    text = _TICKET_BARE.sub(r"number \1", text)
     text = _BOLD.sub(r"\2", text)
     text = _ITALIC.sub(r"\2", text)
     text = _SYMBOLS.sub("", text)
