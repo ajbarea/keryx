@@ -7,6 +7,7 @@ keryx status           show settings, daemon state and setup checks; exit 1 if o
 keryx say TEXT         speak TEXT as given
 keryx again            say this terminal's last line again
 keryx pronounce [WORD [SAYING]]   list, forget (WORD only) or set how to say WORD; /ipa/ = phonemes
+keryx voice [NAME]     preview the voices and pick one, or set the one named (name or number)
 keryx voices [N]       say a line in each of the first N voices in the catalogue
 keryx stop             cut off current speech
 keryx daemon           run the speech daemon in the foreground
@@ -31,10 +32,79 @@ COMMANDS = (
     "say",
     "again",
     "pronounce",
+    "voice",
     "voices",
     "stop",
     "daemon",
 )
+
+
+def _preview(specs: list) -> bool:
+    """Say a sample line in each voice, listing it on screen too. False if no daemon answers."""
+    from keryx import version
+
+    try:
+        client.current({"op": "ping", "version": version()})
+    except (OSError, ValueError) as exc:
+        print(f"the keryx daemon did not answer: {exc}", file=sys.stderr)
+        return False
+    for n, spec in enumerate(specs, 1):
+        print(f"{n:2}. {spec.spoken()}")
+        text = f"Voice {n}, {spec.spoken()}. This is how I read your replies."
+        reply = client.send_or_spawn(
+            {"op": "say", "kind": "notice", "text": text, "voice": spec.label()}
+        )
+        if not reply.get("ok"):
+            print(f"{spec.label()}: {reply.get('error')}", file=sys.stderr)
+    return True
+
+
+def _set_voice(cfg: Config, arg: str | None) -> int:
+    """`keryx voice`: pick a voice by preview, or set the one named in `arg`."""
+    from keryx.procs import terminal_id
+    from keryx.voices import VoiceSpec, resolve, stock
+
+    if not cfg.enabled:
+        print("keryx is off; `keryx on` first", file=sys.stderr)
+        return 1
+    specs = stock(cfg.voice)
+    choice = arg
+    if choice is None:
+        if not _preview(specs):
+            return 1
+        if not sys.stdin.isatty():
+            print("run `keryx voice <name or number>` to set one")
+            return 0
+        current = VoiceSpec((cfg.voice,)).spoken()
+        try:
+            choice = input(f"Pick a voice (number or name, Enter keeps {current}): ").strip()
+        except EOFError:
+            choice = ""
+        if not choice:
+            print("keeping the current voice")
+            return 0
+    label = resolve(choice, specs)
+    if label is None:
+        print(f"no voice matches {choice!r}; run `keryx voice` to hear them", file=sys.stderr)
+        return 2
+    spoken = VoiceSpec.parse(label).spoken()
+    set_stored(voice=label)
+    try:
+        reply = client.send_or_spawn({"op": "set_voice", "voice": label, "terminal": terminal_id()})
+    except (OSError, ValueError) as exc:
+        print(f"saved {spoken} as the voice, but the daemon did not answer: {exc}", file=sys.stderr)
+        return 1
+    if not reply.get("ok"):
+        print(f"{label}: {reply.get('error')}", file=sys.stderr)
+        return 1
+    client.send_or_spawn(
+        {"op": "say", "kind": "notice", "text": f"Now speaking in {spoken}.", "voice": label}
+    )
+    if reply.get("pinned"):
+        print(f"voice set to {spoken}: this terminal now, and new terminals.")
+    else:
+        print(f"voice set to {spoken}: new terminals use it; restart keryx to switch others.")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -128,6 +198,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"the keryx daemon did not answer: {exc}", file=sys.stderr)
             return 1
         return 0
+
+    if cmd == "voice":
+        return _set_voice(cfg, args[1] if len(args) > 1 else None)
 
     if cmd == "replay-hook":
         # Synchronous UserPromptSubmit: "say that again" replays instead of reaching Claude.
