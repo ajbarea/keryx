@@ -295,6 +295,10 @@ class FakeVoices:
         self.claimed.append((holder, source))
         return self.picked.get(holder)
 
+    def pin(self, holder, label):
+        self.pinned = [*getattr(self, "pinned", []), (holder, label)]
+        return bool(holder)
+
 
 def test_each_utterance_is_spoken_in_the_voice_picked_for_its_session(tmp_path):
     voice = FakeVoice()

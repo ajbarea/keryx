@@ -120,6 +120,25 @@ def catalogue(first: str) -> list[VoiceSpec]:
     return specs
 
 
+def stock(first: str) -> list[VoiceSpec]:
+    """The single-voice choices `keryx voice` offers, the configured voice first, no blends."""
+    return [spec for spec in catalogue(first) if len(spec.names) == 1]
+
+
+def resolve(choice: str, specs: list[VoiceSpec]) -> str | None:
+    """A voice label from a 1-based number or a name (`bella`, `af_bella`, or the full label),
+    matched against `specs`; None when nothing matches."""
+    choice = choice.strip()
+    if choice.isdigit():
+        i = int(choice) - 1
+        return specs[i].label() if 0 <= i < len(specs) else None
+    low = choice.lower()
+    for spec in specs:
+        if low in {spec.label().lower(), spec.spoken().lower(), spec.names[0].lower()}:
+            return spec.label()
+    return None
+
+
 Table = dict[str, tuple[int, float]]  # key -> (catalogue index, last heard)
 
 
@@ -179,6 +198,22 @@ class VoiceBook:
             self._home[source] = (index, now)
         self._save(now, force=changed)
         return self._specs[index]
+
+    def pin(self, holder: str, label: str) -> bool:
+        """Hold `holder` on the voice `label`, overriding what it would be handed.
+
+        For `keryx voice`: the terminal the user picked a voice in keeps that voice until they
+        pick again, while every other terminal keeps its own. Returns False when the label is
+        not a voice in the catalogue, or there is no terminal to pin (a bare shell).
+        """
+        index = self._index.get(label)
+        if index is None or not holder:
+            return False
+        now = self._clock()
+        self._expire(now)
+        self._held[holder] = (index, now)
+        self._save(now, force=True)
+        return True
 
     def _expire(self, now: float) -> None:
         # A clock that jumped back (WSL after the host sleeps) must not make holds eternal.

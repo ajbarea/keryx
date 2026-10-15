@@ -4,8 +4,9 @@ Requests are one JSON object per connection, answered with one JSON line:
 `{"op": "say", "text", "kind", "session", "prompt", "terminal", "source", "voice"}`,
 `{"op": "stop", "session", "prompt", "terminal", "source", "warm", "interrupt"}`,
 `{"op": "warm", "version", "session", "terminal", "source"}`, `{"op": "ping"}`,
-`{"op": "again", "terminal", "session"}`, `{"op": "quit"}`. `warm` and `ping` answer with
-the daemon's version; `again` answers whether there was a line to say again.
+`{"op": "again", "terminal", "session"}`, `{"op": "set_voice", "voice", "terminal", "session"}`,
+`{"op": "quit"}`. `warm` and `ping` answer with the daemon's version; `again` answers whether
+there was a line to say again; `set_voice` answers whether a terminal was pinned to the voice.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from keryx.pronounce import Lexicon
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.summarize import OllamaClient, spoken_line
 from keryx.voice import KokoroVoice
-from keryx.voices import VoiceBook, VoiceSpec, holder
+from keryx.voices import POOL, VoiceBook, VoiceSpec, catalogue, holder
 
 log = logging.getLogger("keryx")
 
@@ -110,6 +111,17 @@ def handle(
     if op == "again":
         who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
         return {"ok": True, "replayed": speaker.again(who)}
+    if op == "set_voice":
+        try:
+            spec = VoiceSpec.parse(request.get("voice"))
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        # A voice is selectable only if it is in the catalogue, which is what `pin` can hold;
+        # the label set does not depend on the lead, so any catalogue ordering answers it.
+        if spec.label() not in {s.label() for s in catalogue(POOL[0])}:
+            return {"ok": False, "error": f"not a selectable voice: {spec.label()!r}"}
+        who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
+        return {"ok": True, "pinned": speaker.pin(who, spec.label())}
     if op == "say":
         text = str(request.get("text") or "")
         if not text.strip():

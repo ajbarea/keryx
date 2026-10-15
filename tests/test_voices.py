@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from keryx.voices import POOL, VoiceBook, VoiceSpec, catalogue, pool
+from keryx.voices import POOL, VoiceBook, VoiceSpec, catalogue, pool, resolve, stock
 
 
 class Clock:
@@ -510,3 +510,57 @@ def test_the_pinned_checksums_name_the_files_downloaded():
 
     assert set(voice.CHECKSUMS) == {voice.MODEL, voice.VOICES}
     assert all(len(h) == 64 for h in voice.CHECKSUMS.values())
+
+
+def test_pin_forces_a_holder_onto_a_voice(book):
+    b, _ = book
+    assert b.pin("s1", "af_bella") is True
+    assert b.assign("s1", "ariadne") == VoiceSpec(("af_bella",))
+
+
+def test_pin_leaves_other_holders_alone(book):
+    b, _ = book
+    other = b.assign("s2", "pharos")
+    b.pin("s1", "af_bella")
+    assert b.assign("s2", "pharos") == other
+
+
+def test_pin_refuses_an_unknown_voice(book):
+    b, _ = book
+    assert b.pin("s1", "zz_nope") is False
+
+
+def test_pin_needs_a_holder(book):
+    b, _ = book
+    assert b.pin("", "af_bella") is False
+
+
+def test_a_pinned_voice_survives_a_restart(tmp_path):
+    clock = Clock()
+    path = tmp_path / "v.json"
+    VoiceBook(path, clock=clock, active_seconds=60).pin("s1", "af_bella")
+    again = VoiceBook(path, clock=clock, active_seconds=60)
+    assert again.assign("s1", "ariadne") == VoiceSpec(("af_bella",))
+
+
+def test_stock_lists_single_voices_configured_first():
+    specs = stock("bm_george")
+    assert specs[0] == VoiceSpec(("bm_george",))
+    assert all(len(s.names) == 1 for s in specs)
+    assert len(specs) == len(POOL)
+
+
+def test_resolve_matches_number_name_and_label():
+    specs = stock("af_heart")
+    assert resolve("1", specs) == "af_heart"
+    assert resolve("bella", specs) == "af_bella"
+    assert resolve("af_bella", specs) == "af_bella"
+    assert resolve("BELLA", specs) == "af_bella"
+
+
+def test_resolve_rejects_unknowns():
+    specs = stock("af_heart")
+    assert resolve("0", specs) is None
+    assert resolve("999", specs) is None
+    assert resolve("nicole", specs) is None
+    assert resolve("", specs) is None

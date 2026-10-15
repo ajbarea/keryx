@@ -6,6 +6,7 @@ import pytest
 from keryx import __main__ as cli
 from keryx import client, version
 from keryx.config import Config, config_dir
+from keryx.voices import stock
 
 
 @pytest.fixture(autouse=True)
@@ -511,3 +512,74 @@ def test_status_exits_1_when_a_check_is_missing(monkeypatch, capsys):
     )
     assert cli.main(["status"]) == 1
     assert "missing uv: not on PATH" in capsys.readouterr().out
+
+
+class _TTY(io.StringIO):
+    def isatty(self):
+        return True
+
+
+@pytest.fixture
+def voice_daemon(monkeypatch):
+    """Record requests; answer ping with our version, set_voice as a successful pin."""
+    calls = []
+
+    def spawn(req, *a, **k):
+        calls.append(req)
+        if req["op"] == "ping":
+            return {"ok": True, "version": version()}
+        if req["op"] == "set_voice":
+            return {"ok": True, "pinned": True}
+        return {"ok": True}
+
+    monkeypatch.setattr(client, "send_or_spawn", spawn)
+    return calls
+
+
+def test_voice_sets_the_named_voice(voice_daemon):
+    assert cli.main(["voice", "bella"]) == 0
+    assert Config.load().voice == "af_bella"
+    pinned = [c for c in voice_daemon if c["op"] == "set_voice"]
+    assert pinned and pinned[0]["voice"] == "af_bella"
+
+
+def test_voice_accepts_a_catalogue_number(voice_daemon):
+    assert cli.main(["voice", "1"]) == 0
+    assert Config.load().voice == "af_heart"
+
+
+def test_voice_rejects_an_unknown_name(voice_daemon, capsys):
+    assert cli.main(["voice", "nope"]) == 2
+    assert Config.load().voice == "af_heart"
+    assert not any(c["op"] == "set_voice" for c in voice_daemon)
+    assert "no voice matches" in capsys.readouterr().err
+
+
+def test_voice_no_arg_previews_then_waits_for_a_pick(monkeypatch, voice_daemon, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # not a TTY
+    assert cli.main(["voice"]) == 0
+    said = [c for c in voice_daemon if c["op"] == "say"]
+    assert len(said) == len(stock("af_heart"))
+    assert "keryx voice" in capsys.readouterr().out
+    assert not any(c["op"] == "set_voice" for c in voice_daemon)
+
+
+def test_voice_interactive_pick_sets_it(monkeypatch, voice_daemon):
+    monkeypatch.setattr("sys.stdin", _TTY(""))
+    monkeypatch.setattr("builtins.input", lambda prompt="": "bella")
+    assert cli.main(["voice"]) == 0
+    assert Config.load().voice == "af_bella"
+
+
+def test_voice_blank_pick_keeps_the_current_voice(monkeypatch, voice_daemon):
+    monkeypatch.setattr("sys.stdin", _TTY(""))
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")
+    assert cli.main(["voice"]) == 0
+    assert Config.load().voice == "af_heart"
+    assert not any(c["op"] == "set_voice" for c in voice_daemon)
+
+
+def test_voice_while_off_says_so(capsys):
+    Config(enabled=False).save()
+    assert cli.main(["voice"]) == 1
+    assert "keryx is off" in capsys.readouterr().err

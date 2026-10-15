@@ -32,6 +32,10 @@ class FakeSpeaker:
     def claim(self, holder, source):
         self.claimed.append((holder, source))
 
+    def pin(self, holder, label):
+        self.pinned = [*getattr(self, "pinned", []), (holder, label)]
+        return bool(holder)
+
     def knows(self, spec):
         return spec.names != ("zz_nope",)
 
@@ -85,6 +89,32 @@ def test_say_carries_its_terminal():
 
 def test_ping_reports_the_version():
     assert handle({"op": "ping"}, FakeSpeaker())["version"] == VERSION
+
+
+def test_set_voice_pins_the_requesting_terminal():
+    sp = FakeSpeaker()
+    reply = handle({"op": "set_voice", "voice": "af_bella", "terminal": "9:1"}, sp)
+    assert reply == {"ok": True, "pinned": True}
+    assert sp.pinned == [("9:1", "af_bella")]
+
+
+def test_set_voice_outside_a_terminal_is_ok_but_pins_nothing():
+    sp = FakeSpeaker()
+    reply = handle({"op": "set_voice", "voice": "af_bella"}, sp)
+    assert reply["ok"] is True and reply["pinned"] is False
+
+
+def test_set_voice_refuses_a_voice_outside_the_catalogue():
+    # af_nicole is a real Kokoro voice but no longer in the pool, so it cannot be held or picked.
+    reply = handle({"op": "set_voice", "voice": "af_nicole", "terminal": "9:1"}, FakeSpeaker())
+    assert reply["ok"] is False and "selectable" in reply["error"]
+
+
+@pytest.mark.parametrize("bad", ["zz_nope", ""])
+def test_set_voice_refuses_an_unknown_or_malformed_voice(bad):
+    assert (
+        handle({"op": "set_voice", "voice": bad, "terminal": "9:1"}, FakeSpeaker())["ok"] is False
+    )
 
 
 def test_an_unknown_voice_is_refused_before_it_is_queued():

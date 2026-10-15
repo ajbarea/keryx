@@ -34,6 +34,7 @@ The same `keryx` binary runs from a shell:
 | `keryx say TEXT` | Speak TEXT as given |
 | `keryx again` | Say this terminal's last line again |
 | `keryx pronounce [WORD [SAYING]]` | List, forget or set how to say WORD |
+| `keryx voice [NAME]` | Preview the voices and pick one by ear, or set the one named (name or number) |
 | `keryx voices [N]` | Play a line in each of the first N voices in the catalogue (default 8) |
 | `keryx stop` | Cut off current speech |
 | `keryx daemon` | Run the speech daemon in the foreground |
@@ -55,6 +56,12 @@ Each terminal speaks in its own voice, through `/clear` and resume too. A repo k
 across restarts. A second terminal open in the same repo borrows another voice, and once
 the stock voices run out, new terminals get blends of two. Set `distinct_voices` to `false` to
 speak every terminal in `voice`.
+
+To change a voice, run `keryx voice` in a terminal (with `!` inside Claude Code): it plays a
+sample line in each voice, then asks you to pick one by number or name. `keryx voice bella` sets
+one straight away. The terminal you ran it in switches to the pick at once; it also becomes the
+`voice` that leads new terminals, which takes effect once the daemon restarts (`keryx off`, then
+on, or its idle exit). Other terminals keep theirs.
 
 A line starts with the repo's name when it comes from a different repo than the last one.
 
