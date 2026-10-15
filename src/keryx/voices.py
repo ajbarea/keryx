@@ -31,7 +31,6 @@ POOL = (
     "am_fenrir",  # C+
     "bf_isabella",  # C
     "bm_fable",  # C
-    "af_nicole",  # B-
     "am_puck",  # C+
     "af_aoede",  # C+
     "af_kore",  # C+
