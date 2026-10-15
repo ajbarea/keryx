@@ -20,10 +20,15 @@ import json
 import logging
 import sys
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from keryx import client
 from keryx.config import Config, set_stored
-from keryx.voices import VoiceSpec
+
+if TYPE_CHECKING:
+    # Only for annotations (`from __future__ import annotations` keeps them unevaluated), so the
+    # latency-sensitive hook path never imports voices.py; the runtime use is lazy in `_set_voice`.
+    from keryx.voices import VoiceSpec
 
 COMMANDS = (
     "hook",
@@ -77,7 +82,7 @@ def _preview(specs: list[VoiceSpec]) -> bool:
 def _set_voice(cfg: Config, arg: str | None) -> int:
     """`keryx voice`: pick a voice by preview, or set the one named in `arg`."""
     from keryx.procs import terminal_id
-    from keryx.voices import resolve, stock
+    from keryx.voices import VoiceSpec, resolve, stock
 
     if not cfg.enabled:
         print("keryx is off; `keryx on` first", file=sys.stderr)
@@ -109,18 +114,21 @@ def _set_voice(cfg: Config, arg: str | None) -> int:
     if not reconciled and not _reconcile():
         return 1
     spoken = VoiceSpec.parse(label).spoken()
-    set_stored(voice=label)
     try:
         reply = client.send_or_spawn({"op": "set_voice", "voice": label, "terminal": terminal_id()})
     except (OSError, ValueError) as exc:
-        print(f"saved {spoken} as the voice, but the daemon did not answer: {exc}", file=sys.stderr)
+        print(f"the daemon did not answer, voice unchanged: {exc}", file=sys.stderr)
         return 1
     if not reply.get("ok"):
         print(f"{label}: {reply.get('error')}", file=sys.stderr)
         return 1
-    client.send_or_spawn(
-        {"op": "say", "kind": "notice", "text": f"Now speaking in {spoken}.", "voice": label}
-    )
+    # Persist only a voice the daemon accepted, so a refusal never leaves config pointing at one.
+    set_stored(voice=label)
+    # The voice is set; a failed confirmation line must not crash the command.
+    with contextlib.suppress(OSError, ValueError):
+        client.send_or_spawn(
+            {"op": "say", "kind": "notice", "text": f"Now speaking in {spoken}.", "voice": label}
+        )
     # The pin is immediate; `voice` in config only leads new terminals once the daemon restarts.
     here = "this terminal now" if reply.get("pinned") else "after keryx restarts"
     print(f"voice set to {spoken}: {here}. New terminals follow once keryx restarts.")
