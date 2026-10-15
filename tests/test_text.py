@@ -110,3 +110,11 @@ def test_a_labelled_ticket_keeps_its_label_and_drops_the_hash():
 
 def test_an_uppercase_prefixed_hex_is_not_touched():
     assert clean_for_speech("Var X481803e holds it.") == "Var X481803e holds it."
+
+
+def test_a_hex_segment_inside_a_path_collapses_with_the_path():
+    assert clean_for_speech("See /var/cache/a1b2c3d4/log.txt here.") == "See log.txt here."
+
+
+def test_a_hashed_asset_name_is_not_called_a_commit():
+    assert clean_for_speech("Built chunk-a1b2c3d4.js now.") == "Built chunk-a1b2c3d4.js now."
