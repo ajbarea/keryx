@@ -33,7 +33,7 @@ from keryx.pronounce import Lexicon
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.summarize import OllamaClient, spoken_line
 from keryx.voice import KokoroVoice
-from keryx.voices import VoiceBook, VoiceSpec, holder
+from keryx.voices import POOL, VoiceBook, VoiceSpec, catalogue, holder
 
 log = logging.getLogger("keryx")
 
@@ -116,8 +116,10 @@ def handle(
             spec = VoiceSpec.parse(request.get("voice"))
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
-        if not speaker.knows(spec):
-            return {"ok": False, "error": f"unknown voice {spec.label()!r}"}
+        # A voice is selectable only if it is in the catalogue, which is what `pin` can hold;
+        # the label set does not depend on the lead, so any catalogue ordering answers it.
+        if spec.label() not in {s.label() for s in catalogue(POOL[0])}:
+            return {"ok": False, "error": f"not a selectable voice: {spec.label()!r}"}
         who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
         return {"ok": True, "pinned": speaker.pin(who, spec.label())}
     if op == "say":

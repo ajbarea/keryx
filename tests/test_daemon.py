@@ -104,6 +104,12 @@ def test_set_voice_outside_a_terminal_is_ok_but_pins_nothing():
     assert reply["ok"] is True and reply["pinned"] is False
 
 
+def test_set_voice_refuses_a_voice_outside_the_catalogue():
+    # af_nicole is a real Kokoro voice but no longer in the pool, so it cannot be held or picked.
+    reply = handle({"op": "set_voice", "voice": "af_nicole", "terminal": "9:1"}, FakeSpeaker())
+    assert reply["ok"] is False and "selectable" in reply["error"]
+
+
 @pytest.mark.parametrize("bad", ["zz_nope", ""])
 def test_set_voice_refuses_an_unknown_or_malformed_voice(bad):
     assert (

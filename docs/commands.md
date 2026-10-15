@@ -59,8 +59,9 @@ speak every terminal in `voice`.
 
 To change a voice, run `keryx voice` in a terminal (with `!` inside Claude Code): it plays a
 sample line in each voice, then asks you to pick one by number or name. `keryx voice bella` sets
-one straight away. Your pick becomes the voice for new terminals, and the terminal you ran it in
-switches to it too; other terminals keep theirs.
+one straight away. The terminal you ran it in switches to the pick at once; it also becomes the
+`voice` that leads new terminals, which takes effect once the daemon restarts (`keryx off`, then
+on, or its idle exit). Other terminals keep theirs.
 
 A line starts with the repo's name when it comes from a different repo than the last one.
 

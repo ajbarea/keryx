@@ -19,9 +19,11 @@ import contextlib
 import json
 import logging
 import sys
+from collections.abc import Callable
 
 from keryx import client
 from keryx.config import Config, set_stored
+from keryx.voices import VoiceSpec
 
 COMMANDS = (
     "hook",
@@ -39,39 +41,54 @@ COMMANDS = (
 )
 
 
-def _preview(specs: list) -> bool:
-    """Say a sample line in each voice, listing it on screen too. False if no daemon answers."""
+def _reconcile() -> bool:
+    """Ping the daemon with our version, retiring one from an older keryx; spawns one if none
+    runs. False (with a message) if none answers. Needed before any op a stale daemon would
+    mishandle: `say` with an explicit voice, and `set_voice`, which an old daemon lacks."""
     from keryx import version
 
     try:
         client.current({"op": "ping", "version": version()})
+        return True
     except (OSError, ValueError) as exc:
         print(f"the keryx daemon did not answer: {exc}", file=sys.stderr)
         return False
+
+
+def _play(specs: list[VoiceSpec], line: Callable[[int, VoiceSpec], str]) -> None:
+    """Say `line(n, spec)` in each spec's voice; print the daemon's error for any it refuses."""
     for n, spec in enumerate(specs, 1):
-        print(f"{n:2}. {spec.spoken()}")
-        text = f"Voice {n}, {spec.spoken()}. This is how I read your replies."
-        reply = client.send_or_spawn(
-            {"op": "say", "kind": "notice", "text": text, "voice": spec.label()}
-        )
+        request = {"op": "say", "kind": "notice", "text": line(n, spec), "voice": spec.label()}
+        reply = client.send_or_spawn(request)
         if not reply.get("ok"):
             print(f"{spec.label()}: {reply.get('error')}", file=sys.stderr)
+
+
+def _preview(specs: list[VoiceSpec]) -> bool:
+    """List the voices on screen and say a sample line in each. False if no daemon answers."""
+    if not _reconcile():
+        return False
+    for n, spec in enumerate(specs, 1):
+        print(f"{n:2}. {spec.spoken()}")
+    _play(specs, lambda n, spec: f"Voice {n}, {spec.spoken()}. This is how I read your replies.")
     return True
 
 
 def _set_voice(cfg: Config, arg: str | None) -> int:
     """`keryx voice`: pick a voice by preview, or set the one named in `arg`."""
     from keryx.procs import terminal_id
-    from keryx.voices import VoiceSpec, resolve, stock
+    from keryx.voices import resolve, stock
 
     if not cfg.enabled:
         print("keryx is off; `keryx on` first", file=sys.stderr)
         return 1
     specs = stock(cfg.voice)
     choice = arg
+    reconciled = False
     if choice is None:
-        if not _preview(specs):
+        if not _preview(specs):  # reconciles, then plays each voice
             return 1
+        reconciled = True
         if not sys.stdin.isatty():
             print("run `keryx voice <name or number>` to set one")
             return 0
@@ -87,6 +104,10 @@ def _set_voice(cfg: Config, arg: str | None) -> int:
     if label is None:
         print(f"no voice matches {choice!r}; run `keryx voice` to hear them", file=sys.stderr)
         return 2
+    # Retire a stale daemon (direct `keryx voice NAME` skips the preview that would have), so
+    # it understands `set_voice` before config and daemon can diverge.
+    if not reconciled and not _reconcile():
+        return 1
     spoken = VoiceSpec.parse(label).spoken()
     set_stored(voice=label)
     try:
@@ -100,10 +121,9 @@ def _set_voice(cfg: Config, arg: str | None) -> int:
     client.send_or_spawn(
         {"op": "say", "kind": "notice", "text": f"Now speaking in {spoken}.", "voice": label}
     )
-    if reply.get("pinned"):
-        print(f"voice set to {spoken}: this terminal now, and new terminals.")
-    else:
-        print(f"voice set to {spoken}: new terminals use it; restart keryx to switch others.")
+    # The pin is immediate; `voice` in config only leads new terminals once the daemon restarts.
+    here = "this terminal now" if reply.get("pinned") else "after keryx restarts"
+    print(f"voice set to {spoken}: {here}. New terminals follow once keryx restarts.")
     return 0
 
 
@@ -183,20 +203,10 @@ def main(argv: list[str] | None = None) -> int:
         if not cfg.enabled:
             print("keryx is off; `keryx on` first", file=sys.stderr)
             return 1
-        from keryx import version
-
-        try:
-            # An older daemon would ignore `voice` and play every line in one voice.
-            client.current({"op": "ping", "version": version()})
-            for n, spec in enumerate(catalogue(cfg.voice)[:count], 1):
-                text = f"Voice {n}, {spec.spoken()}."
-                request = {"op": "say", "kind": "notice", "text": text, "voice": spec.label()}
-                reply = client.send_or_spawn(request)
-                if not reply.get("ok"):
-                    print(f"{spec.label()}: {reply.get('error')}", file=sys.stderr)
-        except (OSError, ValueError) as exc:
-            print(f"the keryx daemon did not answer: {exc}", file=sys.stderr)
+        # Reconcile first: an older daemon would ignore `voice` and play every line in one voice.
+        if not _reconcile():
             return 1
+        _play(catalogue(cfg.voice)[:count], lambda n, spec: f"Voice {n}, {spec.spoken()}.")
         return 0
 
     if cmd == "voice":
