@@ -121,8 +121,11 @@ def catalogue(first: str) -> list[VoiceSpec]:
 
 
 def stock(first: str) -> list[VoiceSpec]:
-    """The single-voice choices `keryx voice` offers, the configured voice first, no blends."""
-    return [spec for spec in catalogue(first) if len(spec.names) == 1]
+    """The single-voice choices `keryx voice` offers, no blends, `first` leading when it is a
+    pool voice. A `first` outside the pool (a stale config, e.g. a voice since removed) falls
+    back to the default lead, so the list never offers a voice the daemon would then refuse."""
+    lead = first if first in POOL else POOL[0]
+    return [spec for spec in catalogue(lead) if len(spec.names) == 1]
 
 
 def resolve(choice: str, specs: list[VoiceSpec]) -> str | None:

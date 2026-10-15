@@ -564,3 +564,12 @@ def test_resolve_rejects_unknowns():
     assert resolve("999", specs) is None
     assert resolve("nicole", specs) is None
     assert resolve("", specs) is None
+
+
+def test_stock_falls_back_when_the_configured_voice_left_the_pool():
+    # af_nicole was removed from POOL; a stale config pointing at it must not be offered,
+    # since the daemon validates against the pool and would refuse it.
+    specs = stock("af_nicole")
+    assert specs[0] == VoiceSpec(("af_heart",))
+    assert all(spec.names[0] != "af_nicole" for spec in specs)
+    assert len(specs) == len(POOL)

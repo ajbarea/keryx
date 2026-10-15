@@ -583,3 +583,42 @@ def test_voice_while_off_says_so(capsys):
     Config(enabled=False).save()
     assert cli.main(["voice"]) == 1
     assert "keryx is off" in capsys.readouterr().err
+
+
+def test_voice_does_not_persist_a_voice_the_daemon_refuses(monkeypatch):
+    """A set_voice rejection must leave config pointing at the old voice (not the refused one)."""
+
+    def spawn(req, *a, **k):
+        if req["op"] == "ping":
+            return {"ok": True, "version": version()}
+        if req["op"] == "set_voice":
+            return {"ok": False, "error": "not a selectable voice"}
+        return {"ok": True}
+
+    monkeypatch.setattr(client, "send_or_spawn", spawn)
+    assert cli.main(["voice", "bella"]) == 1
+    assert Config.load().voice == "af_heart"  # unchanged
+
+
+def test_voice_survives_a_failed_confirmation_line(monkeypatch):
+    """The voice is set once set_voice succeeds; a failing confirmation say must not crash."""
+
+    def spawn(req, *a, **k):
+        if req["op"] == "ping":
+            return {"ok": True, "version": version()}
+        if req["op"] == "set_voice":
+            return {"ok": True, "pinned": True}
+        raise OSError("daemon vanished")  # the confirmation say
+
+    monkeypatch.setattr(client, "send_or_spawn", spawn)
+    assert cli.main(["voice", "bella"]) == 0
+    assert Config.load().voice == "af_bella"
+
+
+def test_main_import_does_not_pull_in_voices():
+    """The hook path imports __main__; voices.py must stay lazy, off that latency-sensitive path."""
+    import subprocess
+    import sys
+
+    code = "import keryx.__main__, sys; sys.exit(0 if 'keryx.voices' not in sys.modules else 1)"
+    assert subprocess.run([sys.executable, "-c", code]).returncode == 0
