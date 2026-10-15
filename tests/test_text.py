@@ -79,3 +79,34 @@ def test_slashed_prose_and_dates_are_not_paths():
 
 def test_rooted_paths_shrink_even_without_an_extension():
     assert clean_for_speech("See ./scripts/run and ~/notes/todo") == "See run and todo"
+
+
+def test_commit_shas_become_a_commit():
+    assert clean_for_speech("CI is green on 481803e.") == "CI is green on a commit."
+    assert clean_for_speech("Merged `e1b0371` to main.") == "Merged a commit to main."
+    sha40 = "0123456789abcdef0123456789abcdef01234567"
+    assert clean_for_speech(f"Tag {sha40} built.") == "Tag a commit built."
+
+
+def test_plain_numbers_and_hex_words_are_left_alone():
+    assert clean_for_speech("All 1234567 tests pass.") == "All 1234567 tests pass."
+    assert clean_for_speech("The deadbed cafe.") == "The deadbed cafe."  # no digit, not a sha
+    assert clean_for_speech("Port 8080 is up.") == "Port 8080 is up."
+
+
+def test_a_sha_inside_an_identifier_is_not_touched():
+    assert clean_for_speech("Call x481803e now.") == "Call x481803e now."
+
+
+def test_hash_number_reads_as_number_not_hash():
+    assert clean_for_speech("Closed #85 today.") == "Closed number 85 today."
+    assert clean_for_speech("See `#412`.") == "See number 412."
+
+
+def test_a_labelled_ticket_keeps_its_label_and_drops_the_hash():
+    assert clean_for_speech("Merged PR #85.") == "Merged PR 85."
+    assert clean_for_speech("Opened issue #12 for it.") == "Opened issue 12 for it."
+
+
+def test_an_uppercase_prefixed_hex_is_not_touched():
+    assert clean_for_speech("Var X481803e holds it.") == "Var X481803e holds it."
