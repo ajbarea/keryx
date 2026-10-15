@@ -90,7 +90,7 @@ jumps back counts from the jump. A line with no session (`keryx say`) takes a vo
 holds, so it is not mistaken for a terminal's. Repos unheard for 90 days are dropped from
 the file. The repo name comes from `.git` read directly (a worktree's `commondir` leads to
 its main checkout), so a prompt's stop never waits on a `git` subprocess. Hashing
-repo names to voices was rejected: with 15 voices, two of six repos already share one about
+repo names to voices was rejected: with 14 voices, two of six repos already share one about
 two times in three. Claude Code does not report how many sessions are open, so the daemon
 counts the ones it has heard from.
 
