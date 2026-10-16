@@ -495,3 +495,14 @@ def test_a_thread_that_dies_is_logged(tmp_path, monkeypatch, clean_logging):
 
 def say(reply_prompt):
     return {"op": "say", "text": "Done.", "session": "s", "prompt": reply_prompt}
+
+
+def test_set_voice_refuses_a_selectable_voice_this_kokoro_lacks():
+    # af_nicole is selectable, but if this Kokoro build lacks it, set_voice must refuse so the
+    # CLI never persists a voice that would fall back to the default on restart.
+    class Lacking(FakeSpeaker):
+        def knows(self, spec):
+            return spec.names != ("af_nicole",)
+
+    reply = handle({"op": "set_voice", "voice": "af_nicole", "terminal": "9:1"}, Lacking())
+    assert reply["ok"] is False and "available" in reply["error"]

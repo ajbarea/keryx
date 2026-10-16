@@ -120,6 +120,10 @@ def handle(
         # voice is not a pick (the config `voice` is the escape hatch for an arbitrary Kokoro one).
         if spec.label() not in SELECTABLE:
             return {"ok": False, "error": f"not a selectable voice: {spec.label()!r}"}
+        # And this Kokoro build must actually have it, so the CLI never persists a pick that would
+        # fall back to the default on restart.
+        if not speaker.knows(spec):
+            return {"ok": False, "error": f"voice not available: {spec.label()!r}"}
         who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
         return {"ok": True, "pinned": speaker.pin(who, spec.label())}
     if op == "say":

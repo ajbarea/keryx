@@ -109,8 +109,11 @@ def holder(terminal: str, session: str) -> str:
 
 
 def pool(first: str) -> tuple[str, ...]:
-    """POOL led by the configured voice."""
-    return (first, *(n for n in POOL if n != first))
+    """The rotation POOL led by the configured voice. An opt-in SPECIALTY voice never leads, so
+    it is not handed out automatically; any other voice leads (a non-curated or non-English
+    Kokoro voice is still honored as the config `voice`, per 'the first voice handed out')."""
+    lead = POOL[0] if first in SPECIALTY else first
+    return (lead, *(n for n in POOL if n != lead))
 
 
 def catalogue(first: str) -> list[VoiceSpec]:
@@ -178,7 +181,10 @@ class VoiceBook:
         """
         self._alive = alive
         self._path = path
-        self._specs = [spec for spec in catalogue(first) if available(spec)]
+        assignable = [spec for spec in catalogue(first) if available(spec)]
+        # Rotation must never be empty, even if `available` rejects everything, so it always has
+        # a voice to hand out and `_first_free` never divides by zero.
+        self._specs = assignable or [VoiceSpec((POOL[0],))]
         self._assignable = len(self._specs)
         self._specs += [s for n in SPECIALTY if available(s := VoiceSpec((n,)))]
         self._index = {spec.label(): i for i, spec in enumerate(self._specs)}

@@ -107,7 +107,11 @@ def test_no_session_with_nobody_holding_gets_the_default(book):
 def test_a_configured_voice_leads_the_pool():
     assert pool("bm_george")[0] == "bm_george"
     assert pool("bm_george").count("bm_george") == 1
+    # A non-curated Kokoro voice still leads (the config escape hatch).
     assert pool("am_santa")[:2] == ("am_santa", "af_heart")
+    # But an opt-in specialty voice never leads the rotation.
+    assert pool("af_nicole")[0] == "af_heart"
+    assert "af_nicole" not in pool("af_nicole")
 
 
 def test_blends_pair_only_same_gender_voices():
@@ -622,3 +626,23 @@ def test_a_specialty_voice_kokoro_lacks_cannot_be_pinned(tmp_path):
         available=lambda spec: "af_nicole" not in spec.names,
     )
     assert b.pin("s1", "af_nicole") is False
+
+
+def test_a_specialty_config_voice_still_is_not_auto_assigned(tmp_path):
+    # `keryx voice nicole` persists voice=af_nicole; on restart the book is seeded with it, but
+    # the opt-in voice must still never be handed to other terminals or no-holder notices.
+    b = VoiceBook(tmp_path / "v.json", "af_nicole", clock=Clock(), active_seconds=60)
+    handed = {b.assign(f"s{i}", f"repo{i}").names[0] for i in range(len(SELECTABLE) + 20)}
+    handed.add(b.assign("", "").names[0])  # a no-holder notice
+    assert not (handed & set(SPECIALTY))
+
+
+def test_a_specialty_config_voice_appears_once_in_the_index(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", "af_nicole", clock=Clock(), active_seconds=60)
+    labels = [s.label() for s in b._specs]
+    assert labels.count("af_nicole") == 1
+
+
+def test_rotation_is_never_empty_even_if_nothing_is_available(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60, available=lambda _s: False)
+    assert b.assign("s1", "repo").names[0] == POOL[0]  # no ZeroDivisionError / IndexError
