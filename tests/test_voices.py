@@ -1,7 +1,17 @@
 import numpy as np
 import pytest
 
-from keryx.voices import POOL, VoiceBook, VoiceSpec, catalogue, pool, resolve, stock
+from keryx.voices import (
+    POOL,
+    SELECTABLE,
+    SPECIALTY,
+    VoiceBook,
+    VoiceSpec,
+    catalogue,
+    pool,
+    resolve,
+    stock,
+)
 
 
 class Clock:
@@ -543,11 +553,12 @@ def test_a_pinned_voice_survives_a_restart(tmp_path):
     assert again.assign("s1", "ariadne") == VoiceSpec(("af_bella",))
 
 
-def test_stock_lists_single_voices_configured_first():
+def test_stock_lists_every_selectable_voice_configured_first():
     specs = stock("bm_george")
     assert specs[0] == VoiceSpec(("bm_george",))
     assert all(len(s.names) == 1 for s in specs)
-    assert len(specs) == len(POOL)
+    assert {s.names[0] for s in specs} == set(SELECTABLE)
+    assert len(specs) == len(SELECTABLE)
 
 
 def test_resolve_matches_number_name_and_label():
@@ -562,14 +573,52 @@ def test_resolve_rejects_unknowns():
     specs = stock("af_heart")
     assert resolve("0", specs) is None
     assert resolve("999", specs) is None
-    assert resolve("nicole", specs) is None
+    assert resolve("santa", specs) is None  # am_santa is a real Kokoro voice but not selectable
     assert resolve("", specs) is None
 
 
-def test_stock_falls_back_when_the_configured_voice_left_the_pool():
-    # af_nicole was removed from POOL; a stale config pointing at it must not be offered,
-    # since the daemon validates against the pool and would refuse it.
-    specs = stock("af_nicole")
+def test_stock_offers_the_opt_in_specialty_voices():
+    # Specialty voices are selectable (shown in `keryx voice`) though never auto-assigned.
+    specs = stock("af_heart")
+    assert any(spec.names[0] in SPECIALTY for spec in specs)
+
+
+def test_stock_falls_back_when_the_configured_voice_is_not_selectable():
+    # A config voice that is a real Kokoro voice but not curated (am_santa) is not offered;
+    # the picker leads with the default instead so it never offers an unselectable voice.
+    specs = stock("am_santa")
     assert specs[0] == VoiceSpec(("af_heart",))
-    assert all(spec.names[0] != "af_nicole" for spec in specs)
-    assert len(specs) == len(POOL)
+    assert all(spec.names[0] != "am_santa" for spec in specs)
+
+
+def test_specialty_voices_are_never_auto_assigned(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60)
+    handed = {b.assign(f"s{i}", f"repo{i}").names[0] for i in range(len(SELECTABLE) + 20)}
+    assert not (handed & set(SPECIALTY))
+
+
+def test_a_specialty_voice_can_be_pinned(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60)
+    assert b.pin("s1", "af_nicole") is True
+    assert b.assign("s1", "repo") == VoiceSpec(("af_nicole",))
+
+
+def test_a_voice_kokoro_lacks_is_never_handed_out(tmp_path):
+    b = VoiceBook(
+        tmp_path / "v.json",
+        clock=Clock(),
+        active_seconds=60,
+        available=lambda spec: "af_heart" not in spec.names,
+    )
+    handed = {b.assign(f"s{i}", f"r{i}").names[0] for i in range(len(SELECTABLE) + 20)}
+    assert "af_heart" not in handed
+
+
+def test_a_specialty_voice_kokoro_lacks_cannot_be_pinned(tmp_path):
+    b = VoiceBook(
+        tmp_path / "v.json",
+        clock=Clock(),
+        active_seconds=60,
+        available=lambda spec: "af_nicole" not in spec.names,
+    )
+    assert b.pin("s1", "af_nicole") is False

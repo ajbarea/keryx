@@ -84,8 +84,9 @@ phonemes, for sounds English spelling cannot reach: `keryx pronounce techne /tˈ
 Each terminal speaks in its own voice, through `/clear` and resume too. A repo keeps its
 voice across restarts, a second terminal open in the same repo borrows another, and
 once the stock voices run out new terminals get blends of two. `keryx voice` plays a sample in
-each voice and lets you pick one (or `keryx voice bella` to set it directly); `keryx voices [N]`
-just plays the first N voices in the catalogue, stock voices first.
+each voice and lets you pick one (or `keryx voice bella` to set it directly); it also offers a few
+opt-in voices, like the `nicole` headphone voice, that are never handed out automatically.
+`keryx voices [N]` just plays the first N voices in the catalogue, stock voices first.
 
 While keryx speaks, Spotify drops to a quarter of its volume and comes back a second after
 the last line; set `duck_apps` to turn down other apps instead.

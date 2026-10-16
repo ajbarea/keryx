@@ -33,7 +33,7 @@ from keryx.pronounce import Lexicon
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.summarize import OllamaClient, spoken_line
 from keryx.voice import KokoroVoice
-from keryx.voices import POOL, VoiceBook, VoiceSpec, catalogue, holder
+from keryx.voices import SELECTABLE, VoiceBook, VoiceSpec, holder
 
 log = logging.getLogger("keryx")
 
@@ -116,9 +116,9 @@ def handle(
             spec = VoiceSpec.parse(request.get("voice"))
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
-        # A voice is selectable only if it is in the catalogue, which is what `pin` can hold;
-        # the label set does not depend on the lead, so any catalogue ordering answers it.
-        if spec.label() not in {s.label() for s in catalogue(POOL[0])}:
+        # `keryx voice` offers the rotation pool and the opt-in voices; a blend or any other
+        # voice is not a pick (the config `voice` is the escape hatch for an arbitrary Kokoro one).
+        if spec.label() not in SELECTABLE:
             return {"ok": False, "error": f"not a selectable voice: {spec.label()!r}"}
         who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
         return {"ok": True, "pinned": speaker.pin(who, spec.label())}
@@ -200,10 +200,11 @@ def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], Non
         duck_ratio=cfg.duck_ratio,
     )
     voice = KokoroVoice(cfg.voice, cfg.speed, cfg.loudness)
-    # `voice.voice` is the configured voice, or the fallback when it is not a real Kokoro voice,
-    # so the per-terminal catalogue is seeded from a voice that can actually be synthesized.
+    # `voice.voice` is the configured voice, or the fallback when it is not a real Kokoro voice;
+    # `voice.has` drops any rotation voice the current Kokoro lacks, so neither the default voice
+    # nor a handed-out one can be a voice synthesis would reject.
     book = (
-        VoiceBook(cache_dir() / "voices.json", voice.voice.names[0])
+        VoiceBook(cache_dir() / "voices.json", voice.voice.names[0], available=voice.has)
         if cfg.distinct_voices
         else None
     )
