@@ -104,10 +104,15 @@ def test_set_voice_outside_a_terminal_is_ok_but_pins_nothing():
     assert reply["ok"] is True and reply["pinned"] is False
 
 
-def test_set_voice_refuses_a_voice_outside_the_catalogue():
-    # af_nicole is a real Kokoro voice but no longer in the pool, so it cannot be held or picked.
-    reply = handle({"op": "set_voice", "voice": "af_nicole", "terminal": "9:1"}, FakeSpeaker())
+def test_set_voice_refuses_a_voice_that_is_not_selectable():
+    # am_santa is a real Kokoro voice but not in the pool or the opt-in voices, so it is not a pick.
+    reply = handle({"op": "set_voice", "voice": "am_santa", "terminal": "9:1"}, FakeSpeaker())
     assert reply["ok"] is False and "selectable" in reply["error"]
+
+
+def test_set_voice_accepts_an_opt_in_specialty_voice():
+    reply = handle({"op": "set_voice", "voice": "af_nicole", "terminal": "9:1"}, FakeSpeaker())
+    assert reply == {"ok": True, "pinned": True}
 
 
 @pytest.mark.parametrize("bad", ["zz_nope", ""])
@@ -490,3 +495,14 @@ def test_a_thread_that_dies_is_logged(tmp_path, monkeypatch, clean_logging):
 
 def say(reply_prompt):
     return {"op": "say", "text": "Done.", "session": "s", "prompt": reply_prompt}
+
+
+def test_set_voice_refuses_a_selectable_voice_this_kokoro_lacks():
+    # af_nicole is selectable, but if this Kokoro build lacks it, set_voice must refuse so the
+    # CLI never persists a voice that would fall back to the default on restart.
+    class Lacking(FakeSpeaker):
+        def knows(self, spec):
+            return spec.names != ("af_nicole",)
+
+    reply = handle({"op": "set_voice", "voice": "af_nicole", "terminal": "9:1"}, Lacking())
+    assert reply["ok"] is False and "available" in reply["error"]

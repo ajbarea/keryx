@@ -63,6 +63,11 @@ one straight away. The terminal you ran it in switches to the pick at once; it a
 `voice` that leads new terminals, which takes effect once the daemon restarts (`keryx off`, then
 on, or its idle exit). Other terminals keep theirs.
 
+The picker offers the rotation pool plus a few opt-in voices, such as the `nicole` headphone
+voice, that are never handed out automatically, so a terminal is never surprised by a niche
+voice but you can still choose one. The `voice` setting itself accepts any Kokoro voice, even one
+outside the picker.
+
 A line starts with the repo's name when it comes from a different repo than the last one.
 
 ## Pronunciations
