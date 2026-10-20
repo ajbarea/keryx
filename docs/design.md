@@ -68,8 +68,9 @@ flight and one waiting for room. The model files are checked against pinned SHA-
 
 Each terminal gets its own voice so parallel terminals are told apart by ear; the repo name
 is still spoken when the speaker changes. The pool is Kokoro v1.0's English voices graded C
-or better in its VOICES.md, 14 of 28, ordered so neighbours differ in accent or gender, best
-grades first. British voices are phonemized as `en-gb`, and a blend in the accent of the
+or better in its VOICES.md, 14 of 28. The ten voices with kourai portraits on klepsydra's fleet
+wall come first, alternating accent and gender where the set allows and best grade first,
+then the remaining graded voices. British voices are phonemized as `en-gb`, and a blend in the accent of the
 voice it weighs most. Past the pool come same-gender blends (the weighted mean of two
 voices' style vectors) at 50/50, 70/30 and 30/70; blends across genders are reported to come
 out muddy. All eight first voices and three blends were told apart by ear on 2026-10-02.

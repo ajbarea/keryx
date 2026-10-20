@@ -649,12 +649,7 @@ def test_rotation_is_never_empty_even_if_nothing_is_available(tmp_path):
 
 
 def test_pool_hands_out_the_kourai_voices_first():
-    kourai = {
-        "af_heart", "am_michael", "bf_emma", "am_puck", "af_bella",
-        "bf_isabella", "af_aoede", "af_kore", "af_sarah", "af_nova",
-    }  # fmt: skip
     assert POOL == (
         "af_heart", "am_michael", "bf_emma", "am_puck", "af_bella", "bf_isabella", "af_aoede",
         "af_kore", "af_sarah", "af_nova", "bm_george", "am_fenrir", "bm_fable", "af_alloy",
     )  # fmt: skip
-    assert set(POOL[:10]) == kourai
