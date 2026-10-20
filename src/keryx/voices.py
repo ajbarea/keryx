@@ -20,23 +20,24 @@ from pathlib import Path
 
 from keryx.procs import is_alive
 
-# Kokoro v1.0's English voices graded C or better in its VOICES.md (research 2026-10),
-# ordered so neighbours differ in accent or gender, best grades first.
+# Kokoro v1.0's English voices graded C or better in its VOICES.md (research 2026-10). The
+# first ten have character portraits on klepsydra's fleet wall, so the first ten terminals
+# get them; those alternate accent and gender where the set allows, best grades first.
 POOL = (
     "af_heart",  # A
     "am_michael",  # C+
     "bf_emma",  # B-
-    "bm_george",  # C
-    "af_bella",  # A-
-    "am_fenrir",  # C+
-    "bf_isabella",  # C
-    "bm_fable",  # C
     "am_puck",  # C+
+    "af_bella",  # A-
+    "bf_isabella",  # C
     "af_aoede",  # C+
     "af_kore",  # C+
     "af_sarah",  # C+
-    "af_alloy",  # C
     "af_nova",  # C
+    "bm_george",  # C
+    "am_fenrir",  # C+
+    "bm_fable",  # C
+    "af_alloy",  # C
 )
 
 # Opt-in voices: `keryx voice` offers them and can set them, but they are never handed out
