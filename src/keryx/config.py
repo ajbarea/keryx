@@ -35,6 +35,8 @@ class Config:
     # Apps (Windows process names) turned down to `duck_ratio` of their volume while speaking.
     duck_apps: list[str] = field(default_factory=lambda: ["Spotify"])
     duck_ratio: float = 0.25
+    # Write speaking.json into klepsydra's fleet folder (when it exists) as each clip plays.
+    speaking_signal: bool = True
     # Spoken WAVs are written here because Windows can only play from its own drives.
     audio_dir: str = "/mnt/c/Windows/Temp/keryx"
 

@@ -13,6 +13,7 @@ nav = [
   { "Getting started" = "getting-started.md" },
   { "Commands" = "commands.md" },
   { "Configuration" = "configuration.md" },
+  { "Speaking signal" = "speaking-signal.md" },
   { "Architecture" = "architecture.md" },
   { "Design record" = "design.md" },
   { "Troubleshooting" = "troubleshooting.md" },

@@ -24,6 +24,7 @@ from typing import Protocol
 import numpy as np
 
 from keryx.player import Player
+from keryx.speaking import SpeakingSignal, envelope
 from keryx.text import split_sentences
 from keryx.voice import write_wav
 from keryx.voices import VoiceSpec, holder
@@ -59,6 +60,9 @@ class SpeechQueue(Protocol):
     def idle(self) -> bool: ...
 
 
+_Clip = tuple[Path | None, float, "Utterance", bool, list[float]]
+
+
 @dataclass
 class Utterance:
     text: str
@@ -84,9 +88,12 @@ class Speaker:
         audio_dir: Path,
         voices: Voices | None = None,
         pronounce: Callable[[str], str] | None = None,
+        signal: SpeakingSignal | None = None,
     ):
         """`voices` picks each session's voice; None speaks everything in the default.
-        `pronounce` rewrites each sentence just before synthesis."""
+        `pronounce` rewrites each sentence just before synthesis; `signal` tells klepsydra
+        which clip is playing."""
+        self._signal = signal
         self._shorten = shorten
         self._voices = voices
         self._pronounce = pronounce or (lambda text: text)
@@ -101,11 +108,9 @@ class Speaker:
         self._last_source = ""  # the repo whose name was last heard
         self._announcements: dict[tuple[str, VoiceSpec | None], tuple[np.ndarray, int]] = {}
         self._slots = itertools.cycle(range(RING))
-        # (wav, seconds, utt, announcement) to play, (None, 0, utt, False) once utt's audio is
-        # all queued, None to shut down.
-        self._play_q: queue.Queue[tuple[Path | None, float, Utterance, bool] | None] = queue.Queue(
-            PLAY_AHEAD
-        )
+        # (wav, seconds, utt, announcement, envelope) to play, (None, 0, utt, False, []) once
+        # utt's audio is all queued, None to shut down.
+        self._play_q: queue.Queue[_Clip | None] = queue.Queue(PLAY_AHEAD)
         self._closed = False
         self._synthesizing = False  # the synth thread holds an utterance
         self.spoken: deque[str] = deque(maxlen=50)  # recent sentences, for logs and tests
@@ -161,6 +166,9 @@ class Speaker:
             self._cond.notify_all()
         for t in self._threads:
             t.join(timeout)
+        if self._signal is not None:
+            self._signal.clear()
+            self._signal.close()
 
     def idle(self) -> bool:
         with self._cond:
@@ -250,7 +258,7 @@ class Speaker:
             except Exception:
                 log.exception("could not synthesize %r", utt.text[:80])
             finally:
-                self._play_q.put((None, 0.0, utt, False))
+                self._play_q.put((None, 0.0, utt, False, []))
         self._play_q.put(None)
 
     @staticmethod
@@ -266,9 +274,15 @@ class Speaker:
         except Exception:
             log.exception("could not synthesize %r", sentence[:80])
             return
+        levels: list[float] = []
+        if self._signal is not None:
+            try:
+                levels = envelope(samples, rate)
+            except Exception as exc:  # the clip still plays, without a wave
+                log.debug("could not compute the envelope: %s", exc)
         if not announcement:
             self.spoken.append(sentence)
-        self._play_q.put((wav, seconds, utt, announcement))
+        self._play_q.put((wav, seconds, utt, announcement, levels))
 
     def _speak(self, utt: Utterance, sentence: str, announcement: bool) -> tuple[np.ndarray, int]:
         said = self._pronounce(sentence)
@@ -289,12 +303,14 @@ class Speaker:
                 item = self._play_q.get(timeout=UNDUCK_AFTER if ducked else None)
             except queue.Empty:
                 if self._quiet():
+                    if self._signal is not None:
+                        self._signal.clear()
                     self._safely(self._player.unduck)
                     ducked = False
                 continue
             if item is None:
                 break
-            wav, seconds, utt, announcement = item
+            wav, seconds, utt, announcement, levels = item
             if wav is None:
                 with self._cond:
                     self._active.remove(utt)
@@ -304,10 +320,18 @@ class Speaker:
             if not ducked:
                 self._safely(self._player.duck)
                 ducked = True
+            if self._signal is not None:
+                spec = utt.voice or getattr(self._voice, "voice", None)
+                voice = spec.label() if isinstance(spec, VoiceSpec) else ""
+                self._signal.start(utt, seconds, levels, voice, utt.terminal, utt.session)
             try:
                 heard = self._player.play(wav, seconds, utt.cancelled)
             except Exception:
                 log.exception("could not play %s", wav)
+                heard = None
+            if not heard and self._signal is not None:
+                self._signal.clear(utt)  # cut off or failed; a finished clip's file just ages out
+            if heard is None:
                 continue
             if announcement and heard:
                 with self._cond:
