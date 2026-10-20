@@ -37,8 +37,9 @@ Each 50 ms window of the rendered clip (before playback) gives one RMS value. Va
 ## Lifetime
 
 - A line plays sentence by sentence. Each sentence replaces the file, with its own `started_at`, `ends_at` and `envelope`. A repo-name announcement is a clip too.
-- The file is removed when a clip is cut off (`keryx stop`, `/keryx off`, a new prompt, a failed play), when the queue goes quiet about a second after the last clip, and when the daemon exits. A cut-off removes the file only if that clip wrote it, so one session's stop does not clear another's line.
+- The file is removed when a clip is cut off (`keryx stop`, `/keryx off`, a new prompt, a failed play), when the queue goes quiet about a second after the last clip, and when the daemon exits. Ownership is per line (utterance), not per clip: a cut-off removes the file only if a clip of that same line wrote it, so one session's stop does not clear another's line.
 - Writes go to `speaking.json.<pid>.tmp` in the same folder, then `os.replace`, so a reader sees the old file or the new one, never half of one. Windows documents `MoveFileEx` replace as best effort, so a reader should treat a failed read or parse as "no file" and retry on the next change.
+- Writes happen on one background thread that keeps only the newest pending write or removal. On exit keryx waits at most half a second for it, then gives up, so a leftover file is possible and removal on exit is best effort. At start keryx deletes its own `speaking.json.*.tmp` files older than a minute.
 - Any write error is logged at debug and dropped; speech is unaffected.
 
 ## Staleness rule

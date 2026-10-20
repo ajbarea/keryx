@@ -237,5 +237,109 @@ def test_background_writes_keep_order_and_close_flushes(tmp_path):
         sig.start(i, 1, [], f"v{i}", "", "")
     sig.close()
     assert json.loads((fleet / "speaking.json").read_text())["voice"] == "v19"
-    sig.clear()  # after close: runs inline
-    assert not (fleet / "speaking.json").exists()
+    sig.start(99, 1, [], "late", "", "")  # after close: dropped, never blocks
+    assert json.loads((fleet / "speaking.json").read_text())["voice"] == "v19"
+
+
+def test_a_slow_writer_with_many_clips_closes_within_the_bound(tmp_path, monkeypatch):
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    real = os.replace
+
+    def slow(a, b):
+        time.sleep(0.1)
+        real(a, b)
+
+    monkeypatch.setattr(speaking.os, "replace", slow)
+    sig = SpeakingSignal(fleet)
+    for i in range(20):
+        sig.start(i, 1, [], f"v{i}", "", "")
+    began = time.monotonic()
+    sig.close()
+    assert time.monotonic() - began <= 0.8
+    path = fleet / "speaking.json"
+    assert not path.exists() or json.loads(path.read_text())["voice"] == "v19"
+
+
+def test_close_gives_up_on_a_hung_writer(tmp_path, monkeypatch):
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    hang = threading.Event()
+    monkeypatch.setattr(speaking.os, "replace", lambda a, b: hang.wait(30))
+    sig = SpeakingSignal(fleet)
+    sig.start(1, 1, [], "v", "", "")
+    began = time.monotonic()
+    sig.close()
+    hang.set()
+    assert time.monotonic() - began <= 0.8
+
+
+def test_a_stop_for_another_line_does_not_drop_a_pending_write(tmp_path, monkeypatch):
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    gate = threading.Event()
+    real = os.replace
+    monkeypatch.setattr(speaking.os, "replace", lambda a, b: (gate.wait(5), real(a, b)))
+    sig = SpeakingSignal(fleet)
+    sig.start("a", 1, [], "va", "", "")
+    time.sleep(0.05)  # the worker holds "a"
+    sig.start("b", 1, [], "vb", "", "")  # pending
+    sig.clear("a")  # a's clip was cut off; b is already waiting
+    gate.set()
+    sig.close()
+    assert json.loads((fleet / "speaking.json").read_text())["voice"] == "vb"
+
+
+def test_non_finite_samples_give_finite_levels():
+    x = sine(0.5)
+    x[10], x[20], x[30] = np.inf, np.nan, -np.inf
+    env = envelope(x, RATE)
+    assert len(env) == 10 and all(math.isfinite(v) and 0 <= v <= 1 for v in env)
+    assert env[5] > 0  # one bad sample does not flatten the clip
+
+
+def test_nan_never_reaches_the_file(tmp_path):
+    sig, path = make(tmp_path)
+    sig.start("a", 1, [float("nan")], "v", "", "")
+    assert not path.exists() or "NaN" not in path.read_text()
+
+
+def test_only_the_hooks_exact_case_means_wsl():
+    xdg = {"HOME": "/h", "USER": "aj"}
+    assert fleet_dir(xdg, osrelease="5.15-Microsoft-standard") is not None
+    assert "/mnt/c" in str(fleet_dir(xdg, osrelease="5.15-Microsoft-standard"))
+    assert "/mnt/c" in str(fleet_dir(xdg, osrelease="5.15-microsoft-standard"))
+    assert "/mnt/c" not in str(fleet_dir(xdg, osrelease="5.15-MICROSOFT"))
+
+
+def test_stale_tmp_files_are_swept_at_start(tmp_path):
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    old, fresh = fleet / "speaking.json.111.tmp", fleet / "speaking.json.222.tmp"
+    other = fleet / "other.tmp"
+    for f in (old, fresh, other):
+        f.write_text("x")
+    long_ago = time.time() - 3600
+    os.utime(old, (long_ago, long_ago))
+    os.utime(other, (long_ago, long_ago))
+    SpeakingSignal(fleet, background=False)
+    assert not old.exists() and fresh.exists() and other.exists()
+
+
+def test_an_envelope_failure_does_not_drop_the_clip(tmp_path, monkeypatch):
+    from keryx import speaker as speaker_mod
+
+    def boom(samples, rate):
+        raise ValueError("2-D")
+
+    monkeypatch.setattr(speaker_mod, "envelope", boom)
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    player = Player()
+    player.release.set()
+    sp = Speaker(lambda t: t, Voice(), player, tmp_path, signal=SpeakingSignal(fleet))
+    try:
+        sp.submit(Utterance("Still spoken.", kind="notice"))
+        wait_for(player.started.is_set)
+    finally:
+        sp.close()

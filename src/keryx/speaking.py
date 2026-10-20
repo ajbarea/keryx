@@ -6,7 +6,6 @@ never waits on or fails because of this file.
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import json
 import logging
@@ -25,6 +24,8 @@ SCHEMA = 1
 FILE = "speaking.json"
 ENVELOPE_HZ = 20
 APP_ID = "dev.ajsoftworks.klepsydra"
+CLOSE_WAIT = 0.5  # seconds `close` waits for the writer before abandoning it
+STALE_TMP = 60.0  # seconds before another run's temp file counts as litter
 
 
 def envelope(samples: np.ndarray, rate: int, hz: int = ENVELOPE_HZ) -> list[float]:
@@ -37,7 +38,8 @@ def envelope(samples: np.ndarray, rate: int, hz: int = ENVELOPE_HZ) -> list[floa
     n = math.ceil(samples.size * hz / rate)
     edges = np.minimum((np.arange(n + 1) * rate / hz).astype(np.int64), samples.size)
     edges[-1] = samples.size
-    squares = np.square(samples.astype(np.float64))
+    clean = np.nan_to_num(samples.astype(np.float64), nan=0.0, posinf=0.0, neginf=0.0)
+    squares = np.square(clean)
     sums = np.add.reduceat(squares, edges[:-1])
     counts = np.maximum(np.diff(edges), 1)
     rms = np.sqrt(sums / counts)
@@ -55,7 +57,7 @@ def fleet_dir(env: Mapping[str, str] | None = None, osrelease: str | None = None
     if osrelease is None:
         with contextlib.suppress(OSError):
             osrelease = Path("/proc/sys/kernel/osrelease").read_text()
-    if osrelease and "microsoft" in osrelease.lower():
+    if osrelease and ("Microsoft" in osrelease or "microsoft" in osrelease):  # as the hook's [Mm]
         user = env.get("USER")
         return Path(f"/mnt/c/Users/{user}/AppData/Local/{APP_ID}/fleet") if user else None
     data = env.get("XDG_DATA_HOME", "")
@@ -81,16 +83,20 @@ class SpeakingSignal:
     ):
         """With `background`, files are written in order by one worker thread, because a
         write to a Windows drive takes tens of milliseconds the player must not wait for."""
-        self._pool = (
-            concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="keryx-speaking")
-            if background
-            else None
-        )
+        self._background = background
+        self._cond = threading.Condition()
+        self._pending: tuple[Callable[..., None], tuple] | None = None
+        self._closed = False
+        self._worker: threading.Thread | None = None
         self._folder = folder
         self._enabled = enabled
         self._clock = clock
         self._lock = threading.Lock()
         self._owner: object = None
+        self._sweep()
+        if background:
+            self._worker = threading.Thread(target=self._work, name="keryx-speaking", daemon=True)
+            self._worker.start()
 
     def _target(self) -> Path | None:
         f = self._folder
@@ -116,19 +122,58 @@ class SpeakingSignal:
         self._run(self._remove, owner)
 
     def close(self) -> None:
-        """Finish queued writes and removals."""
-        if self._pool is not None:
-            self._pool.shutdown(wait=True)
-            self._pool = None
+        """Let the writer finish what is pending for at most `CLOSE_WAIT`, then abandon it
+        (a hung drive must not hold up the daemon's exit). Later calls are dropped."""
+        with self._cond:
+            self._closed = True
+            self._cond.notify_all()
+        if self._worker is not None:
+            self._worker.join(CLOSE_WAIT)
 
     def _run(self, fn: Callable[..., None], *args: object) -> None:
-        if self._pool is None:
+        if not self._background:
             fn(*args)
             return
-        try:
-            self._pool.submit(fn, *args)
-        except RuntimeError:  # closed
+        with self._cond:
+            if self._closed:
+                return
+            held = self._pending
+            # A removal for one line must not displace another line's pending write.
+            if (
+                fn == self._remove
+                and args[0] is not None
+                and held is not None
+                and held[0] == self._write
+                and held[1][0] is not args[0]
+            ):
+                return
+            self._pending = (fn, args)  # latest wins: only the newest state matters
+            self._cond.notify_all()
+
+    def _work(self) -> None:
+        while True:
+            with self._cond:
+                while self._pending is None and not self._closed:
+                    self._cond.wait()
+                if self._pending is None:
+                    return
+                fn, args = self._pending
+                self._pending = None
             fn(*args)
+
+    def _sweep(self) -> None:
+        """Delete this module's temp files left by a run that died mid-write."""
+        try:
+            target = self._target()
+            if target is None:
+                return
+            cutoff = time.time() - STALE_TMP
+            for f in target.parent.glob(f"{FILE}.*.tmp"):
+                with contextlib.suppress(OSError):
+                    if f.stat().st_mtime < cutoff:
+                        f.unlink()
+        except Exception as exc:
+            log.debug("could not sweep %s temp files: %s", FILE, exc)
 
     def _write(
         self,
@@ -153,7 +198,7 @@ class SpeakingSignal:
             tmp = target.with_name(f"{FILE}.{os.getpid()}.tmp")
             with self._lock:
                 try:
-                    tmp.write_text(json.dumps(doc, separators=(",", ":")) + "\n")
+                    tmp.write_text(json.dumps(doc, separators=(",", ":"), allow_nan=False) + "\n")
                     os.replace(tmp, target)
                 except BaseException:
                     with contextlib.suppress(OSError):

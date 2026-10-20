@@ -271,10 +271,15 @@ class Speaker:
             samples, rate = self._speak(utt, sentence, announcement)
             wav = self._audio_dir / slot_name(next(self._slots))
             seconds = write_wav(wav, samples, rate)
-            levels = envelope(samples, rate) if self._signal is not None else []
         except Exception:
             log.exception("could not synthesize %r", sentence[:80])
             return
+        levels: list[float] = []
+        if self._signal is not None:
+            try:
+                levels = envelope(samples, rate)
+            except Exception as exc:  # the clip still plays, without a wave
+                log.debug("could not compute the envelope: %s", exc)
         if not announcement:
             self.spoken.append(sentence)
         self._play_q.put((wav, seconds, utt, announcement, levels))
