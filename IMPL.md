@@ -1,23 +1,25 @@
 # IMPL
 
-## Current: review fixes
+## Current: kourai voices first (0.9.1)
 
-Replay says only what was heard. `speaker.py` records a line, and decides whether to announce
-its repo, when the line's first sentence starts to play; the repo name is its own clip,
-synthesized with the line and played only if the last name heard was another repo's. `again`
-cuts only speech that has started, and `stop` also reaches a terminal's speech left under an
-older session. A replay prompt holds back its prompt id and the warm-up until the replay
-hook finds nothing to replay.
+The rotation hands out the ten voices that have kourai character portraits on klepsydra's
+fleet wall before any other voice, so a fleet's first ten sessions always show a portrait.
 
-`bin/keryx` runs each plugin version and checkout in its own venv
-(`~/.cache/keryx/venv-<version>-<checksum of the path>`) and removes one whose checkout is
-gone. Kokoro falls back to the CPU when CUDA will not start, the model files are checked
-against pinned SHA-256 sums, `daemon.log` is private and rotates, and `normalize` lifts a
-clip by at most 30 dB. Config tolerates a malformed file and `on`/`off` write only `enabled`.
-Version 0.5.1.
+✅ Done
+- `POOL` in `src/keryx/voices.py` leads with the ten kourai voices (Cupid `af_heart`,
+  Hephaestus `am_michael`, Techne `bf_emma`, Puck `am_puck`, Kallos `af_bella`, Mneme
+  `bf_isabella`, Dokimasia `af_aoede`, Aidos `af_kore`, Metis `af_sarah`, Aletheia `af_nova`),
+  then `bm_george`, `am_fenrir`, `bm_fable`, `af_alloy`. Accent and gender alternate where the
+  set allows, best grade first.
+- `SPECIALTY` and the blend logic are unchanged.
+- Holds are stored by label, so a reordered pool keeps each terminal's voice.
+- `tests/test_voices.py` asserts the exact `POOL` order and that the first ten are the kourai set.
+- Version 0.9.1 in `.claude-plugin/plugin.json`, `pyproject.toml` and `uv.lock`.
+- Verified: `make lint` clean, `make test` 472 passed.
 
-Not done: the shared `audio_dir`. One daemon serves each user, so it matters only across
-users or cache homes, and the ducker's crash recovery relies on a fixed path.
+📋 Next
+- AJ's live check: after `claude plugin update`, new sessions get kourai faces on klepsydra's
+  fleet wall.
 
 ## Install state
 
@@ -27,3 +29,5 @@ users or cache homes, and the ducker's crash recovery relies on a fixed path.
 - The plugin cache is keyed by version: after changing code, bump `version` in
   `.claude-plugin/plugin.json` and `pyproject.toml`, or `claude plugin uninstall` then
   `install`, or `claude plugin update` reports "already at the latest version".
+
+The long view lives in `ROADMAP.md`.
