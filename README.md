@@ -113,6 +113,7 @@ the next reply plays once a device is back.
 | `ollama_host` | `http://localhost:11434` | Ollama server |
 | `duck_apps` | `["Spotify"]` | Windows process names turned down while keryx speaks; `[]` for none |
 | `duck_ratio` | `0.25` | The share of their volume ducked apps keep |
+| `speaking_signal` | `true` | Write `speaking.json` into klepsydra's fleet folder while a line plays, when that folder exists ([format](docs/speaking-signal.md)) |
 | `audio_dir` | `/mnt/c/Windows/Temp/keryx` | Where WAVs are written; must be on a Windows drive |
 
 The daemon logs to `~/.cache/keryx/daemon.log`, readable only by you, and keeps one

@@ -1,25 +1,20 @@
 # IMPL
 
-## Current: kourai voices first (0.9.1)
+## Current: speaking signal (0.9.2)
 
-The rotation hands out the ten voices that have kourai character portraits on klepsydra's
-fleet wall before any other voice, so a fleet's first ten sessions always show a portrait.
+keryx writes `speaking.json` into klepsydra's fleet folder while a clip plays (ajbarea/klepsydra#33).
+Contract: `docs/speaking-signal.md`.
 
 ✅ Done
-- `POOL` in `src/keryx/voices.py` leads with the ten kourai voices (Cupid `af_heart`,
-  Hephaestus `am_michael`, Techne `bf_emma`, Puck `am_puck`, Kallos `af_bella`, Mneme
-  `bf_isabella`, Dokimasia `af_aoede`, Aidos `af_kore`, Metis `af_sarah`, Aletheia `af_nova`),
-  then `bm_george`, `am_fenrir`, `bm_fable`, `af_alloy`. Accent and gender alternate where the
-  set allows, best grade first.
-- `SPECIALTY` and the blend logic are unchanged.
-- Holds are stored by label, so a reordered pool keeps each terminal's voice.
-- `tests/test_voices.py` asserts the exact `POOL` order and that the first ten are the kourai set.
-- Version 0.9.1 in `.claude-plugin/plugin.json`, `pyproject.toml` and `uv.lock`.
-- Verified: `make lint` clean, `make test` 472 passed.
+- `src/keryx/speaking.py`: `envelope` (20 Hz RMS, peak-normalised, 2 decimals), `fleet_dir` (mirrors
+  `hooks/klepsydra-fleet.sh`), `SpeakingSignal` (temp file + `os.replace` on one worker thread).
+- `Speaker` takes `signal=`: each clip writes at play start; a cut-off clip removes its own file; quiet
+  and `close` remove it. `speaking_signal` setting (default on; folder absent writes nothing).
+- Tests in `tests/test_speaking.py`, `tests/test_config.py`; docs page, nav, README and config rows.
+- Version 0.9.2 in `plugin.json`, `pyproject.toml`, `uv.lock`.
 
 📋 Next
-- AJ's live check: after `claude plugin update`, new sessions get kourai faces on klepsydra's
-  fleet wall.
+- klepsydra wall side: read the file, match card on `claude_pid` + `claude_start`, draw the waves.
 
 ## Install state
 

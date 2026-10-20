@@ -31,6 +31,7 @@ from keryx.config import Config, cache_dir, socket_path
 from keryx.player import WindowsPlayer
 from keryx.pronounce import Lexicon
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
+from keryx.speaking import SpeakingSignal, fleet_dir
 from keryx.summarize import OllamaClient, spoken_line
 from keryx.voice import KokoroVoice
 from keryx.voices import SELECTABLE, VoiceBook, VoiceSpec, holder
@@ -212,7 +213,8 @@ def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], Non
         if cfg.distinct_voices
         else None
     )
-    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book, Lexicon())
+    signal = SpeakingSignal(fleet_dir(), cfg.speaking_signal)
+    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book, Lexicon(), signal)
     return speaker, player, warm if client else None
 
 

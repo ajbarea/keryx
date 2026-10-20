@@ -133,3 +133,10 @@ def test_set_stored_survives_a_file_it_may_not_read():
     set_stored(enabled=False)
     assert json.loads(path.read_text()) == {"enabled": False}
     assert (config_dir() / "config.json.bad").exists()
+
+
+def test_speaking_signal_defaults_on_and_has_an_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert Config.load().speaking_signal is True
+    monkeypatch.setenv("KERYX_SPEAKING_SIGNAL", "off")
+    assert Config.load().speaking_signal is False
