@@ -11,6 +11,8 @@ Last reviewed: 2026-10-03.
 
 ## Completed
 
+- 2026-10-20: the rotation hands out the ten voices with kourai portraits on klepsydra's
+  fleet wall first (0.9.1).
 - 2026-10-12: `keryx status` runs setup checks with fixes; `bin/keryx` names the uv installer;
   an AGENTS.md setup runbook (0.7.0).
 - 2026-10-07: a Zensical documentation site at ajbarea.github.io/keryx, deployed from `main`

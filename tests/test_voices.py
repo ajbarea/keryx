@@ -646,3 +646,15 @@ def test_a_specialty_config_voice_appears_once_in_the_index(tmp_path):
 def test_rotation_is_never_empty_even_if_nothing_is_available(tmp_path):
     b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60, available=lambda _s: False)
     assert b.assign("s1", "repo").names[0] == POOL[0]  # no ZeroDivisionError / IndexError
+
+
+def test_pool_hands_out_the_kourai_voices_first():
+    kourai = {
+        "af_heart", "am_michael", "bf_emma", "am_puck", "af_bella",
+        "bf_isabella", "af_aoede", "af_kore", "af_sarah", "af_nova",
+    }  # fmt: skip
+    assert POOL == (
+        "af_heart", "am_michael", "bf_emma", "am_puck", "af_bella", "bf_isabella", "af_aoede",
+        "af_kore", "af_sarah", "af_nova", "bm_george", "am_fenrir", "bm_fable", "af_alloy",
+    )  # fmt: skip
+    assert set(POOL[:10]) == kourai
