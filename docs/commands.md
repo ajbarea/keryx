@@ -55,8 +55,8 @@ as usual.
 Each terminal speaks in its own voice, through `/clear` and resume too. A repo keeps its voice
 across restarts. A second terminal open in the same repo borrows another voice. Every single
 voice is handed out before any blend, even one an idle repo calls home; once all are held, new
-terminals get blends of two, and a terminal on a blend moves to the first single voice that
-frees up (unless you picked the blend). Set `distinct_voices` to `false` to
+terminals get blends of two, and a terminal on a blend moves to a single voice once one
+frees up, its repo's own voice first. Set `distinct_voices` to `false` to
 speak every terminal in `voice`.
 
 To change a voice, run `keryx voice` in a terminal (with `!` inside Claude Code): it plays a

@@ -109,7 +109,7 @@ def test_a_configured_voice_leads_the_pool():
     assert pool("bm_george").count("bm_george") == 1
     # A non-curated Kokoro voice still leads (the config escape hatch).
     assert pool("am_santa")[:2] == ("am_santa", "af_heart")
-    # But an opt-in specialty voice never leads the rotation.
+    # But a specialty voice never leads the rotation.
     assert pool("af_nicole")[0] == "af_heart"
     assert "af_nicole" not in pool("af_nicole")
 
@@ -633,17 +633,24 @@ def test_a_terminal_on_a_blend_moves_to_a_single_voice_once_one_is_free(tmp_path
     clock.now = 30
     for i in range(1, len(SELECTABLE)):
         b.assign(f"s{i}", f"repo{i}")  # all but s0 keep speaking
+    assert len(b.assign("late", "elsewhere").names) == 2
     clock.now = 70  # s0 lapses, freeing af_heart
     assert b.assign("late", "elsewhere") == VoiceSpec(("af_heart",))
 
 
-def test_a_terminal_pinned_to_a_blend_keeps_it(tmp_path):
-    b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60)
-    blend = "af_bella(0.5)+af_heart(0.5)"
-    assert b.pin("s1", blend) is True
-    assert b.assign("s1", "repo").label() == blend
-    again = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60)
-    assert again.assign("s1", "repo").label() == blend
+def test_a_terminal_leaving_a_blend_goes_home_first(tmp_path):
+    clock = Clock()
+    b = VoiceBook(tmp_path / "v.json", clock=clock, active_seconds=60)
+    for i in range(len(SELECTABLE)):
+        b.assign(f"s{i}", f"repo{i}")
+    assert len(b.assign("late", "repo7").names) == 2  # repo7's own voice is held by s7
+    clock.now = 30
+    for i in range(len(SELECTABLE)):
+        if i not in (3, 7):
+            b.assign(f"s{i}", f"repo{i}")
+    assert len(b.assign("late", "repo7").names) == 2  # still on its blend, still speaking
+    clock.now = 70  # s3 and s7 lapse: repo3's voice is first, repo7's is home
+    assert b.assign("late", "repo7") == VoiceSpec((POOL[7],))
 
 
 def test_a_specialty_voice_can_be_pinned(tmp_path):

@@ -11,6 +11,8 @@ Last reviewed: 2026-10-03.
 
 ## Completed
 
+- 2026-10-21: every single voice, `af_nicole` included, is handed out before any blend, so
+  klepsydra's wall shows each character before a letter medallion (0.9.3, #40).
 - 2026-10-20: the rotation hands out the ten voices with kourai portraits on klepsydra's
   fleet wall first (0.9.1).
 - 2026-10-12: `keryx status` runs setup checks with fixes; `bin/keryx` names the uv installer;

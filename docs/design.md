@@ -74,7 +74,7 @@ then the remaining graded voices. British voices are phonemized as `en-gb`, and 
 voice it weighs most. Then `af_nicole`, the last character on the wall. Every single voice
 is handed out before any blend, borrowing one an idle repo calls home if it must, since a blend
 shows on the wall as a letter medallion instead of a character; a terminal on a blend moves to
-a single voice once one frees, unless it was pinned there. Past the singles come same-gender blends (the weighted mean of two
+a single voice once one frees, its repo's own first. Past the singles come same-gender blends (the weighted mean of two
 voices' style vectors) at 50/50, 70/30 and 30/70; blends across genders are reported to come
 out muddy. All eight first voices and three blends were told apart by ear on 2026-10-02.
 

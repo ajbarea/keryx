@@ -46,7 +46,7 @@ POOL = (
 # character comes before any blend.
 SPECIALTY = ("af_nicole",)
 
-# Every voice `keryx voice` offers and may set: the rotation pool plus the opt-in voices. The
+# Every voice `keryx voice` offers and may set: the rotation pool plus the specialty voices. The
 # config `voice` may still name any Kokoro voice; that is the power-user escape hatch.
 SELECTABLE = (*POOL, *SPECIALTY)
 
@@ -111,8 +111,8 @@ def holder(terminal: str, session: str) -> str:
 
 
 def pool(first: str) -> tuple[str, ...]:
-    """The rotation POOL led by the configured voice. An opt-in SPECIALTY voice never leads, so
-    it is not handed out automatically; any other voice leads (a non-curated or non-English
+    """The rotation POOL led by the configured voice. A SPECIALTY voice never leads, so it is
+    handed out only after the pool; any other voice leads (a non-curated or non-English
     Kokoro voice is still honored as the config `voice`, per 'the first voice handed out')."""
     lead = POOL[0] if first in SPECIALTY else first
     return (lead, *(n for n in POOL if n != lead))
@@ -135,7 +135,7 @@ def catalogue(first: str) -> list[VoiceSpec]:
 
 
 def stock(first: str) -> list[VoiceSpec]:
-    """The single-voice choices `keryx voice` offers: the rotation pool then the opt-in voices,
+    """The single-voice choices `keryx voice` offers: the rotation pool then the specialty voices,
     no blends. `first` leads when it is a selectable voice, else the default lead does, so the
     list never offers a voice the daemon would refuse while still showing the user's current one."""
     lead = first if first in SELECTABLE else POOL[0]
@@ -190,7 +190,7 @@ class VoiceBook:
         self._clock = clock
         self._active_seconds = active_seconds
         self._home_seconds = home_seconds
-        self._home, self._held, self._pinned = self._load()  # by source, by holder; pinned holders
+        self._home, self._held = self._load()  # by source, by holder
         self._saved = float("-inf")
 
     def default(self) -> VoiceSpec:
@@ -209,19 +209,22 @@ class VoiceBook:
             return self._specs[next((i for i in range(len(self._specs)) if i not in taken), 0)]
         changed = holder not in self._held
         home = self._home.get(source)
+        # The repo's own voice when it is a free single voice, else the first free single voice.
+        home_free = home is not None and home[0] not in taken
+        single = (
+            home[0]
+            if home_free and home[0] < self._singles
+            else self._first_free(taken, now, self._singles)
+        )
         if not changed:
             index = self._held[holder][0]
-            # A terminal handed a blend moves to a single voice once one is free; a pick stays.
-            if index >= self._singles and holder not in self._pinned:
-                single = self._first_free(taken, now, self._singles)
-                if single is not None:
-                    index, changed = single, True
-        elif (
-            home is not None
-            and home[0] not in taken
-            and (home[0] < self._singles or self._first_free(taken, now, self._singles) is None)
-        ):
-            index = home[0]
+            # A terminal on a blend (only rotation hands one out) moves to a single voice.
+            if index >= self._singles and single is not None:
+                index, changed = single, True
+        elif single is not None:
+            index = single
+        elif home_free:
+            index = home[0]  # a blend home, with no single voice free
         else:
             index = self._first_free(taken, now, len(self._specs))
             if index is None:
@@ -249,7 +252,6 @@ class VoiceBook:
         now = self._clock()
         self._expire(now)
         self._held[holder] = (index, now)
-        self._pinned.add(holder)
         self._save(now, force=True)
         return True
 
@@ -261,7 +263,6 @@ class VoiceBook:
             running = self._alive(holder)
             if running or (running is None and now - seen <= self._active_seconds):
                 self._held[holder] = (i, seen)
-        self._pinned &= self._held.keys()
         self._home = {
             s: (i, min(seen, now))
             for s, (i, seen) in self._home.items()
@@ -279,21 +280,14 @@ class VoiceBook:
                         return i
         return None
 
-    def _load(self) -> tuple[Table, Table, set[str]]:
+    def _load(self) -> tuple[Table, Table]:
         try:
             raw = json.loads(self._path.read_text())
         except (OSError, ValueError):
-            return {}, {}, set()
+            return {}, {}
         if not isinstance(raw, dict):
-            return {}, {}, set()
-        held = self._entries(raw.get("holders"))
-        pinned = raw.get("pinned")
-        pinned = (
-            {p for p in pinned if isinstance(p, str) and p in held}
-            if isinstance(pinned, list)
-            else set()
-        )
-        return self._entries(raw.get("homes")), held, pinned
+            return {}, {}
+        return self._entries(raw.get("homes")), self._entries(raw.get("holders"))
 
     def _entries(self, raw: object) -> Table:
         """Stored by label, so a reordered pool keeps each voice; unknown labels drop."""
@@ -322,11 +316,7 @@ class VoiceBook:
                 for key, (i, seen) in table.items()
             }
 
-        data = {
-            "homes": entries(self._home),
-            "holders": entries(self._held),
-            "pinned": sorted(self._pinned),
-        }
+        data = {"homes": entries(self._home), "holders": entries(self._held)}
         with contextlib.suppress(OSError):
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(".tmp")
