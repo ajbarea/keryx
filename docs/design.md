@@ -85,7 +85,7 @@ exit and may not run at all when a terminal is killed. A terminal holds its voic
 process runs, which the daemon reads from `/proc`; a hook outside Claude Code (no such
 ancestor) holds by session id and lapses 4 hours after its last prompt or reply.
 
-A repo keeps the voice it was first given, stored by label in `~/.cache/keryx/voices.json`.
+A repo keeps the first voice it was given that no other repo heard lately calls home, stored by label in `~/.cache/keryx/voices.json`.
 A terminal takes its repo's voice unless another terminal holds it; then it borrows the
 first single voice that no repo heard in the last 14 days calls home and nobody holds, then
 any single voice nobody holds, and only then a blend. A borrowed voice never becomes a
