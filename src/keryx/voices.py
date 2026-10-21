@@ -1,9 +1,11 @@
 """A distinct voice for each Claude Code terminal, kept per repo across restarts.
 
-A repo keeps the voice it was first given unless another terminal is using it; then, like
-a second terminal in the same repo, it borrows the next voice nobody holds. A terminal
-holds its voice while its Claude Code process runs, across `/clear` and resume. Past the
-stock voices come same-gender blends, so voices only repeat once every blend is taken too.
+A repo keeps the first voice it was given that no other repo calls home, unless another
+terminal is using it; then, like a second terminal in the same repo, it borrows the next
+voice nobody holds. A terminal holds its voice while its Claude Code process runs, across
+`/clear` and resume. Every single voice is handed out before any blend, since each is a
+character on klepsydra's wall; past them come same-gender blends, so voices only repeat once
+every blend is taken too.
 Homes and holds are saved, so a daemon restart changes nobody's voice.
 """
 
@@ -40,12 +42,12 @@ POOL = (
     "af_alloy",  # C
 )
 
-# Opt-in voices: `keryx voice` offers them and can set them, but they are never handed out
-# automatically, so no terminal is surprised by a niche voice. Kokoro tags af_nicole with a
-# headphone/ASMR marker; wanted by some, off-putting as a default.
+# Voices handed out only after every pool voice, and never as a blend or the lead. Kokoro tags
+# af_nicole with a headphone/ASMR marker, but she is a character on klepsydra's wall, and every
+# character comes before any blend.
 SPECIALTY = ("af_nicole",)
 
-# Every voice `keryx voice` offers and may set: the rotation pool plus the opt-in voices. The
+# Every voice `keryx voice` offers and may set: the rotation pool plus the specialty voices. The
 # config `voice` may still name any Kokoro voice; that is the power-user escape hatch.
 SELECTABLE = (*POOL, *SPECIALTY)
 
@@ -110,17 +112,17 @@ def holder(terminal: str, session: str) -> str:
 
 
 def pool(first: str) -> tuple[str, ...]:
-    """The rotation POOL led by the configured voice. An opt-in SPECIALTY voice never leads, so
-    it is not handed out automatically; any other voice leads (a non-curated or non-English
+    """The rotation POOL led by the configured voice. A SPECIALTY voice never leads, so it is
+    handed out only after the pool; any other voice leads (a non-curated or non-English
     Kokoro voice is still honored as the config `voice`, per 'the first voice handed out')."""
     lead = POOL[0] if first in SPECIALTY else first
     return (lead, *(n for n in POOL if n != lead))
 
 
 def catalogue(first: str) -> list[VoiceSpec]:
-    """Every voice to hand out, stock voices first, then blends."""
+    """Every voice to hand out: the pool, then the specialty voices, then blends of the pool."""
     names = pool(first)
-    specs = [VoiceSpec((n,)) for n in names]
+    specs = [VoiceSpec((n,)) for n in (*names, *SPECIALTY)]
     # Same gender (the second letter, f or m), and English, which LANG phonemizes.
     # Each pair in name order, so its labels do not change with the configured voice.
     pairs = [
@@ -134,7 +136,7 @@ def catalogue(first: str) -> list[VoiceSpec]:
 
 
 def stock(first: str) -> list[VoiceSpec]:
-    """The single-voice choices `keryx voice` offers: the rotation pool then the opt-in voices,
+    """The single-voice choices `keryx voice` offers: the rotation pool then the specialty voices,
     no blends. `first` leads when it is a selectable voice, else the default lead does, so the
     list never offers a voice the daemon would refuse while still showing the user's current one."""
     lead = first if first in SELECTABLE else POOL[0]
@@ -174,20 +176,17 @@ class VoiceBook:
         `alive(holder)` says whether a terminal's process still runs, or None for a holder
         that is not a terminal (a bare session id), which then lapses after `active_seconds`.
 
-        `available(spec)` says whether the synthesizer actually has a voice; a pool voice (or
-        blend) the current Kokoro lacks is dropped, so rotation never hands out one it cannot
-        speak. The assignable voices come first and auto-assignment draws only from them; the
-        opt-in `SPECIALTY` voices follow, so they can be pinned by `keryx voice` but are never
-        handed out automatically.
+        `available(spec)` says whether the synthesizer actually has a voice; a voice (or blend)
+        the current Kokoro lacks is dropped, so rotation never hands out one it cannot speak.
         """
         self._alive = alive
         self._path = path
-        assignable = [spec for spec in catalogue(first) if available(spec)]
         # Rotation must never be empty, even if `available` rejects everything, so it always has
         # a voice to hand out and `_first_free` never divides by zero.
-        self._specs = assignable or [VoiceSpec((POOL[0],))]
-        self._assignable = len(self._specs)
-        self._specs += [s for n in SPECIALTY if available(s := VoiceSpec((n,)))]
+        self._specs = [spec for spec in catalogue(first) if available(spec)] or [
+            VoiceSpec((POOL[0],))
+        ]
+        self._singles = sum(len(spec.names) == 1 for spec in self._specs)  # they lead the list
         self._index = {spec.label(): i for i, spec in enumerate(self._specs)}
         self._clock = clock
         self._active_seconds = active_seconds
@@ -206,20 +205,44 @@ class VoiceBook:
         """
         now = self._clock()
         self._expire(now)
-        taken = {i for i, _ in self._held.values()}
+        taken = {i for h, (i, _) in self._held.items() if h != holder}
         if not holder:
-            return self._specs[next((i for i in range(self._assignable) if i not in taken), 0)]
+            return self._specs[next((i for i in range(len(self._specs)) if i not in taken), 0)]
         changed = holder not in self._held
+        home = self._home.get(source)
+        # The repo's own voice when it is a free single voice, else the first free single voice.
+        home_free = home is not None and home[0] not in taken
+        single = (
+            home[0]
+            if home_free and home[0] < self._singles
+            else self._first_free(taken, now, self._singles)
+        )
         if not changed:
             index = self._held[holder][0]
+            # A terminal on a blend (only rotation hands one out) moves to a single voice.
+            if index >= self._singles and single is not None:
+                index, changed = single, True
+        elif single is not None:
+            index = single
+        elif home_free:
+            index = home[0]  # a blend home, with no single voice free
         else:
-            home = self._home.get(source)
-            if home is not None and home[0] not in taken:
-                index = home[0]
-            else:
-                index = self._first_free(taken, now)
-                if source and home is None:
-                    self._home[source] = (index, now)
+            index = self._first_free(taken, now, len(self._specs))
+            if index is None:
+                index = len(self._held) % len(self._specs)  # every voice in use: repeat
+        # A repo's first voice becomes its home, as does a single voice for a repo homed in a blend,
+        # unless another repo heard lately calls it home: a borrowed voice stays borrowed.
+        homed_elsewhere = any(
+            i == index and s != source and now - seen <= self._home_seconds
+            for s, (i, seen) in self._home.items()
+        )
+        if (
+            source
+            and changed
+            and not homed_elsewhere
+            and (home is None or (home[0] >= self._singles > index))
+        ):
+            self._home[source] = (index, now)
         self._held[holder] = (index, now)
         # A repo counts as heard only in its own voice, not in one a terminal brought along.
         if source in self._home and self._home[source][0] == index:
@@ -257,16 +280,16 @@ class VoiceBook:
             if now - min(seen, now) <= FORGET_SECONDS
         }
 
-    def _first_free(self, taken: set[int], now: float) -> int:
-        # Prefer a voice no recently heard repo calls home, then any nobody active holds. Only
-        # the assignable voices are handed out; the opt-in SPECIALTY voices (higher indices) are
-        # reached by `pin`, not here.
+    def _first_free(self, taken: set[int], now: float, below: int) -> int | None:
+        """The first voice under index `below` nobody holds, or None. Single voices come before
+        blends: a single voice a recently heard repo calls home is borrowed before any blend."""
         homes = {i for i, seen in self._home.values() if now - seen <= self._home_seconds}
-        for avoid in (taken | homes, taken):
-            for i in range(self._assignable):
-                if i not in avoid:
-                    return i
-        return len(self._held) % self._assignable  # every voice in use: repeat
+        for lo, hi in ((0, min(self._singles, below)), (self._singles, below)):
+            for avoid in (taken | homes, taken):
+                for i in range(lo, hi):
+                    if i not in avoid:
+                        return i
+        return None
 
     def _load(self) -> tuple[Table, Table]:
         try:

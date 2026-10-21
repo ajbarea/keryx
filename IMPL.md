@@ -1,20 +1,32 @@
 # IMPL
 
-## Current: speaking signal (0.9.2)
+## Current: every character before any blend (0.9.3, #40, PR #41)
 
-keryx writes `speaking.json` into klepsydra's fleet folder while a clip plays (ajbarea/klepsydra#33).
-Contract: `docs/speaking-signal.md`.
+On 10-21 klepsydra showed three letter medallions (blends) while ten character voices sat free:
+rotation skipped every single voice that an idle repo calls home before it reused one.
 
 ✅ Done
-- `src/keryx/speaking.py`: `envelope` (20 Hz RMS, peak-normalised, 2 decimals), `fleet_dir` (mirrors
-  `hooks/klepsydra-fleet.sh`), `SpeakingSignal` (temp file + `os.replace` on one worker thread).
-- `Speaker` takes `signal=`: each clip writes at play start; a cut-off clip removes its own file; quiet
-  and `close` remove it. `speaking_signal` setting (default on; folder absent writes nothing).
-- Tests in `tests/test_speaking.py`, `tests/test_config.py`; docs page, nav, README and config rows.
-- Version 0.9.2 in `plugin.json`, `pyproject.toml`, `uv.lock`.
+- `catalogue`: pool singles, then `af_nicole`, then blends. `VoiceBook._singles` counts the
+  singles at the head of `_specs`.
+- `_first_free(taken, now, below)`: singles first (no one's home, then an idle repo's home),
+  then blends; None when nothing is free.
+- `assign`: the repo's own voice when it is a free single, else the first free single; a
+  terminal on a blend moves at its next line; a repo homed in a blend is rehomed to its single.
+- Review round 1: dropped a `pinned` key (`set_voice` cannot pin a blend), home first on a move,
+  stale "opt-in" wording, a regression test that fails on the round-1 code.
+- Review round 2: a borrowed voice never becomes a second repo's home (a test repo homed on a
+  blend would have taken keryx's own voice); the homes in `voices.json` stay unique.
+- Docs: README, `docs/commands.md`, `docs/design.md`.
 
 📋 Next
-- klepsydra wall side: read the file, match card on `claude_pid` + `claude_start`, draw the waves.
+- Merge, deploy (pull main, `claude plugin update keryx@techne`, `{"op":"quit"}` on the
+  socket), then check the live wall shows no letter medallions.
+- klepsydra still calls Hesychia pin-only (README, `src/fleet-cast.test.js`, portrait briefs):
+  fixed in klepsydra's #62 PR.
+
+## Verify
+- `make lint`; `uv run pytest -q` (`test_the_real_powershell_loop_plays_a_clip_to_its_end`
+  drives real Windows audio and fails intermittently on main too).
 
 ## Install state
 

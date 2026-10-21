@@ -105,12 +105,12 @@ def test_set_voice_outside_a_terminal_is_ok_but_pins_nothing():
 
 
 def test_set_voice_refuses_a_voice_that_is_not_selectable():
-    # am_santa is a real Kokoro voice but not in the pool or the opt-in voices, so it is not a pick.
+    # am_santa is a real Kokoro voice but neither a pool nor a specialty voice, so not a pick.
     reply = handle({"op": "set_voice", "voice": "am_santa", "terminal": "9:1"}, FakeSpeaker())
     assert reply["ok"] is False and "selectable" in reply["error"]
 
 
-def test_set_voice_accepts_an_opt_in_specialty_voice():
+def test_set_voice_accepts_a_specialty_voice():
     reply = handle({"op": "set_voice", "voice": "af_nicole", "terminal": "9:1"}, FakeSpeaker())
     assert reply == {"ok": True, "pinned": True}
 

@@ -117,7 +117,7 @@ def handle(
             spec = VoiceSpec.parse(request.get("voice"))
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
-        # `keryx voice` offers the rotation pool and the opt-in voices; a blend or any other
+        # `keryx voice` offers the rotation pool and the specialty voices; a blend or any other
         # voice is not a pick (the config `voice` is the escape hatch for an arbitrary Kokoro one).
         if spec.label() not in SELECTABLE:
             return {"ok": False, "error": f"not a selectable voice: {spec.label()!r}"}

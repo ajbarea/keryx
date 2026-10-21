@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 
@@ -88,9 +90,9 @@ def test_a_new_repo_avoids_other_repos_voices_even_when_they_are_idle(book):
 
 def test_more_sessions_than_stock_voices_get_blends_not_repeats(book):
     b, _ = book
-    voices = [b.assign(f"s{i}", f"repo{i}") for i in range(len(POOL) + 5)]
+    voices = [b.assign(f"s{i}", f"repo{i}") for i in range(len(SELECTABLE) + 5)]
     assert len(set(voices)) == len(voices)
-    assert all(len(v.names) == 2 for v in voices[len(POOL) :])
+    assert all(len(v.names) == 2 for v in voices[len(SELECTABLE) :])
 
 
 def test_every_voice_taken_still_answers(tmp_path):
@@ -109,7 +111,7 @@ def test_a_configured_voice_leads_the_pool():
     assert pool("bm_george").count("bm_george") == 1
     # A non-curated Kokoro voice still leads (the config escape hatch).
     assert pool("am_santa")[:2] == ("am_santa", "af_heart")
-    # But an opt-in specialty voice never leads the rotation.
+    # But a specialty voice never leads the rotation.
     assert pool("af_nicole")[0] == "af_heart"
     assert "af_nicole" not in pool("af_nicole")
 
@@ -581,8 +583,8 @@ def test_resolve_rejects_unknowns():
     assert resolve("", specs) is None
 
 
-def test_stock_offers_the_opt_in_specialty_voices():
-    # Specialty voices are selectable (shown in `keryx voice`) though never auto-assigned.
+def test_stock_offers_the_specialty_voices():
+    # Specialty voices are selectable (shown in `keryx voice`) and handed out after the pool.
     specs = stock("af_heart")
     assert any(spec.names[0] in SPECIALTY for spec in specs)
 
@@ -595,10 +597,77 @@ def test_stock_falls_back_when_the_configured_voice_is_not_selectable():
     assert all(spec.names[0] != "am_santa" for spec in specs)
 
 
-def test_specialty_voices_are_never_auto_assigned(tmp_path):
+def test_every_single_voice_is_handed_out_before_any_blend(tmp_path):
+    # Each single voice is a character on klepsydra's wall; a blend is a letter medallion.
     b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60)
-    handed = {b.assign(f"s{i}", f"repo{i}").names[0] for i in range(len(SELECTABLE) + 20)}
-    assert not (handed & set(SPECIALTY))
+    voices = [b.assign(f"s{i}", f"repo{i}") for i in range(len(SELECTABLE) + 3)]
+    assert [v.label() for v in voices[: len(SELECTABLE)]] == [*POOL, *SPECIALTY]
+    assert all(len(v.names) == 2 for v in voices[len(SELECTABLE) :])
+
+
+def test_a_new_terminal_borrows_an_idle_repos_voice_before_taking_a_blend(tmp_path):
+    clock = Clock()
+    b = VoiceBook(tmp_path / "v.json", clock=clock, active_seconds=60)
+    for i in range(len(SELECTABLE)):  # every single voice becomes some repo's home
+        b.assign(f"s{i}", f"repo{i}")
+    clock.now = 61  # those terminals have gone quiet; their repos still call the voices home
+    held = [b.assign(f"new{i}", f"other{i}") for i in range(3)]
+    assert all(len(v.names) == 1 for v in held)
+
+
+def test_a_borrowed_voice_never_becomes_a_second_repos_home(tmp_path):
+    clock = Clock()
+    path = tmp_path / "v.json"
+    path.write_text('{"homes": {"pingtest": {"voice": "af_bella(0.5)+af_heart(0.5)", "seen": 0}}}')
+    b = VoiceBook(path, clock=clock, active_seconds=60)
+    for i in range(len(SELECTABLE)):  # every single voice becomes some repo's home
+        b.assign(f"s{i}", f"repo{i}")
+    clock.now = 61  # those terminals have gone quiet
+    assert len(b.assign("new", "newrepo").names) == 1  # borrowed
+    assert len(b.assign("ping", "pingtest").names) == 1  # borrowed
+    homes = [entry["voice"] for entry in json.loads(path.read_text())["homes"].values()]
+    assert len(homes) == len(set(homes))
+    assert "newrepo" not in json.loads(path.read_text())["homes"]
+
+
+def test_a_repo_whose_home_is_a_blend_takes_a_free_single_voice(tmp_path):
+    clock = Clock()
+    path = tmp_path / "v.json"
+    path.write_text('{"homes": {"pingtest": {"voice": "af_bella(0.5)+af_heart(0.5)", "seen": 0}}}')
+    b = VoiceBook(path, clock=clock, active_seconds=60)
+    first = b.assign("s1", "pingtest")
+    assert first == VoiceSpec(("af_heart",))
+    clock.now = 61
+    assert b.assign("s2", "pingtest") == first  # it is the repo's home now
+
+
+def test_a_terminal_on_a_blend_moves_to_a_single_voice_once_one_is_free(tmp_path):
+    clock = Clock()
+    b = VoiceBook(tmp_path / "v.json", clock=clock, active_seconds=60)
+    for i in range(len(SELECTABLE)):
+        b.assign(f"s{i}", f"repo{i}")
+    assert len(b.assign("late", "elsewhere").names) == 2
+    clock.now = 30
+    for i in range(1, len(SELECTABLE)):
+        b.assign(f"s{i}", f"repo{i}")  # all but s0 keep speaking
+    assert len(b.assign("late", "elsewhere").names) == 2
+    clock.now = 70  # s0 lapses, freeing af_heart
+    assert b.assign("late", "elsewhere") == VoiceSpec(("af_heart",))
+
+
+def test_a_terminal_leaving_a_blend_goes_home_first(tmp_path):
+    clock = Clock()
+    b = VoiceBook(tmp_path / "v.json", clock=clock, active_seconds=60)
+    for i in range(len(SELECTABLE)):
+        b.assign(f"s{i}", f"repo{i}")
+    assert len(b.assign("late", "repo7").names) == 2  # repo7's own voice is held by s7
+    clock.now = 30
+    for i in range(len(SELECTABLE)):
+        if i not in (3, 7):
+            b.assign(f"s{i}", f"repo{i}")
+    assert len(b.assign("late", "repo7").names) == 2  # still on its blend, still speaking
+    clock.now = 70  # s3 and s7 lapse: repo3's voice is first, repo7's is home
+    assert b.assign("late", "repo7") == VoiceSpec((POOL[7],))
 
 
 def test_a_specialty_voice_can_be_pinned(tmp_path):
@@ -628,13 +697,13 @@ def test_a_specialty_voice_kokoro_lacks_cannot_be_pinned(tmp_path):
     assert b.pin("s1", "af_nicole") is False
 
 
-def test_a_specialty_config_voice_still_is_not_auto_assigned(tmp_path):
+def test_a_specialty_config_voice_does_not_lead_the_rotation(tmp_path):
     # `keryx voice nicole` persists voice=af_nicole; on restart the book is seeded with it, but
-    # the opt-in voice must still never be handed to other terminals or no-holder notices.
+    # the specialty voice still comes after the pool voices, for terminals and notices alike.
     b = VoiceBook(tmp_path / "v.json", "af_nicole", clock=Clock(), active_seconds=60)
-    handed = {b.assign(f"s{i}", f"repo{i}").names[0] for i in range(len(SELECTABLE) + 20)}
-    handed.add(b.assign("", "").names[0])  # a no-holder notice
-    assert not (handed & set(SPECIALTY))
+    assert b.assign("", "") == VoiceSpec((POOL[0],))
+    handed = [b.assign(f"s{i}", f"repo{i}").label() for i in range(len(SELECTABLE))]
+    assert handed[-len(SPECIALTY) :] == list(SPECIALTY)
 
 
 def test_a_specialty_config_voice_appears_once_in_the_index(tmp_path):
