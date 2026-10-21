@@ -42,7 +42,8 @@ POOL = (
     "af_alloy",  # C
 )
 
-# Voices handed out only after every pool voice, and never as a blend or the lead. Kokoro tags
+# Voices handed out only after every pool voice is held (even a pool voice an idle repo calls
+# home is borrowed first), and never as a blend or the lead. Kokoro tags
 # af_nicole with a headphone/ASMR marker, but she is a character on klepsydra's wall, and every
 # character comes before any blend.
 SPECIALTY = ("af_nicole",)
@@ -281,12 +282,15 @@ class VoiceBook:
         }
 
     def _first_free(self, taken: set[int], now: float, below: int) -> int | None:
-        """The first voice under index `below` nobody holds, or None. Single voices come before
-        blends: a single voice a recently heard repo calls home is borrowed before any blend."""
+        """The first voice under index `below` nobody holds, or None. Pool voices come first (an
+        idle repo's home is borrowed before anything else), then specialty voices, then blends."""
         homes = {i for i, seen in self._home.values() if now - seen <= self._home_seconds}
-        for lo, hi in ((0, min(self._singles, below)), (self._singles, below)):
+        specialty = {i for i in range(self._singles) if self._specs[i].names[0] in SPECIALTY}
+        pooled = [i for i in range(min(self._singles, below)) if i not in specialty]
+        tiers = (pooled, sorted(specialty & set(range(below))), range(self._singles, below))
+        for tier in tiers:
             for avoid in (taken | homes, taken):
-                for i in range(lo, hi):
+                for i in tier:
                     if i not in avoid:
                         return i
         return None

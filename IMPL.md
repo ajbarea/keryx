@@ -8,7 +8,7 @@ rotation skipped every single voice that an idle repo calls home before it reuse
 ✅ Done
 - `catalogue`: pool singles, then `af_nicole`, then blends. `VoiceBook._singles` counts the
   singles at the head of `_specs`.
-- `_first_free(taken, now, below)`: singles first (no one's home, then an idle repo's home),
+- `_first_free(taken, now, below)`: pool singles (no one's home, then an idle repo's home), then `af_nicole`,
   then blends; None when nothing is free.
 - `assign`: the repo's own voice when it is a free single, else the first free single; a
   terminal on a blend moves at its next line; a repo homed in a blend is rehomed to its single.
