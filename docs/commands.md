@@ -53,8 +53,10 @@ as usual.
 ## Voices
 
 Each terminal speaks in its own voice, through `/clear` and resume too. A repo keeps its voice
-across restarts. A second terminal open in the same repo borrows another voice, and once
-the stock voices run out, new terminals get blends of two. Set `distinct_voices` to `false` to
+across restarts. A second terminal open in the same repo borrows another voice. Every single
+voice is handed out before any blend, even one an idle repo calls home; once all are held, new
+terminals get blends of two, and a terminal on a blend moves to the first single voice that
+frees up (unless you picked the blend). Set `distinct_voices` to `false` to
 speak every terminal in `voice`.
 
 To change a voice, run `keryx voice` in a terminal (with `!` inside Claude Code): it plays a
@@ -63,9 +65,8 @@ one straight away. The terminal you ran it in switches to the pick at once; it a
 `voice` that leads new terminals, which takes effect once the daemon restarts (`keryx off`, then
 on, or its idle exit). Other terminals keep theirs.
 
-The picker offers the rotation pool plus a few opt-in voices, such as the `nicole` headphone
-voice, that are never handed out automatically, so a terminal is never surprised by a niche
-voice but you can still choose one. The `voice` setting itself accepts any Kokoro voice, even one
+The picker offers the rotation pool plus a few specialty voices, such as the `nicole` headphone
+voice, which are handed out only after every pool voice. The `voice` setting itself accepts any Kokoro voice, even one
 outside the picker.
 
 A line starts with the repo's name when it comes from a different repo than the last one.
