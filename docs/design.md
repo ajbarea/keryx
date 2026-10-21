@@ -71,8 +71,8 @@ is still spoken when the speaker changes. The pool is Kokoro v1.0's English voic
 or better in its VOICES.md, 14 of 28. The ten voices with kourai portraits on klepsydra's fleet
 wall come first, alternating accent and gender where the set allows and best grade first,
 then the remaining graded voices. British voices are phonemized as `en-gb`, and a blend in the accent of the
-voice it weighs most. Then `af_nicole`, the last character on the wall, handed out only when every pool voice is
-held, even if that means borrowing a pool voice an idle repo calls home. Every single voice
+voice it weighs most. Then `af_nicole`, the last character on the wall, handed out to a new terminal only when every pool voice is
+held (a terminal already on her, pinned or not, keeps her), even if that means borrowing a pool voice an idle repo calls home. Every single voice
 is handed out before any blend, borrowing one an idle repo calls home if it must, since a blend
 shows on the wall as a letter medallion instead of a character; a terminal on a blend moves to
 a single voice once one frees, its repo's own first. Past the singles come same-gender blends (the weighted mean of two

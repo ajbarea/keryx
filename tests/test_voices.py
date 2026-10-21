@@ -101,7 +101,7 @@ def test_a_specialty_voice_comes_after_a_borrowed_pool_voice(book):
         b.assign(f"s{i}", f"repo{i}")
     clock.now = 61  # every hold lapsed; every pool voice is some repo's home
     voice = b.assign("late", "newrepo")
-    assert voice.names[0] not in SPECIALTY
+    assert voice.names in [(n,) for n in POOL]
 
 
 def test_a_specialty_voice_is_handed_out_once_every_pool_voice_is_held(book):

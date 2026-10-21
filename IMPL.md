@@ -1,28 +1,19 @@
 # IMPL
 
-## Current: every character before any blend (0.9.3, #40, PR #41)
+## Current: Hesychia last among single voices (0.9.4, PR #42)
 
-On 10-21 klepsydra showed three letter medallions (blends) while ten character voices sat free:
-rotation skipped every single voice that an idle repo calls home before it reused one.
+`af_nicole` (Hesychia) reached about the 5th terminal: `_first_free` avoided homed voices over all
+singles at once, and she is nobody's home.
 
 ✅ Done
-- `catalogue`: pool singles, then `af_nicole`, then blends. `VoiceBook._singles` counts the
-  singles at the head of `_specs`.
-- `_first_free(taken, now, below)`: pool singles (no one's home, then an idle repo's home), then `af_nicole`,
-  then blends; None when nothing is free.
-- `assign`: the repo's own voice when it is a free single, else the first free single; a
-  terminal on a blend moves at its next line; a repo homed in a blend is rehomed to its single.
-- Review round 1: dropped a `pinned` key (`set_voice` cannot pin a blend), home first on a move,
-  stale "opt-in" wording, a regression test that fails on the round-1 code.
-- Review round 2: a borrowed voice never becomes a second repo's home (a test repo homed on a
-  blend would have taken keryx's own voice); the homes in `voices.json` stay unique.
-- Docs: README, `docs/commands.md`, `docs/design.md`.
+- `_first_free(taken, now, below)`: pool singles (unhomed, then an idle repo's home), then
+  `af_nicole`, then blends; None when nothing is free.
+- Only new hand-outs follow this: a terminal or repo already on her (pinned or not) keeps her.
+- Tests: a borrowed pool voice beats her; she comes when all 14 pool voices are held.
 
 📋 Next
 - Merge, deploy (pull main, `claude plugin update keryx@techne`, `{"op":"quit"}` on the
-  socket), then check the live wall shows no letter medallions.
-- klepsydra still calls Hesychia pin-only (README, `src/fleet-cast.test.js`, portrait briefs):
-  fixed in klepsydra's #62 PR.
+  socket), `keryx status`.
 
 ## Verify
 - `make lint`; `uv run pytest -q` (`test_the_real_powershell_loop_plays_a_clip_to_its_end`
