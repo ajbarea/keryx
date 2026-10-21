@@ -2,10 +2,10 @@
 
 A repo keeps the first voice it was given that no other repo calls home, unless another
 terminal is using it; then, like a second terminal in the same repo, it borrows the next
-voice nobody holds. A terminal
-holds its voice while its Claude Code process runs, across `/clear` and resume. Every
-single voice is handed out before any blend, since each is a character on klepsydra's wall;
-past them come same-gender blends, so voices only repeat once every blend is taken too.
+voice nobody holds. A terminal holds its voice while its Claude Code process runs, across
+`/clear` and resume. Every single voice is handed out before any blend, since each is a
+character on klepsydra's wall; past them come same-gender blends, so voices only repeat once
+every blend is taken too.
 Homes and holds are saved, so a daemon restart changes nobody's voice.
 """
 
