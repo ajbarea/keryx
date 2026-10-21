@@ -42,7 +42,8 @@ POOL = (
     "af_alloy",  # C
 )
 
-# Voices handed out only after every pool voice, and never as a blend or the lead. Kokoro tags
+# Voices handed out only after every pool voice is held (even a pool voice an idle repo calls
+# home is borrowed first), and never as a blend or the lead. Kokoro tags
 # af_nicole with a headphone/ASMR marker, but she is a character on klepsydra's wall, and every
 # character comes before any blend.
 SPECIALTY = ("af_nicole",)
@@ -187,6 +188,8 @@ class VoiceBook:
             VoiceSpec((POOL[0],))
         ]
         self._singles = sum(len(spec.names) == 1 for spec in self._specs)  # they lead the list
+        # Specialty singles: handed out after the pool, and left for a pool voice once one frees.
+        self._specialty = {i for i in range(self._singles) if self._specs[i].names[0] in SPECIALTY}
         self._index = {spec.label(): i for i, spec in enumerate(self._specs)}
         self._clock = clock
         self._active_seconds = active_seconds
@@ -281,12 +284,15 @@ class VoiceBook:
         }
 
     def _first_free(self, taken: set[int], now: float, below: int) -> int | None:
-        """The first voice under index `below` nobody holds, or None. Single voices come before
-        blends: a single voice a recently heard repo calls home is borrowed before any blend."""
+        """The first voice under index `below` nobody holds, or None. Pool voices come first, then
+        specialty voices, then blends; within each, a voice no recent repo calls home comes before
+        one that does."""
         homes = {i for i, seen in self._home.values() if now - seen <= self._home_seconds}
-        for lo, hi in ((0, min(self._singles, below)), (self._singles, below)):
+        pooled = [i for i in range(self._singles) if i not in self._specialty]
+        tiers = (pooled, sorted(self._specialty), range(self._singles, below))
+        for tier in tiers:
             for avoid in (taken | homes, taken):
-                for i in range(lo, hi):
+                for i in tier:
                     if i not in avoid:
                         return i
         return None

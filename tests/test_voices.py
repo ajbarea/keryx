@@ -95,6 +95,23 @@ def test_more_sessions_than_stock_voices_get_blends_not_repeats(book):
     assert all(len(v.names) == 2 for v in voices[len(SELECTABLE) :])
 
 
+def test_a_specialty_voice_comes_after_a_borrowed_pool_voice(book):
+    b, clock = book
+    for i, _ in enumerate(POOL):
+        b.assign(f"s{i}", f"repo{i}")
+    clock.now = 61  # every hold lapsed; every pool voice is some repo's home
+    voice = b.assign("late", "newrepo")
+    assert voice.names in [(n,) for n in POOL]
+
+
+def test_a_specialty_voice_is_handed_out_once_every_pool_voice_is_held(book):
+    b, _ = book
+    voices = [b.assign(f"s{i}", f"repo{i}") for i in range(len(POOL) + 2)]
+    assert [v.names for v in voices[: len(POOL)]] == [(n,) for n in POOL]
+    assert voices[len(POOL)].names == SPECIALTY
+    assert len(voices[len(POOL) + 1].names) == 2
+
+
 def test_every_voice_taken_still_answers(tmp_path):
     b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60)
     for i in range(len(catalogue(POOL[0])) + 3):
