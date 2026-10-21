@@ -229,8 +229,18 @@ class VoiceBook:
             index = self._first_free(taken, now, len(self._specs))
             if index is None:
                 index = len(self._held) % len(self._specs)  # every voice in use: repeat
-        # A repo's first voice becomes its home, as does a single voice for a repo homed in a blend.
-        if source and changed and (home is None or (home[0] >= self._singles > index)):
+        # A repo's first voice becomes its home, as does a single voice for a repo homed in a blend,
+        # unless another repo heard lately calls it home: a borrowed voice stays borrowed.
+        homed_elsewhere = any(
+            i == index and s != source and now - seen <= self._home_seconds
+            for s, (i, seen) in self._home.items()
+        )
+        if (
+            source
+            and changed
+            and not homed_elsewhere
+            and (home is None or (home[0] >= self._singles > index))
+        ):
             self._home[source] = (index, now)
         self._held[holder] = (index, now)
         # A repo counts as heard only in its own voice, not in one a terminal brought along.

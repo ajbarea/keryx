@@ -66,7 +66,7 @@ one straight away. The terminal you ran it in switches to the pick at once; it a
 on, or its idle exit). Other terminals keep theirs.
 
 The picker offers the rotation pool plus a few specialty voices, such as the `nicole` headphone
-voice, which are handed out only after every pool voice. The `voice` setting itself accepts any Kokoro voice, even one
+voice, which come next in rotation after the pool voices. The `voice` setting itself accepts any Kokoro voice, even one
 outside the picker.
 
 A line starts with the repo's name when it comes from a different repo than the last one.

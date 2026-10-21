@@ -14,6 +14,8 @@ rotation skipped every single voice that an idle repo calls home before it reuse
   terminal on a blend moves at its next line; a repo homed in a blend is rehomed to its single.
 - Review round 1: dropped a `pinned` key (`set_voice` cannot pin a blend), home first on a move,
   stale "opt-in" wording, a regression test that fails on the round-1 code.
+- Review round 2: a borrowed voice never becomes a second repo's home (a test repo homed on a
+  blend would have taken keryx's own voice); the homes in `voices.json` stay unique.
 - Docs: README, `docs/commands.md`, `docs/design.md`.
 
 📋 Next

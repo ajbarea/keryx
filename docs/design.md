@@ -87,7 +87,9 @@ ancestor) holds by session id and lapses 4 hours after its last prompt or reply.
 
 A repo keeps the voice it was first given, stored by label in `~/.cache/keryx/voices.json`.
 A terminal takes its repo's voice unless another terminal holds it; then it borrows the
-first voice that no repo heard in the last 14 days calls home and nobody holds. Voices are
+first single voice that no repo heard in the last 14 days calls home and nobody holds, then
+any single voice nobody holds, and only then a blend. A borrowed voice never becomes a
+second repo's home. Voices are
 claimed on `SessionStart` and on each prompt, before the first reply. Holds are saved with
 wall-clock times, so a daemon restart does not let two terminals trade voices; a clock that
 jumps back counts from the jump. A line with no session (`keryx say`) takes a voice nobody

@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 
@@ -581,7 +583,7 @@ def test_resolve_rejects_unknowns():
     assert resolve("", specs) is None
 
 
-def test_stock_offers_the_opt_in_specialty_voices():
+def test_stock_offers_the_specialty_voices():
     # Specialty voices are selectable (shown in `keryx voice`) and handed out after the pool.
     specs = stock("af_heart")
     assert any(spec.names[0] in SPECIALTY for spec in specs)
@@ -611,6 +613,21 @@ def test_a_new_terminal_borrows_an_idle_repos_voice_before_taking_a_blend(tmp_pa
     clock.now = 61  # those terminals have gone quiet; their repos still call the voices home
     held = [b.assign(f"new{i}", f"other{i}") for i in range(3)]
     assert all(len(v.names) == 1 for v in held)
+
+
+def test_a_borrowed_voice_never_becomes_a_second_repos_home(tmp_path):
+    clock = Clock()
+    path = tmp_path / "v.json"
+    path.write_text('{"homes": {"pingtest": {"voice": "af_bella(0.5)+af_heart(0.5)", "seen": 0}}}')
+    b = VoiceBook(path, clock=clock, active_seconds=60)
+    for i in range(len(SELECTABLE)):  # every single voice becomes some repo's home
+        b.assign(f"s{i}", f"repo{i}")
+    clock.now = 61  # those terminals have gone quiet
+    assert len(b.assign("new", "newrepo").names) == 1  # borrowed
+    assert len(b.assign("ping", "pingtest").names) == 1  # borrowed
+    homes = [entry["voice"] for entry in json.loads(path.read_text())["homes"].values()]
+    assert len(homes) == len(set(homes))
+    assert "newrepo" not in json.loads(path.read_text())["homes"]
 
 
 def test_a_repo_whose_home_is_a_blend_takes_a_free_single_voice(tmp_path):
