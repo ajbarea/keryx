@@ -13,8 +13,12 @@ from keryx.summarize import (
     DIRECT_MAX_CHARS,
     GENERATE_TIMEOUT,
     LOAD_TIMEOUT,
+    MAX_INPUT_CHARS,
+    NUM_CTX,
+    NUM_PREDICT,
     SPOKEN_MAX_CHARS,
     OllamaClient,
+    model_input,
     spoken_line,
 )
 
@@ -78,9 +82,10 @@ class SlowOllama(BaseHTTPRequestHandler):
     load_seconds: ClassVar[float] = 2.0
     chat_seconds: ClassVar[float] = 0.0
     requests: ClassVar[list[str]] = []
+    bodies: ClassVar[list[dict]] = []
 
     def do_POST(self):
-        self.rfile.read(int(self.headers["Content-Length"]))
+        self.bodies.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
         self.requests.append(self.path)
         if self.path == "/api/generate":
             time.sleep(self.load_seconds)
@@ -108,6 +113,7 @@ class QuietServer(ThreadingHTTPServer):
 @pytest.fixture
 def slow_ollama():
     SlowOllama.requests = []
+    SlowOllama.bodies = []
     SlowOllama.chat_seconds = 0.0
     SlowOllama.load_seconds = 2.0
     server = QuietServer(("127.0.0.1", 0), SlowOllama)
@@ -141,3 +147,59 @@ def test_design_doc_states_the_timeouts_in_use():
     )
     assert f"under a {LOAD_TIMEOUT:g} s timeout" in design
     assert f"generates under {GENERATE_TIMEOUT:g} s" in design
+    assert f"a {NUM_CTX}-token context" in design
+    assert f"up to {MAX_INPUT_CHARS} characters" in design
+
+
+# Measured on gemma3:4b, Ollama 0.35.0, 2026-10-21: fixed prompt overhead in tokens and
+# dense text (versions, IDs, percentages) in tokens per char.
+OVERHEAD_TOKENS = 409
+DENSE_TOKENS_PER_CHAR = 0.63
+
+
+def test_the_largest_prompt_keryx_can_send_fits_the_context_it_asks_for():
+    worst = OVERHEAD_TOKENS + DENSE_TOKENS_PER_CHAR * MAX_INPUT_CHARS + NUM_PREDICT
+    assert worst <= NUM_CTX
+
+
+def test_chat_and_warm_pin_the_context_window(slow_ollama):
+    SlowOllama.load_seconds = 0.0
+    client = OllamaClient("m", host=slow_ollama)
+    assert client.generate("hi", "sys") == "I fixed the parser."
+    by_path = dict(zip(SlowOllama.requests, SlowOllama.bodies, strict=True))
+    assert by_path["/api/generate"]["options"]["num_ctx"] == NUM_CTX
+    assert by_path["/api/chat"]["options"]["num_ctx"] == NUM_CTX
+    assert by_path["/api/chat"]["options"]["num_predict"] == NUM_PREDICT
+
+
+def test_a_huge_reply_is_capped_before_it_reaches_the_model(slow_ollama):
+    SlowOllama.load_seconds = 0.0
+    huge = "I changed the parser in a few places. " * 1000
+    assert len(huge) > 5 * MAX_INPUT_CHARS
+    spoken_line(huge, OllamaClient("m", host=slow_ollama))
+    chat = next(
+        b for p, b in zip(SlowOllama.requests, SlowOllama.bodies, strict=True) if p == "/api/chat"
+    )
+    sent = chat["messages"][-1]["content"]
+    message = sent.removeprefix("Message to rewrite:\n<message>\n").removesuffix("\n</message>")
+    assert 0 < len(message) <= MAX_INPUT_CHARS
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Done. " + "b" * 5594 + ".",
+        "Note: " + "x" * 6100,
+        "I changed the parser. " * 400 + "Should the old name stay?",
+    ],
+)
+def test_a_reply_over_the_cap_keeps_its_opening_and_its_close(reply):
+    sent = model_input(reply)
+    assert len(sent) <= MAX_INPUT_CHARS
+    assert sent.startswith(reply[:4])
+    assert sent.endswith(reply[-4:])
+
+
+def test_a_reply_within_the_cap_reaches_the_model_whole():
+    reply = "word " * (MAX_INPUT_CHARS // 5)
+    assert model_input(reply) == reply
