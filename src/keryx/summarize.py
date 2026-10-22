@@ -4,16 +4,11 @@ from __future__ import annotations
 
 import http.client
 import json
-import logging
-import math
-import re
 import urllib.request
 from typing import Protocol
 
-from keryx.config import Config
+from keryx.config import Config, keep_alive_seconds
 from keryx.text import clean_for_speech, first_sentences
-
-log = logging.getLogger("keryx")
 
 SYSTEM_PROMPT = (
     "You rewrite a coding assistant's message as one or two short sentences that the "
@@ -46,31 +41,20 @@ EXAMPLES = (
     ),
 )
 
-DEFAULT_KEEP_ALIVE = "5m"
-_DURATION = re.compile(
-    r"^-?(\d+(\.\d*)?|\.\d+)(ns|us|µs|ms|s|m|h)((\d+(\.\d*)?|\.\d+)(ns|us|µs|ms|s|m|h))*$"
-)
+# Ollama turns seconds into a Go duration, which overflows to negative (unload now) past
+# about 9.2e9 s; anything that long means "keep it loaded", which is -1.
+MAX_KEEP_ALIVE_SECONDS = 9e9
 
 
-def ollama_keep_alive(value: str) -> str | float:
-    """What Ollama's `keep_alive` takes: seconds for a bare number, a Go duration as is.
-
-    Ollama rejects a bare "300" string (Go's ParseDuration needs a unit); a negative
-    value means keep loaded forever. Anything else logs a warning and becomes the default.
-    """
-    try:
-        number = float(value)
-    except ValueError:
-        pass
-    else:
-        if math.isfinite(number):
-            return int(number) if number == int(number) else number
-    if _DURATION.match(value):
-        return value
-    log.warning(
-        "keep_alive %r is not a number of seconds or a duration such as 10m; using 5m", value
-    )
-    return DEFAULT_KEEP_ALIVE
+def ollama_keep_alive(value: str) -> float:
+    """`keep_alive` as the seconds Ollama is sent: a number always, so Ollama never parses a
+    duration string; -1 (keep loaded) for any negative or overlong value."""
+    seconds = keep_alive_seconds(value)
+    if seconds is None:
+        seconds = keep_alive_seconds(Config().keep_alive) or 0.0
+    if seconds < 0 or seconds > MAX_KEEP_ALIVE_SECONDS:
+        return -1
+    return int(seconds) if seconds == int(seconds) else seconds
 
 
 # Ollama aborts a load when its client hangs up, so this must outlast a cold load:
@@ -141,7 +125,7 @@ class OllamaClient:
         """Hand the model's VRAM back now instead of when `keep_alive` runs out."""
         self._load(0)
 
-    def _load(self, keep_alive: str | float) -> None:
+    def _load(self, keep_alive: float) -> None:
         body = {
             "model": self.model,
             "keep_alive": keep_alive,

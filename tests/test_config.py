@@ -166,7 +166,15 @@ def test_keep_alive_env_override(tmp_path, monkeypatch):
     assert Config.load().keep_alive == "0"
 
 
-@pytest.mark.parametrize("bad", [True, False, ["5m"], None])
+def test_a_keep_alive_env_value_that_is_not_a_duration_is_not_used(tmp_path, monkeypatch, caplog):
+    # `keryx status` prints the loaded config, so it must hold the value actually in use.
+    monkeypatch.setenv("KERYX_KEEP_ALIVE", "abc")
+    with caplog.at_level("WARNING", logger="keryx"):
+        assert Config.load().keep_alive == "5m"
+    assert "abc" in caplog.text
+
+
+@pytest.mark.parametrize("bad", [True, False, ["5m"], None, "soon", "5M", "", "nan"])
 def test_keep_alive_of_the_wrong_type_falls_back_to_the_default(tmp_path, monkeypatch, bad):
     _write(tmp_path, monkeypatch, {"keep_alive": bad})
     assert Config.load(env=False).keep_alive == "5m"

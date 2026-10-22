@@ -208,19 +208,27 @@ def test_a_reply_within_the_cap_reaches_the_model_whole():
 
 @pytest.mark.parametrize(
     ("value", "sent"),
-    [("5m", "5m"), ("0", 0), ("300", 300), ("1h30m", "1h30m"), ("-1", -1), ("soon", "5m")],
+    [
+        ("5m", 300),
+        ("0", 0),
+        ("300", 300),
+        ("90.5", 90.5),
+        ("1h30m", 5400),
+        ("1.5h", 5400),
+        ("-1", -1),
+        ("-1m", -1),
+        (" 10m ", 600),
+        ("9999999h", -1),
+        ("1e10", -1),
+    ],
 )
-def test_ollama_keep_alive_is_what_the_request_can_carry(value, sent):
+def test_ollama_gets_keep_alive_as_seconds(value, sent):
+    # A number always: Go's ParseDuration rejects strings this side cannot vouch for, and
+    # Ollama overflows past about 9.2e9 s to a negative duration that unloads at once.
     assert ollama_keep_alive(value) == sent
 
 
-def test_a_keep_alive_that_is_not_a_duration_is_logged(caplog):
-    with caplog.at_level("WARNING", logger="keryx"):
-        ollama_keep_alive("soon")
-    assert "soon" in caplog.text
-
-
-@pytest.mark.parametrize(("setting", "sent"), [("0", 0), ("10m", "10m")])
+@pytest.mark.parametrize(("setting", "sent"), [("0", 0), ("10m", 600)])
 def test_keep_alive_reaches_both_requests(slow_ollama, setting, sent):
     SlowOllama.load_seconds = 0.0
     client = OllamaClient("m", slow_ollama, keep_alive=setting)
