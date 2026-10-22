@@ -53,7 +53,7 @@ keryx status
 ```
 
 `status` prints the settings as JSON, a `daemon` field that reads `not running` until a
-prompt has started it, and one line per setup check. Say something aloud from a shell to hear the voice:
+prompt has started it, and one line per setup check, including the Ollama server's memory settings and loaded models. Say something aloud from a shell to hear the voice:
 
 ```bash
 keryx say "keryx is working"

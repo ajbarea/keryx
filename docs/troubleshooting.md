@@ -56,6 +56,40 @@ Ollama sizes GPU offload when a model loads, so a large model loaded beside kery
 partly on the CPU. Run `/keryx off` before a long local-LLM run. It unloads the summarizer and
 frees about 4.4 GB of VRAM.
 
+## Ollama server memory
+
+Ollama keeps each loaded model's KV cache in f16 by default. Storing it as q8_0 shrinks it, and
+keryx's `keryx status` prints `optional ollama-memory` with the fix until the server has that
+setting. Measured with gemma3:4b on Ollama 0.35.0, one 3000-character reply, same model and
+prompt, on a throwaway server:
+
+| Server env | GPU over baseline | llama-server RSS | runner flags |
+| --- | --- | --- | --- |
+| default (f16 KV, flash attention auto) | 3800 MiB | 1161 MB | `-c 4096 --flash-attn auto` |
+| `OLLAMA_KV_CACHE_TYPE=q8_0` and `OLLAMA_FLASH_ATTENTION=1` | 3687 MiB | 1088 MB | `--cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on` |
+
+That is 113 MiB of GPU memory and 73 MB of RSS saved per loaded gemma3:4b at keryx's 4096
+context. Models other tools run at larger contexts save more, because the KV cache grows with
+context. Applying it needs sudo, so run it yourself:
+
+```
+sudo systemctl edit ollama
+# in the editor, add:
+[Service]
+Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
+Environment="OLLAMA_FLASH_ATTENTION=1"
+# then
+sudo systemctl restart ollama
+```
+
+Restarting Ollama unloads every model, so do it between runs. The KV cache type is global: it
+applies to every model on that server, including other local runs. A quantized KV cache needs
+flash attention, and `OLLAMA_FLASH_ATTENTION=1` forces it on. keryx sends its own `keep_alive`
+with each request, so `OLLAMA_KEEP_ALIVE` only changes other clients. The Windows Ollama app
+takes these settings as user environment variables instead. `keryx status` also lists the
+loaded models with their context and GPU memory on the `ollama-loaded` line. See the
+[Ollama FAQ](https://docs.ollama.com/faq).
+
 ## `config.json` was ignored
 
 keryx ignores a `config.json` it cannot read as a JSON object. `keryx on` and `keryx off` keep
