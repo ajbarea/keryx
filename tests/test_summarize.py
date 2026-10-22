@@ -19,6 +19,7 @@ from keryx.summarize import (
     SPOKEN_MAX_CHARS,
     OllamaClient,
     model_input,
+    ollama_keep_alive,
     spoken_line,
 )
 
@@ -203,3 +204,27 @@ def test_a_reply_over_the_cap_keeps_its_opening_and_its_close(reply):
 def test_a_reply_within_the_cap_reaches_the_model_whole():
     reply = "word " * (MAX_INPUT_CHARS // 5)
     assert model_input(reply) == reply
+
+
+@pytest.mark.parametrize(
+    ("value", "sent"),
+    [("5m", "5m"), ("0", 0), ("300", 300), ("1h30m", "1h30m"), ("-1", -1), ("soon", "5m")],
+)
+def test_ollama_keep_alive_is_what_the_request_can_carry(value, sent):
+    assert ollama_keep_alive(value) == sent
+
+
+def test_a_keep_alive_that_is_not_a_duration_is_logged(caplog):
+    with caplog.at_level("WARNING", logger="keryx"):
+        ollama_keep_alive("soon")
+    assert "soon" in caplog.text
+
+
+@pytest.mark.parametrize(("setting", "sent"), [("0", 0), ("10m", "10m")])
+def test_keep_alive_reaches_both_requests(slow_ollama, setting, sent):
+    SlowOllama.load_seconds = 0.0
+    client = OllamaClient("m", slow_ollama, keep_alive=setting)
+    assert client.generate("p", "s") == "I fixed the parser."
+    assert SlowOllama.requests == ["/api/generate", "/api/chat"]
+    assert [b["keep_alive"] for b in SlowOllama.bodies] == [sent, sent]
+    assert SlowOllama.bodies[1]["keep_alive"] == sent

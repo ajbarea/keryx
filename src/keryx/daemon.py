@@ -183,7 +183,9 @@ def one_at_a_time(fn: Callable[[], None]) -> Callable[[], None]:
 
 
 def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], None] | None]:
-    client = OllamaClient(cfg.model, cfg.ollama_host) if cfg.model else None
+    client = (
+        OllamaClient(cfg.model, cfg.ollama_host, keep_alive=cfg.keep_alive) if cfg.model else None
+    )
 
     @one_at_a_time
     def warm() -> None:

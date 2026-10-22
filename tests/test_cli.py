@@ -249,6 +249,11 @@ def test_status_without_daemon(sent, capsys):
     assert '"daemon": "not running"' in capsys.readouterr().out
 
 
+def test_status_prints_the_keep_alive_setting(sent, capsys):
+    assert cli.main(["status"]) == 0
+    assert '"keep_alive": "5m"' in capsys.readouterr().out
+
+
 def test_unknown_command_prints_usage(capsys):
     assert cli.main(["dance"]) == 2
     assert "keryx hook" in capsys.readouterr().err

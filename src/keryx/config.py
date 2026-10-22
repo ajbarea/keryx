@@ -32,6 +32,8 @@ class Config:
     loudness: float = -16.0
     model: str = "gemma3:4b"
     ollama_host: str = "http://localhost:11434"
+    # How long Ollama keeps the summarizer loaded after its last use; "0" unloads after every reply.
+    keep_alive: str = "5m"
     # Apps (Windows process names) turned down to `duck_ratio` of their volume while speaking.
     duck_apps: list[str] = field(default_factory=lambda: ["Spotify"])
     duck_ratio: float = 0.25
@@ -44,6 +46,11 @@ class Config:
     def load(cls, env: bool = True) -> Config:
         """Settings from the file, then `KERYX_*` env overrides unless `env` is False."""
         raw = read_raw()
+        # JSON `0` or `300` (seconds) is as good as "0" or "300".
+        if isinstance(raw.get("keep_alive"), int | float) and not isinstance(
+            raw["keep_alive"], bool
+        ):
+            raw["keep_alive"] = str(raw["keep_alive"])
         defaults = cls()
         # A value of the wrong type (a string where a list belongs) falls back to the default.
         cfg = cls(

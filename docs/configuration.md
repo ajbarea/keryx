@@ -23,6 +23,7 @@ back to the default.
 | `loudness` | `-16.0` | Loudness (LUFS) every sentence is brought to before it plays |
 | `model` | `gemma3:4b` | Ollama model that shortens replies; empty to speak the opening sentences instead |
 | `ollama_host` | `http://localhost:11434` | Ollama server |
+| `keep_alive` | `5m` | How long Ollama keeps the summarizer loaded after a reply or a warm-up: a Go duration such as `90s` or `10m`, or seconds. `0` unloads after every reply, the lightest setting; the next reply then waits about 5 s for the model to load |
 | `duck_apps` | `["Spotify"]` | Windows process names turned down while keryx speaks; `[]` for none |
 | `duck_ratio` | `0.25` | The share of their volume ducked apps keep |
 | `speaking_signal` | `true` | Write `speaking.json` into klepsydra's fleet folder while a line plays, when that folder exists ([format](speaking-signal.md)) |
