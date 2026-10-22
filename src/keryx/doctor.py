@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import http.client
+import ipaddress
 import json
 import re
 import shlex
@@ -24,9 +25,8 @@ WINDOWS_DRIVE = re.compile(r"^/mnt/[a-z](/|$)")
 TIMEOUT = 2.0
 TUNED_KV_CACHE = ("q8_0", "q4_0")
 FLASH_OFF = ("0", "f", "F", "false", "FALSE", "False")
-ENV_FILE = re.compile(r"(\S+) \(ignore_errors=(?:yes|no)\)")
+ENV_FILE = re.compile(r"(.+?) \(ignore_errors=(?:yes|no)\)\s*")
 UNREADABLE = "unreadable files"
-LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "[::1]")
 MEMORY_FIX = (
     "fix: sudo systemctl edit ollama  # add OLLAMA_KV_CACHE_TYPE=q8_0 and"
     " OLLAMA_FLASH_ATTENTION=1; see docs/troubleshooting.md#ollama-server-memory"
@@ -93,6 +93,16 @@ def _systemd_env(run: Callable[..., subprocess.CompletedProcess[str]] = subproce
     if unreadable:
         env[UNREADABLE] = ", ".join(unreadable)
     return env
+
+
+def _is_local(hostname: str) -> bool:
+    if hostname.rstrip(".") == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
 
 
 def _memory(env: dict[str, str] | None) -> Check:
@@ -182,7 +192,7 @@ def checks(
                 )
             )
             # The local unit says nothing about a server on another machine.
-            local = (urllib.parse.urlsplit(host).hostname or "") in LOCAL_HOSTS
+            local = _is_local(urllib.parse.urlsplit(host).hostname or "")
             memory = (
                 _memory(server_env())
                 if local

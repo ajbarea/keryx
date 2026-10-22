@@ -367,3 +367,40 @@ def test_an_unreadable_environment_file_is_named(tmp_path):
         hidden.chmod(0o600)
     _, got = run_memory(lambda: env)
     assert str(hidden) in got["ollama-memory"].detail
+
+
+@pytest.mark.parametrize(
+    ("host", "local"),
+    [
+        ("http://localhost:11434", True),
+        ("http://LOCALHOST.:11434", True),
+        ("http://127.0.0.2:11434", True),
+        ("http://0.0.0.0:11434", True),
+        ("http://[::1]:11434", True),
+        ("http://gpubox.lan:11434", False),
+        ("http://10.0.0.5:11434", False),
+    ],
+)
+def test_only_a_local_host_reads_the_local_unit(host, local):
+    found = doctor.checks(
+        Config(ollama_host=host), which=which_all, fetch=fetch_ok, server_env=env_tuned
+    )
+    assert (by_name(found)["ollama-memory"].status == "ok") is local
+
+
+def test_environment_file_paths_may_hold_spaces(tmp_path):
+    spaced = tmp_path / "my env.conf"
+    spaced.write_text("OLLAMA_KV_CACHE_TYPE=q8_0\n")
+    other = tmp_path / "b.env"
+    other.write_text("OLLAMA_FLASH_ATTENTION=1\n")
+    run = fake_run(
+        {
+            "LoadState": "loaded\n",
+            "Environment": "\n",
+            "EnvironmentFiles": f"{spaced} (ignore_errors=yes) {other} (ignore_errors=no)\n",
+        }
+    )
+    assert doctor._systemd_env(run) == {
+        "OLLAMA_KV_CACHE_TYPE": "q8_0",
+        "OLLAMA_FLASH_ATTENTION": "1",
+    }
