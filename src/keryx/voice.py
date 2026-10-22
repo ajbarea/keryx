@@ -93,6 +93,35 @@ def ensure_models() -> Path:
     return d
 
 
+# Kokoro on CUDA, GPU memory over idle: 569 MiB idle and 1366 MiB peak with this and
+# ShrinkingSession, against 1178 MiB idle by default (2026-10-21). No gpu_mem_limit is set:
+# one below the peak fails mid-sentence, where the CPU fallback cannot catch it.
+CUDA_OPTIONS = {"arena_extend_strategy": "kSameAsRequested"}
+
+
+class ShrinkingSession:
+    """Wraps an ORT session to return the CUDA arena's unused memory after each run, so an
+    idle Kokoro holds about its weights."""
+
+    def __init__(self, session, ort):
+        self._session = session
+        self._run_options = ort.RunOptions()
+        self._run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "gpu:0")
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+    def run(self, output_names, input_feed, run_options=None):
+        # Once ORT has moved a failed session to the CPU, the gpu:0 entry would fail every run.
+        on_cuda = "CUDAExecutionProvider" in self._session.get_providers()
+        return self._session.run(output_names, input_feed, self._run_options if on_cuda else None)
+
+
+def for_kokoro(session, ort, provider: str):
+    """The session Kokoro runs on: shrinking on CUDA, as-is on the CPU (which has no gpu arena)."""
+    return ShrinkingSession(session, ort) if provider == "CUDAExecutionProvider" else session
+
+
 def open_session(ort, model: Path):
     """An ONNX Runtime session on CUDA when it works, else on the CPU.
 
@@ -107,7 +136,12 @@ def open_session(ort, model: Path):
     options = ort.SessionOptions()
     options.log_severity_level = 3  # the CUDA provider warns about memcpy nodes on load
     available = ort.get_available_providers()
-    providers = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in available]
+    wanted = {"CUDAExecutionProvider": ("CUDAExecutionProvider", CUDA_OPTIONS)}
+    providers = [
+        wanted.get(p, p)
+        for p in ("CUDAExecutionProvider", "CPUExecutionProvider")
+        if p in available
+    ]
     try:
         return ort.InferenceSession(str(model), options, providers=providers)
     except Exception as exc:
@@ -133,7 +167,7 @@ class KokoroVoice:
         session = open_session(ort, d / MODEL)
         self.provider = session.get_providers()[0]
         log.info("kokoro on %s", self.provider)
-        self._kokoro = Kokoro.from_session(session, str(d / VOICES))
+        self._kokoro = Kokoro.from_session(for_kokoro(session, ort, self.provider), str(d / VOICES))
         chosen = default_voice(voice, self._kokoro.voices)
         if chosen != voice:
             log.warning("voice %r is not available; using %s", voice, chosen)

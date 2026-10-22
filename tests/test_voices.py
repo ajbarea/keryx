@@ -457,9 +457,23 @@ class FakeOrt:
 
     def InferenceSession(self, path, options, providers):
         self.started.append(providers)
-        if "CUDAExecutionProvider" in providers and not self.cuda_works:
+        names = [p if isinstance(p, str) else p[0] for p in providers]
+        if "CUDAExecutionProvider" in names and not self.cuda_works:
             raise NotImplementedInOrt("Failed to load libcudnn")
         return providers
+
+    class RunOptions:
+        def __init__(self):
+            self.entries = {}
+
+        def add_run_config_entry(self, key, value):
+            self.entries[key] = value
+
+
+CUDA_STARTED = [
+    ("CUDAExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"}),
+    "CPUExecutionProvider",
+]
 
 
 def test_cuda_that_will_not_start_falls_back_to_the_cpu(tmp_path):
@@ -467,17 +481,66 @@ def test_cuda_that_will_not_start_falls_back_to_the_cpu(tmp_path):
 
     ort = FakeOrt(["CUDAExecutionProvider", "CPUExecutionProvider"])
     assert open_session(ort, tmp_path / "m.onnx") == ["CPUExecutionProvider"]
-    assert ort.started == [
-        ["CUDAExecutionProvider", "CPUExecutionProvider"],
-        ["CPUExecutionProvider"],
-    ]
+    assert ort.started == [CUDA_STARTED, ["CPUExecutionProvider"]]
 
 
 def test_cuda_that_starts_is_used(tmp_path):
     from keryx.voice import open_session
 
     ort = FakeOrt(["CUDAExecutionProvider", "CPUExecutionProvider"], cuda_works=True)
-    assert open_session(ort, tmp_path / "m.onnx")[0] == "CUDAExecutionProvider"
+    assert open_session(ort, tmp_path / "m.onnx") == CUDA_STARTED
+    assert ort.started == [CUDA_STARTED]
+
+
+class FakeSession:
+    def __init__(self):
+        self.calls = []
+        self.providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+    def get_providers(self):
+        return self.providers
+
+    def run(self, output_names, input_feed, run_options=None):
+        self.calls.append((output_names, input_feed, run_options))
+        return ["audio"]
+
+    def get_inputs(self):
+        return ["input"]
+
+
+def test_a_shrinking_session_returns_the_cuda_arena_after_each_run():
+    from keryx.voice import ShrinkingSession
+
+    inner = FakeSession()
+    shrinking = ShrinkingSession(inner, FakeOrt([]))
+    assert shrinking.run(None, {"x": 1}) == ["audio"]
+    assert shrinking.run(["y"], {"x": 2}) == ["audio"]
+    first, second = inner.calls
+    assert first[:2] == (None, {"x": 1})
+    assert first[2].entries == {"memory.enable_memory_arena_shrinkage": "gpu:0"}
+    assert second[2] is first[2]
+    assert shrinking.get_inputs() == ["input"]
+
+
+def test_a_session_ort_moved_to_the_cpu_runs_without_the_gpu_shrink():
+    # ORT retries a failed CUDA run on the CPU with the same options, and a gpu:0 shrink
+    # entry fails every CPU run.
+    from keryx.voice import ShrinkingSession
+
+    inner = FakeSession()
+    shrinking = ShrinkingSession(inner, FakeOrt([]))
+    inner.providers = ["CPUExecutionProvider"]
+    shrinking.run(None, {"x": 1})
+    assert inner.calls[0][2] is None
+
+
+def test_only_a_cuda_session_is_wrapped_to_shrink():
+    from keryx.voice import ShrinkingSession, for_kokoro
+
+    inner = FakeSession()
+    assert for_kokoro(inner, FakeOrt([]), "CPUExecutionProvider") is inner
+    wrapped = for_kokoro(inner, FakeOrt([]), "CUDAExecutionProvider")
+    assert isinstance(wrapped, ShrinkingSession)
 
 
 def test_a_cpu_failure_is_not_retried_or_hidden(tmp_path):
