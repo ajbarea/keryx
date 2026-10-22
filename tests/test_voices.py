@@ -495,6 +495,10 @@ def test_cuda_that_starts_is_used(tmp_path):
 class FakeSession:
     def __init__(self):
         self.calls = []
+        self.providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+    def get_providers(self):
+        return self.providers
 
     def run(self, output_names, input_feed, run_options=None):
         self.calls.append((output_names, input_feed, run_options))
@@ -516,6 +520,18 @@ def test_a_shrinking_session_returns_the_cuda_arena_after_each_run():
     assert first[2].entries == {"memory.enable_memory_arena_shrinkage": "gpu:0"}
     assert second[2] is first[2]
     assert shrinking.get_inputs() == ["input"]
+
+
+def test_a_session_ort_moved_to_the_cpu_runs_without_the_gpu_shrink():
+    # ORT retries a failed CUDA run on the CPU with the same options, and a gpu:0 shrink
+    # entry fails every CPU run.
+    from keryx.voice import ShrinkingSession
+
+    inner = FakeSession()
+    shrinking = ShrinkingSession(inner, FakeOrt([]))
+    inner.providers = ["CPUExecutionProvider"]
+    shrinking.run(None, {"x": 1})
+    assert inner.calls[0][2] is None
 
 
 def test_only_a_cuda_session_is_wrapped_to_shrink():

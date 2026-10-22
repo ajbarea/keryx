@@ -112,7 +112,9 @@ class ShrinkingSession:
         return getattr(self._session, name)
 
     def run(self, output_names, input_feed, run_options=None):
-        return self._session.run(output_names, input_feed, self._run_options)
+        # Once ORT has moved a failed session to the CPU, the gpu:0 entry would fail every run.
+        on_cuda = "CUDAExecutionProvider" in self._session.get_providers()
+        return self._session.run(output_names, input_feed, self._run_options if on_cuda else None)
 
 
 def for_kokoro(session, ort, provider: str):
