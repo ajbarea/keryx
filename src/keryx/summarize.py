@@ -57,6 +57,7 @@ SPOKEN_MAX_CHARS = 320
 NUM_CTX = 4096
 NUM_PREDICT = 96
 MAX_INPUT_CHARS = 5600
+ELISION = " … "
 
 
 class Generator(Protocol):
@@ -127,13 +128,24 @@ def _framed(message: str) -> str:
     return f"Message to rewrite:\n<message>\n{message}\n</message>"
 
 
+def model_input(cleaned: str) -> str:
+    """`cleaned` whole when it fits MAX_INPUT_CHARS, else its opening and its close, where a
+    question to the developer usually sits."""
+    if len(cleaned) <= MAX_INPUT_CHARS:
+        return cleaned
+    half = (MAX_INPUT_CHARS - len(ELISION)) // 2
+    head = cleaned[:half].rsplit(" ", 1)[0]
+    tail = cleaned[-half:].split(" ", 1)[-1]
+    return f"{head}{ELISION}{tail}"
+
+
 def spoken_line(reply: str, client: Generator | None) -> str:
     """The words to say for `reply`: as-is if short, else the model's gist, else its opening."""
     cleaned = clean_for_speech(reply)
     if len(cleaned) <= DIRECT_MAX_CHARS or client is None:
         return first_sentences(cleaned, SPOKEN_MAX_CHARS)
     try:
-        out = client.generate(_framed(first_sentences(cleaned, MAX_INPUT_CHARS)), SYSTEM_PROMPT)
+        out = client.generate(_framed(model_input(cleaned)), SYSTEM_PROMPT)
     except (OSError, http.client.HTTPException, KeyError, ValueError, TypeError):
         return first_sentences(cleaned, SPOKEN_MAX_CHARS)
     spoken = clean_for_speech(out).strip("\"' ")

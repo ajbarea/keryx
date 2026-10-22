@@ -18,6 +18,7 @@ from keryx.summarize import (
     NUM_PREDICT,
     SPOKEN_MAX_CHARS,
     OllamaClient,
+    model_input,
     spoken_line,
 )
 
@@ -146,6 +147,8 @@ def test_design_doc_states_the_timeouts_in_use():
     )
     assert f"under a {LOAD_TIMEOUT:g} s timeout" in design
     assert f"generates under {GENERATE_TIMEOUT:g} s" in design
+    assert f"a {NUM_CTX}-token context" in design
+    assert f"up to {MAX_INPUT_CHARS} characters" in design
 
 
 # Measured on gemma3:4b, Ollama 0.35.0, 2026-10-21: fixed prompt overhead in tokens and
@@ -180,3 +183,23 @@ def test_a_huge_reply_is_capped_before_it_reaches_the_model(slow_ollama):
     sent = chat["messages"][-1]["content"]
     message = sent.removeprefix("Message to rewrite:\n<message>\n").removesuffix("\n</message>")
     assert 0 < len(message) <= MAX_INPUT_CHARS
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Done. " + "b" * 5594 + ".",
+        "Note: " + "x" * 6100,
+        "I changed the parser. " * 400 + "Should the old name stay?",
+    ],
+)
+def test_a_reply_over_the_cap_keeps_its_opening_and_its_close(reply):
+    sent = model_input(reply)
+    assert len(sent) <= MAX_INPUT_CHARS
+    assert sent.startswith(reply[:4])
+    assert sent.endswith(reply[-4:])
+
+
+def test_a_reply_within_the_cap_reaches_the_model_whole():
+    reply = "word " * (MAX_INPUT_CHARS // 5)
+    assert model_input(reply) == reply

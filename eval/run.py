@@ -14,7 +14,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from keryx.summarize import DIRECT_MAX_CHARS, SYSTEM_PROMPT, OllamaClient, _framed
+from keryx.summarize import DIRECT_MAX_CHARS, SYSTEM_PROMPT, OllamaClient, _framed, model_input
 from keryx.text import clean_for_speech
 
 DATA = Path(__file__).parent / "data"
@@ -40,7 +40,7 @@ def main() -> None:
                 outs.append(None)  # spoken as-is, never reaches the model
                 continue
             started = time.time()
-            outs.append(client.generate(_framed(cleaned), SYSTEM_PROMPT).strip())
+            outs.append(client.generate(_framed(model_input(cleaned)), SYSTEM_PROMPT).strip())
             latencies.append(time.time() - started)
         latencies.sort()
         results[model] = {
