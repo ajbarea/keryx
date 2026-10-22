@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
 import http.client
+import ipaddress
 import json
 import re
+import shlex
 import shutil
+import subprocess
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from pathlib import Path
 from typing import NamedTuple
 
 from keryx.config import Config
@@ -17,6 +23,14 @@ OLLAMA_INSTALL = "curl -fsSL https://ollama.com/install.sh | sh"
 DEFAULT_AUDIO_DIR = Config().audio_dir
 WINDOWS_DRIVE = re.compile(r"^/mnt/[a-z](/|$)")
 TIMEOUT = 2.0
+TUNED_KV_CACHE = ("q8_0", "q4_0")
+FLASH_OFF = ("0", "f", "F", "false", "FALSE", "False")
+ENV_FILE = re.compile(r"(.+?) \(ignore_errors=(?:yes|no)\)\s*")
+UNREADABLE = "unreadable files"
+MEMORY_FIX = (
+    "fix: sudo systemctl edit ollama  # add OLLAMA_KV_CACHE_TYPE=q8_0 and"
+    " OLLAMA_FLASH_ATTENTION=1; see docs/troubleshooting.md#ollama-server-memory"
+)
 
 
 class Check(NamedTuple):
@@ -28,6 +42,7 @@ class Check(NamedTuple):
 
 Which = Callable[[str], str | None]
 Fetch = Callable[[str], bytes]
+ServerEnv = Callable[[], dict[str, str] | None]
 
 
 def _fetch(url: str) -> bytes:
@@ -35,12 +50,113 @@ def _fetch(url: str) -> bytes:
         return resp.read()
 
 
+def _systemd_env(run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run):
+    """The OLLAMA_* variables of the running `ollama` systemd unit, or None when there is none.
+
+    `EnvironmentFile=` values override `Environment=`, as in systemd; a file that cannot be read
+    is named under `UNREADABLE`.
+    """
+
+    def show(prop: str) -> str:
+        done = run(
+            ["systemctl", "show", "ollama", "-p", prop, "--value"],
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+        )
+        if done.returncode != 0:
+            raise OSError(f"systemctl exited {done.returncode}")
+        return done.stdout.strip()
+
+    try:
+        if show("LoadState") == "not-found" or show("ActiveState") != "active":
+            return None
+        assignments = shlex.split(show("Environment"))
+        files = ENV_FILE.findall(show("EnvironmentFiles"))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    unreadable = []
+    for path in files:
+        try:
+            text = Path(path).read_text()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            unreadable.append(path)
+            continue
+        for line in text.splitlines():
+            if line.strip() and not line.lstrip().startswith(("#", ";")):
+                with contextlib.suppress(ValueError):
+                    assignments += shlex.split(line)
+    pairs = (a.partition("=") for a in assignments)
+    env = {k: v for k, _, v in pairs if k.startswith("OLLAMA_") and k.isupper()}
+    if unreadable:
+        env[UNREADABLE] = ", ".join(unreadable)
+    return env
+
+
+def _is_local(hostname: str) -> bool:
+    if hostname.rstrip(".") == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
+
+
+def _memory(env: dict[str, str] | None) -> Check:
+    if env is None:
+        return Check(
+            "n/a", "ollama-memory", "not a systemd service; see the docs for its memory settings"
+        )
+    kv, flash, keep = (
+        env.get(k) for k in ("OLLAMA_KV_CACHE_TYPE", "OLLAMA_FLASH_ATTENTION", "OLLAMA_KEEP_ALIVE")
+    )
+    detail = (
+        f"kv_cache={kv or 'f16 (unset)'}, flash_attention={flash or 'auto (unset)'},"
+        f" keep_alive={keep or '5m (unset)'}"
+    )
+    if UNREADABLE in env:
+        detail += f"; could not read {env[UNREADABLE]}"
+    # Ollama lowercases the cache type and reads flash attention with Go's ParseBool, where
+    # anything but these spellings of false (an unparsable value included) is on.
+    quantized = (kv or "").lower() in TUNED_KV_CACHE
+    if quantized and flash in FLASH_OFF:
+        return Check(
+            "missing",
+            "ollama-memory",
+            f"{detail}; a quantized KV cache needs flash attention, so no model can load",
+            ("fix: sudo systemctl edit ollama  # set OLLAMA_FLASH_ATTENTION=1",),
+        )
+    if quantized and flash:
+        return Check("ok", "ollama-memory", detail)
+    return Check("optional", "ollama-memory", detail, (MEMORY_FIX,))
+
+
+def _loaded(fetch: Fetch, host: str) -> Check:
+    try:
+        models = json.loads(fetch(f"{host}/api/ps")).get("models", [])
+        shown = [
+            f"{m['name']} (context {m['context_length']}, {m['size_vram'] / 1024**3:.1f} GB GPU)"
+            for m in models
+        ]
+    except (OSError, ValueError, AttributeError, KeyError, TypeError, http.client.HTTPException):
+        return Check("n/a", "ollama-loaded", "could not read /api/ps")
+    return Check("ok", "ollama-loaded", ", ".join(shown) or "none")
+
+
 def _program(name: str, which: Which, detail: str, fixes: tuple[str, ...]) -> Check:
     found = which(name)
     return Check("ok", name, found) if found else Check("missing", name, detail, fixes)
 
 
-def checks(cfg: Config, which: Which = shutil.which, fetch: Fetch = _fetch) -> list[Check]:
+def checks(
+    cfg: Config,
+    which: Which = shutil.which,
+    fetch: Fetch = _fetch,
+    server_env: ServerEnv = _systemd_env,
+) -> list[Check]:
     found = [
         _program("uv", which, "not on PATH", (f"fix: {UV_INSTALL}",)),
         _program(
@@ -75,6 +191,14 @@ def checks(cfg: Config, which: Which = shutil.which, fetch: Fetch = _fetch) -> l
                     (f"fix: ollama pull {cfg.model}",),
                 )
             )
+            # The local unit says nothing about a server on another machine.
+            local = _is_local(urllib.parse.urlsplit(host).hostname or "")
+            memory = (
+                _memory(server_env())
+                if local
+                else Check("n/a", "ollama-memory", f"{host} is not this machine's Ollama")
+            )
+            found += [memory, _loaded(fetch, host)]
     if WINDOWS_DRIVE.match(cfg.audio_dir):
         found.append(Check("ok", "audio-dir", cfg.audio_dir))
     else:

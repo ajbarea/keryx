@@ -11,7 +11,7 @@ This is the setup guide for keryx, written for an agent guiding a user. keryx ru
 
 ## 1. Check where things stand
 
-Run `keryx status` (or `/keryx status` in Claude Code). It prints the settings as JSON, then one line per check: `ok`, `missing` or `n/a`, the check's name, and a detail, with `fix:` lines under a missing one. The last line is `result: ready`, or `result: missing` with the names that failed. If the shell says keryx needs uv, install uv first.
+Run `keryx status` (or `/keryx status` in Claude Code). It prints the settings as JSON, then one line per check: `ok`, `optional`, `missing` or `n/a`, the check's name, and a detail, with `fix:` lines under a missing or optional one. The last line is `result: ready`, or `result: missing` with the names that failed. If the shell says keryx needs uv, install uv first.
 
 ## 2. Fix each missing line
 
@@ -21,6 +21,7 @@ Run `keryx status` (or `/keryx status` in Claude Code). It prints the settings a
 | `powershell.exe` | keryx is running outside WSL2 and cannot play audio there. |
 | `ollama` | Start Ollama: the Windows app, or `ollama serve` in WSL. If it is not installed, install it from https://ollama.com/download. |
 | `model` | Run the fix line, `ollama pull <model>`. |
+| `ollama-memory` | Marked `optional`, so the result stays ready. The drop-in in its fix line needs sudo, so the user runs it with `!`. Restarting Ollama unloads every model, so ask first. `n/a` means Ollama is not a systemd service; see docs/troubleshooting.md. |
 | `audio-dir` | Windows plays audio only from its own drives. Remove the override, or point `KERYX_AUDIO_DIR` at a folder on a Windows drive. |
 
 ## 3. Check the result
