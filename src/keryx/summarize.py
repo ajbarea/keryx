@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import urllib.request
+from collections.abc import Callable
 from typing import Protocol
 
 from keryx.config import Config, keep_alive_seconds
@@ -155,14 +156,29 @@ def model_input(cleaned: str) -> str:
     return f"{head}{ELISION}{tail}"
 
 
-def spoken_line(reply: str, client: Generator | None) -> str:
-    """The words to say for `reply`: as-is if short, else the model's gist, else its opening."""
+def spoken(
+    reply: str, client: Generator | None, gate: Callable[[], str | None] | None = None
+) -> tuple[str, str]:
+    """The words to say for `reply` and the path that made them: "direct" (short, or no
+    model), "model", "trimmed: <reason>" (`gate` said memory is low) or "fallback" (the
+    model failed or said nothing)."""
     cleaned = clean_for_speech(reply)
+    opening = first_sentences(cleaned, SPOKEN_MAX_CHARS)
     if len(cleaned) <= DIRECT_MAX_CHARS or client is None:
-        return first_sentences(cleaned, SPOKEN_MAX_CHARS)
+        return opening, "direct"
+    reason = gate() if gate else None
+    if reason:
+        return opening, f"trimmed: {reason}"
     try:
         out = client.generate(_framed(model_input(cleaned)), SYSTEM_PROMPT)
     except (OSError, http.client.HTTPException, KeyError, ValueError, TypeError):
-        return first_sentences(cleaned, SPOKEN_MAX_CHARS)
-    spoken = clean_for_speech(out).strip("\"' ")
-    return first_sentences(spoken, SPOKEN_MAX_CHARS) or first_sentences(cleaned, SPOKEN_MAX_CHARS)
+        return opening, "fallback"
+    line = first_sentences(clean_for_speech(out).strip("\"' "), SPOKEN_MAX_CHARS)
+    return (line, "model") if line else (opening, "fallback")
+
+
+def spoken_line(
+    reply: str, client: Generator | None, gate: Callable[[], str | None] | None = None
+) -> str:
+    """The words to say for `reply`: as-is if short, else the model's gist, else its opening."""
+    return spoken(reply, client, gate)[0]

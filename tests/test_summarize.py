@@ -20,6 +20,7 @@ from keryx.summarize import (
     OllamaClient,
     model_input,
     ollama_keep_alive,
+    spoken,
     spoken_line,
 )
 
@@ -236,3 +237,39 @@ def test_keep_alive_reaches_both_requests(slow_ollama, setting, sent):
     assert SlowOllama.requests == ["/api/generate", "/api/chat"]
     assert [b["keep_alive"] for b in SlowOllama.bodies] == [sent, sent]
     assert SlowOllama.bodies[1]["keep_alive"] == sent
+
+
+def test_spoken_reports_the_path_the_reply_took():
+    assert spoken("Done.", FakeClient()) == ("Done.", "direct")
+    assert spoken(LONG, None)[1] == "direct"
+    assert spoken(LONG, FakeClient()) == ("I fixed it. Please review the PR.", "model")
+    assert spoken(LONG, FakeClient(exc=urllib.error.URLError("x")))[1] == "fallback"
+    assert spoken(LONG, FakeClient(reply="  "))[1] == "fallback"
+
+
+def test_a_gate_reason_trims_the_reply_without_calling_the_model():
+    client = FakeClient()
+    line, path = spoken(LONG, client, gate=lambda: "RAM 10 MiB free < 2048")
+    assert path == "trimmed: RAM 10 MiB free < 2048"
+    assert line.startswith("I changed the parser.")
+    assert len(line) <= SPOKEN_MAX_CHARS
+    assert client.prompts == []
+
+
+def test_a_gate_with_room_lets_the_model_run():
+    client = FakeClient()
+    assert spoken(LONG, client, gate=lambda: None)[1] == "model"
+    assert len(client.prompts) == 1
+
+
+def test_a_short_reply_never_asks_the_gate():
+    def gate():
+        raise AssertionError("asked")
+
+    assert spoken("Done.", FakeClient(), gate=gate) == ("Done.", "direct")
+
+
+def test_spoken_line_applies_the_gate():
+    client = FakeClient()
+    assert spoken_line(LONG, client, gate=lambda: "low").startswith("I changed the parser.")
+    assert client.prompts == []

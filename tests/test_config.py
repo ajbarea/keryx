@@ -178,3 +178,25 @@ def test_a_keep_alive_env_value_that_is_not_a_duration_is_not_used(tmp_path, mon
 def test_keep_alive_of_the_wrong_type_falls_back_to_the_default(tmp_path, monkeypatch, bad):
     _write(tmp_path, monkeypatch, {"keep_alive": bad})
     assert Config.load(env=False).keep_alive == "5m"
+
+
+def test_memory_thresholds_default_to_2048_and_4096():
+    cfg = Config.load()
+    assert (cfg.min_free_ram_mb, cfg.min_free_vram_mb) == (2048, 4096)
+
+
+def test_memory_thresholds_load_from_the_file(tmp_path, monkeypatch):
+    _write(tmp_path, monkeypatch, {"min_free_ram_mb": 1024, "min_free_vram_mb": 0})
+    cfg = Config.load(env=False)
+    assert (cfg.min_free_ram_mb, cfg.min_free_vram_mb) == (1024, 0)
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, "2048", None])
+def test_a_memory_threshold_of_the_wrong_type_falls_back(tmp_path, monkeypatch, bad):
+    _write(tmp_path, monkeypatch, {"min_free_ram_mb": bad})
+    assert Config.load(env=False).min_free_ram_mb == 2048
+
+
+def test_memory_threshold_env_override(monkeypatch):
+    monkeypatch.setenv("KERYX_MIN_FREE_RAM_MB", "0")
+    assert Config.load().min_free_ram_mb == 0

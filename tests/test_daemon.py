@@ -1,5 +1,6 @@
 import threading
 import time
+from collections.abc import Callable
 
 import pytest
 
@@ -242,7 +243,7 @@ def test_daemon_turned_off_while_starting_exits_before_listening(tmp_path, monke
     monkeypatch.delenv("KERYX_ENABLED", raising=False)
     Config(enabled=False).save()
     sp, player = FakeSpeaker(), FakePlayer()
-    monkeypatch.setattr(daemon, "build_speaker", lambda cfg: (sp, player, None))
+    monkeypatch.setattr(daemon, "build_speaker", lambda cfg, *_: (sp, player, None))
     sock = tmp_path / "k.sock"
     started = time.monotonic()
     serve(Config(), sock, idle_exit=30, poll=0.05)
@@ -521,3 +522,130 @@ def test_build_speaker_hands_keep_alive_to_the_summarizer(monkeypatch):
     speaker, _player, _warm = daemon.build_speaker(Config(keep_alive="90s"))
     speaker.close()
     assert seen["keep_alive"] == "90s"
+
+
+def test_ping_carries_the_last_reply_path_when_a_status_is_given():
+    reply = handle({"op": "ping"}, FakeSpeaker(), status=lambda: {"last_reply": "model"})
+    assert reply["last_reply"] == "model" and reply["ok"] is True
+
+
+def test_ping_without_a_status_has_no_last_reply():
+    assert "last_reply" not in handle({"op": "ping"}, FakeSpeaker())
+
+
+LONG_REPLY = "I changed the parser to accept trailing commas. " * 12
+
+
+class _Built:
+    """build_speaker with Kokoro, the player and Ollama replaced by fakes."""
+
+    shorten: Callable[[str], str]
+    warm: Callable[[], None]
+
+    def __init__(self, monkeypatch, cfg, loaded=False, ram=None, vram=None):
+        from keryx import daemon
+
+        self.generated = []
+        self.warmed = []
+        self.during_warm = None
+        owner = self
+
+        class Client:
+            def __init__(self, *a, **kw):
+                pass
+
+            def generate(self, prompt, system):
+                owner.generated.append(prompt)
+                return "Parser fixed."
+
+            def warm(self):
+                owner.warmed.append(True)
+                if owner.during_warm:
+                    owner.during_warm()
+
+        class Sp:
+            def __init__(self, shorten, *a):
+                owner.shorten = shorten
+
+        for name, fake in {
+            "OllamaClient": Client,
+            "Speaker": Sp,
+            "WindowsPlayer": lambda **kw: None,
+            "KokoroVoice": lambda *a: type("V", (), {"voice": type("N", (), {"names": ["x"]})})(),
+            "model_loaded": lambda host, model, fetch=None: loaded,
+            "mem_available_mb": lambda: ram,
+            "gpu_free_mb": lambda: vram,
+        }.items():
+            monkeypatch.setattr(daemon, name, fake)
+        self.state = {}
+        _speaker, _player, warm = daemon.build_speaker(cfg, self.state)
+        assert warm is not None
+        self.warm = warm
+
+
+def test_shorten_trims_when_memory_is_low_and_records_the_path(monkeypatch):
+    built = _Built(monkeypatch, Config(distinct_voices=False), ram=500, vram=9000)
+    line = built.shorten(LONG_REPLY)
+    assert line.startswith("I changed the parser")
+    assert built.generated == []
+    assert built.state["last_reply"] == "trimmed: RAM 500 MiB free < 2048"
+
+
+def test_shorten_uses_the_model_when_it_is_already_loaded(monkeypatch):
+    built = _Built(monkeypatch, Config(distinct_voices=False), loaded=True, ram=1, vram=1)
+    assert built.shorten(LONG_REPLY) == "Parser fixed."
+    assert built.state["last_reply"] == "model"
+
+
+def test_shorten_uses_the_model_when_there_is_room(monkeypatch):
+    built = _Built(monkeypatch, Config(distinct_voices=False), ram=9000, vram=9000)
+    assert built.shorten(LONG_REPLY) == "Parser fixed."
+
+
+def test_warm_does_not_load_the_model_when_memory_is_low(monkeypatch, caplog):
+    built = _Built(monkeypatch, Config(distinct_voices=False), ram=9000, vram=1000)
+    with caplog.at_level("INFO", logger="keryx"):
+        built.warm()
+    assert built.warmed == []
+    assert "GPU 1000 MiB free < 4096" in caplog.text
+
+
+def test_warm_loads_the_model_when_there_is_room(monkeypatch):
+    built = _Built(monkeypatch, Config(distinct_voices=False), ram=9000, vram=9000)
+    built.warm()
+    assert built.warmed == [True]
+
+
+def test_a_reply_during_the_preload_waits_for_the_model(monkeypatch):
+    # Ollama lists a model in /api/ps only once it has loaded, and the load is what eats the
+    # free memory, so the probes would read low for the model keryx is loading itself.
+    from keryx import daemon
+
+    built = _Built(monkeypatch, Config(distinct_voices=False), ram=9000, vram=9000)
+    lines = []
+
+    def reply_mid_load():
+        monkeypatch.setattr(daemon, "gpu_free_mb", lambda: 1000)
+        lines.append(built.shorten(LONG_REPLY))
+
+    built.during_warm = reply_mid_load
+    built.warm()
+    assert lines == ["Parser fixed."]
+    assert built.state["last_reply"] == "model"
+
+
+def test_thresholds_of_zero_run_no_probes(monkeypatch):
+    from keryx import daemon
+
+    built = _Built(
+        monkeypatch, Config(distinct_voices=False, min_free_ram_mb=0, min_free_vram_mb=0)
+    )
+
+    def probed(*a, **k):
+        raise AssertionError("probe ran")
+
+    for name in ("model_loaded", "mem_available_mb", "gpu_free_mb"):
+        monkeypatch.setattr(daemon, name, probed)
+    assert built.shorten(LONG_REPLY) == "Parser fixed."
+    built.warm()
+    assert built.warmed == [True]

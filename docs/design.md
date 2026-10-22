@@ -223,6 +223,12 @@ unduck started a new player that restored it 3.1 s later. AJ confirmed the 25% l
 - **Context.** keryx asks for a 4096-token context and sends a longer reply's opening and close
   up to 5600 characters; the densest measured case was a 3924-token prompt. A 2048 context would save
   only 44 MiB of VRAM, while a server default of 32768 costs 600 MiB more.
+- **Low memory.** When the model is not loaded and available RAM or free GPU memory is under
+  `min_free_ram_mb` or `min_free_vram_mb`, the reply's opening is spoken instead of loading
+  the model; a preload is skipped the same way. The log's "shortened" line and `keryx status`
+  (`last_reply`) say which path ran. Loading `gemma3:4b` measured 3,799 MiB of GPU memory and up to 1.22 GB
+  of llama-server RSS; earlyoom kills the largest process under 5% free RAM (about 0.5 GB of
+  10 GB). The probes took 80 to 83 ms together, run only for a reply long enough to summarize, and not at all with both thresholds at `0`. A reply that arrives while keryx's own preload is loading the model waits for it, since that load is what the probes would read as low memory.
 - **Headless sessions** (`claude -p` and the SDK, whose `CLAUDE_CODE_ENTRYPOINT` starts
   with `sdk`) stay silent.
 - **Late replies.** Hooks run async, so a reply's hook can land after the next prompt's.
