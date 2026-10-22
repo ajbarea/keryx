@@ -215,6 +215,9 @@ unduck started a new player that restored it 3.1 s later. AJ confirmed the 25% l
   preload it, which puts the load behind the developer's typing and Claude's working time.
   Shortening runs on its own thread, so a permission prompt is spoken while a reply waits
   on a load.
+- **Context.** keryx asks for a 4096-token context and caps the reply it sends at 5600
+  characters; the densest measured case was a 3924-token prompt. A 2048 context would save
+  only 45 MiB of VRAM, while a server default of 32768 costs 600 MiB more.
 - **Headless sessions** (`claude -p` and the SDK, whose `CLAUDE_CODE_ENTRYPOINT` starts
   with `sdk`) stay silent.
 - **Late replies.** Hooks run async, so a reply's hook can land after the next prompt's.

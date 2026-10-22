@@ -52,6 +52,12 @@ GENERATE_TIMEOUT = 30.0
 DIRECT_MAX_CHARS = 200
 SPOKEN_MAX_CHARS = 320
 
+# The densest measured reply at MAX_INPUT_CHARS was a 3924-token prompt; with NUM_PREDICT
+# it fits NUM_CTX (2026-10-21).
+NUM_CTX = 4096
+NUM_PREDICT = 96
+MAX_INPUT_CHARS = 5600
+
 
 class Generator(Protocol):
     def generate(self, prompt: str, system: str) -> str: ...
@@ -84,7 +90,7 @@ class OllamaClient:
             "stream": False,
             "think": False,
             "keep_alive": KEEP_ALIVE,
-            "options": {"temperature": 0.2, "num_predict": 96},
+            "options": {"temperature": 0.2, "num_predict": NUM_PREDICT, "num_ctx": NUM_CTX},
         }
         req = urllib.request.Request(
             f"{self.host}/api/chat",
@@ -103,7 +109,11 @@ class OllamaClient:
         self._load(0)
 
     def _load(self, keep_alive: str | int) -> None:
-        body = {"model": self.model, "keep_alive": keep_alive}
+        body = {
+            "model": self.model,
+            "keep_alive": keep_alive,
+            "options": {"num_ctx": NUM_CTX},
+        }
         req = urllib.request.Request(
             f"{self.host}/api/generate",
             data=json.dumps(body).encode(),
@@ -123,7 +133,7 @@ def spoken_line(reply: str, client: Generator | None) -> str:
     if len(cleaned) <= DIRECT_MAX_CHARS or client is None:
         return first_sentences(cleaned, SPOKEN_MAX_CHARS)
     try:
-        out = client.generate(_framed(cleaned), SYSTEM_PROMPT)
+        out = client.generate(_framed(first_sentences(cleaned, MAX_INPUT_CHARS)), SYSTEM_PROMPT)
     except (OSError, http.client.HTTPException, KeyError, ValueError, TypeError):
         return first_sentences(cleaned, SPOKEN_MAX_CHARS)
     spoken = clean_for_speech(out).strip("\"' ")
