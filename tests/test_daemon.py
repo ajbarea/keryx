@@ -547,6 +547,7 @@ class _Built:
 
         self.generated = []
         self.warmed = []
+        self.during_warm = None
         owner = self
 
         class Client:
@@ -559,6 +560,8 @@ class _Built:
 
             def warm(self):
                 owner.warmed.append(True)
+                if owner.during_warm:
+                    owner.during_warm()
 
         class Sp:
             def __init__(self, shorten, *a):
@@ -585,7 +588,7 @@ def test_shorten_trims_when_memory_is_low_and_records_the_path(monkeypatch):
     line = built.shorten(LONG_REPLY)
     assert line.startswith("I changed the parser")
     assert built.generated == []
-    assert built.state["last_reply"] == "trimmed: RAM 500 MB free < 2048"
+    assert built.state["last_reply"] == "trimmed: RAM 500 MiB free < 2048"
 
 
 def test_shorten_uses_the_model_when_it_is_already_loaded(monkeypatch):
@@ -609,5 +612,40 @@ def test_warm_does_not_load_the_model_when_memory_is_low(monkeypatch, caplog):
 
 def test_warm_loads_the_model_when_there_is_room(monkeypatch):
     built = _Built(monkeypatch, Config(distinct_voices=False), ram=9000, vram=9000)
+    built.warm()
+    assert built.warmed == [True]
+
+
+def test_a_reply_during_the_preload_waits_for_the_model(monkeypatch):
+    # Ollama lists a model in /api/ps only once it has loaded, and the load is what eats the
+    # free memory, so the probes would read low for the model keryx is loading itself.
+    from keryx import daemon
+
+    built = _Built(monkeypatch, Config(distinct_voices=False), ram=9000, vram=9000)
+    lines = []
+
+    def reply_mid_load():
+        monkeypatch.setattr(daemon, "gpu_free_mb", lambda: 1000)
+        lines.append(built.shorten(LONG_REPLY))
+
+    built.during_warm = reply_mid_load
+    built.warm()
+    assert lines == ["Parser fixed."]
+    assert built.state["last_reply"] == "model"
+
+
+def test_thresholds_of_zero_run_no_probes(monkeypatch):
+    from keryx import daemon
+
+    built = _Built(
+        monkeypatch, Config(distinct_voices=False, min_free_ram_mb=0, min_free_vram_mb=0)
+    )
+
+    def probed(*a, **k):
+        raise AssertionError("probe ran")
+
+    for name in ("model_loaded", "mem_available_mb", "gpu_free_mb"):
+        monkeypatch.setattr(daemon, name, probed)
+    assert built.shorten(LONG_REPLY) == "Parser fixed."
     built.warm()
     assert built.warmed == [True]

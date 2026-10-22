@@ -249,8 +249,8 @@ def test_spoken_reports_the_path_the_reply_took():
 
 def test_a_gate_reason_trims_the_reply_without_calling_the_model():
     client = FakeClient()
-    line, path = spoken(LONG, client, gate=lambda: "RAM 10 MB free < 2048")
-    assert path == "trimmed: RAM 10 MB free < 2048"
+    line, path = spoken(LONG, client, gate=lambda: "RAM 10 MiB free < 2048")
+    assert path == "trimmed: RAM 10 MiB free < 2048"
     assert line.startswith("I changed the parser.")
     assert len(line) <= SPOKEN_MAX_CHARS
     assert client.prompts == []

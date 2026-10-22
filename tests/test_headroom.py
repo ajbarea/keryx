@@ -44,8 +44,10 @@ def test_gpu_free_asks_nvidia_smi_with_a_timeout():
     assert seen["kw"]["timeout"] == 2
 
 
-def test_gpu_free_reads_the_first_gpu_only():
-    assert gpu_free_mb(_run_returning("6891\n20000\n")[0]) == 6891
+def test_gpu_free_is_the_roomiest_gpu():
+    # Ollama can place the model on any GPU.
+    assert gpu_free_mb(_run_returning("1000\n8000\n")[0]) == 8000
+    assert gpu_free_mb(_run_returning("1000\n[N/A]\n")[0]) == 1000
 
 
 @pytest.mark.parametrize("stdout", ["", "N/A\n", "[Not Supported]\n"])
@@ -105,7 +107,7 @@ def test_model_loaded_false_on_error():
 
 
 def test_low_ram_trips_alone():
-    assert low_memory(2048, 4096, 1500, 9000) == "RAM 1500 MB free < 2048"
+    assert low_memory(2048, 4096, 1500, 9000) == "RAM 1500 MiB free < 2048"
 
 
 def test_low_vram_trips_alone():
@@ -119,7 +121,7 @@ def test_enough_of_both_is_not_low():
 def test_a_probe_that_returned_none_never_trips():
     assert low_memory(2048, 4096, None, None) is None
     assert low_memory(2048, 4096, None, 100) == "GPU 100 MiB free < 4096"
-    assert low_memory(2048, 4096, 100, None) == "RAM 100 MB free < 2048"
+    assert low_memory(2048, 4096, 100, None) == "RAM 100 MiB free < 2048"
 
 
 def test_a_zero_threshold_disables_its_check():

@@ -194,9 +194,15 @@ def build_speaker(
         OllamaClient(cfg.model, cfg.ollama_host, keep_alive=cfg.keep_alive) if cfg.model else None
     )
 
+    # Ollama lists a model in /api/ps only once it has loaded, and loading is what eats the
+    # free memory, so a reply during keryx's own preload must not read that as low memory.
+    warming = threading.Event()
+
     def gate() -> str | None:
-        """Why not to load the model now; a model already loaded costs nothing more."""
-        if model_loaded(cfg.ollama_host, cfg.model):
+        """Why not to load the model now; a model loaded or loading costs nothing more."""
+        if cfg.min_free_ram_mb <= 0 and cfg.min_free_vram_mb <= 0:
+            return None
+        if warming.is_set() or model_loaded(cfg.ollama_host, cfg.model):
             return None
         return low_memory(
             cfg.min_free_ram_mb, cfg.min_free_vram_mb, mem_available_mb(), gpu_free_mb()
@@ -208,10 +214,13 @@ def build_speaker(
         if reason := gate():
             log.info("not warming %s: %s", cfg.model, reason)
             return
+        warming.set()
         try:
             client.warm()
         except (OSError, http.client.HTTPException) as exc:
             log.warning("could not warm %s: %s", cfg.model, exc)
+        finally:
+            warming.clear()
 
     def shorten(text: str) -> str:
         started = time.monotonic()

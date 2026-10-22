@@ -13,7 +13,7 @@ PROBE_TIMEOUT = 2
 
 
 def mem_available_mb(meminfo: Path = Path("/proc/meminfo")) -> int | None:
-    """MemAvailable in MB, or None when the file is unreadable or lacks it."""
+    """MemAvailable in MiB, or None when the file is unreadable or lacks it."""
     try:
         lines = meminfo.read_text().splitlines()
     except (OSError, ValueError):
@@ -29,18 +29,15 @@ def mem_available_mb(meminfo: Path = Path("/proc/meminfo")) -> int | None:
 
 
 def gpu_free_mb(run: Callable[..., subprocess.CompletedProcess] = subprocess.run) -> int | None:
-    """Free memory of the first GPU in MiB, or None without nvidia-smi or a number from it."""
+    """Free memory of the roomiest GPU in MiB (Ollama can use any), or None without a reading."""
     try:
         done = run(NVIDIA_SMI, capture_output=True, text=True, timeout=PROBE_TIMEOUT)
     except (OSError, subprocess.SubprocessError):
         return None
     if done.returncode != 0:
         return None
-    first = (done.stdout or "").strip().splitlines()[:1]
-    try:
-        return int(first[0].strip()) if first else None
-    except ValueError:
-        return None
+    readings = [int(line) for line in (done.stdout or "").split() if line.strip().isdigit()]
+    return max(readings, default=None)
 
 
 def _get(url: str) -> bytes:
@@ -61,7 +58,7 @@ def model_loaded(host: str, model: str, fetch: Callable[[str], bytes] = _get) ->
 def low_memory(min_ram_mb: int, min_vram_mb: int, ram: int | None, vram: int | None) -> str | None:
     """Why loading the model is unwise, or None. An unknown reading or a 0 threshold passes."""
     if min_ram_mb > 0 and ram is not None and ram < min_ram_mb:
-        return f"RAM {ram} MB free < {min_ram_mb}"
+        return f"RAM {ram} MiB free < {min_ram_mb}"
     if min_vram_mb > 0 and vram is not None and vram < min_vram_mb:
         return f"GPU {vram} MiB free < {min_vram_mb}"
     return None
