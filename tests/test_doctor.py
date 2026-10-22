@@ -3,6 +3,8 @@ import json
 import subprocess
 import urllib.error
 
+import pytest
+
 from keryx import doctor
 from keryx.config import Config
 
@@ -231,13 +233,17 @@ def test_memory_checks_skipped_without_a_model_or_ollama():
         assert "ollama-loaded" not in lines(found)
 
 
+RUNNING = {"ActiveState": "active\n", "EnvironmentFiles": "\n"}
+
+
 def fake_run(outputs, calls=None):
     """Answer `systemctl show ollama -p <prop> --value` from a dict of prop -> stdout."""
 
     def run(cmd, **kwargs):
         if calls is not None:
             calls.append((cmd, kwargs))
-        out = outputs[cmd[cmd.index("-p") + 1]]
+        prop = cmd[cmd.index("-p") + 1]
+        out = outputs[prop] if prop in outputs else RUNNING[prop]
         if isinstance(out, BaseException):
             raise out
         return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
@@ -293,3 +299,71 @@ def test_systemd_env_failures_are_none():
 def test_systemd_env_unparseable_quoting_is_none():
     run = fake_run({"LoadState": "loaded\n", "Environment": 'OLLAMA_X="unterminated\n'})
     assert doctor._systemd_env(run) is None
+
+
+@pytest.mark.parametrize("off", ["0", "false", "False", "f"])
+def test_a_quantized_cache_with_flash_attention_off_is_missing(off):
+    # llama.cpp refuses a quantized V cache without flash attention, so no model loads.
+    found, got = run_memory(lambda: {"OLLAMA_KV_CACHE_TYPE": "q8_0", "OLLAMA_FLASH_ATTENTION": off})
+    assert got["ollama-memory"].status == "missing"
+    assert "no model can load" in got["ollama-memory"].detail
+    assert doctor.exit_code(found) == 1
+
+
+@pytest.mark.parametrize("on", ["1", "true", "t", "yes"])
+def test_flash_attention_is_on_for_anything_ollama_does_not_read_as_false(on):
+    _, got = run_memory(lambda: {"OLLAMA_KV_CACHE_TYPE": "Q8_0", "OLLAMA_FLASH_ATTENTION": on})
+    assert got["ollama-memory"].status == "ok"
+
+
+def test_a_remote_ollama_is_not_judged_by_the_local_unit():
+    def env():
+        raise AssertionError("read the local unit for a remote server")
+
+    found = doctor.checks(
+        Config(ollama_host="http://gpubox.lan:11434"),
+        which=which_all,
+        fetch=fetch_ok,
+        server_env=env,
+    )
+    assert by_name(found)["ollama-memory"].status == "n/a"
+
+
+def test_a_stopped_unit_is_not_the_server_that_answered():
+    run = fake_run({"LoadState": "loaded\n", "ActiveState": "inactive\n", "Environment": "\n"})
+    assert doctor._systemd_env(run) is None
+
+
+def test_environment_files_override_environment(tmp_path):
+    env_file = tmp_path / "ollama.env"
+    env_file.write_text('# tuned\nOLLAMA_KV_CACHE_TYPE="q8_0"\n\nOLLAMA_FLASH_ATTENTION=1\n')
+    run = fake_run(
+        {
+            "LoadState": "loaded\n",
+            "Environment": "OLLAMA_KV_CACHE_TYPE=f16\n",
+            "EnvironmentFiles": f"{env_file} (ignore_errors=no) /missing.env (ignore_errors=yes)\n",
+        }
+    )
+    assert doctor._systemd_env(run) == {
+        "OLLAMA_KV_CACHE_TYPE": "q8_0",
+        "OLLAMA_FLASH_ATTENTION": "1",
+    }
+
+
+def test_an_unreadable_environment_file_is_named(tmp_path):
+    hidden = tmp_path / "root-only.env"
+    hidden.write_text("OLLAMA_KV_CACHE_TYPE=q8_0\n")
+    hidden.chmod(0)
+    run = fake_run(
+        {
+            "LoadState": "loaded\n",
+            "Environment": "\n",
+            "EnvironmentFiles": f"{hidden} (ignore_errors=no)\n",
+        }
+    )
+    try:
+        env = doctor._systemd_env(run)
+    finally:
+        hidden.chmod(0o600)
+    _, got = run_memory(lambda: env)
+    assert str(hidden) in got["ollama-memory"].detail

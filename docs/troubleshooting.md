@@ -84,7 +84,7 @@ sudo systemctl restart ollama
 
 Restarting Ollama unloads every model, so do it between runs. The KV cache type is global: it
 applies to every model on that server, including other local runs. A quantized KV cache needs
-flash attention, and `OLLAMA_FLASH_ATTENTION=1` forces it on. keryx sends its own `keep_alive`
+flash attention, and `OLLAMA_FLASH_ATTENTION=1` forces it on; with `OLLAMA_FLASH_ATTENTION=0` and a quantized cache no model loads, and `keryx status` marks that `missing`. Settings in an `EnvironmentFile=` count too, when keryx can read the file. `keryx status` judges only a running local `ollama` unit, so a server on another host reads `n/a`. keryx sends its own `keep_alive`
 with each request, so `OLLAMA_KEEP_ALIVE` only changes other clients. The Windows Ollama app
 takes these settings as user environment variables instead. `keryx status` also lists the
 loaded models with their context and GPU memory on the `ollama-loaded` line. See the

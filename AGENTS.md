@@ -11,7 +11,7 @@ This is the setup guide for keryx, written for an agent guiding a user. keryx ru
 
 ## 1. Check where things stand
 
-Run `keryx status` (or `/keryx status` in Claude Code). It prints the settings as JSON, then one line per check: `ok`, `optional`, `missing` or `n/a`, the check's name, and a detail, with `fix:` lines under a missing one. The last line is `result: ready`, or `result: missing` with the names that failed. If the shell says keryx needs uv, install uv first.
+Run `keryx status` (or `/keryx status` in Claude Code). It prints the settings as JSON, then one line per check: `ok`, `optional`, `missing` or `n/a`, the check's name, and a detail, with `fix:` lines under a missing or optional one. The last line is `result: ready`, or `result: missing` with the names that failed. If the shell says keryx needs uv, install uv first.
 
 ## 2. Fix each missing line
 
