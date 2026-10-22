@@ -11,6 +11,11 @@ Last reviewed: 2026-10-03.
 
 ## Completed
 
+- 2026-10-21: lighter beside a fleet of agents (0.10.0, #48 to #52). Kokoro hands its CUDA
+  arena back after each sentence (idle 570 MiB, was 1178). The summarizer's `keep_alive` is a
+  setting, 5 minutes by default (was 30). Replies are trimmed instead of loading the model when
+  RAM or GPU memory is low. A pinned 4096-token context with a capped input. `keryx status`
+  reports Ollama's KV cache, flash attention and loaded models.
 - 2026-10-21: `af_nicole` is handed to a new terminal only once every pool voice is held, borrowing
   an idle repo's pool voice before her (0.9.4, #42).
 - 2026-10-21: every single voice, `af_nicole` included, is handed out before any blend, so
