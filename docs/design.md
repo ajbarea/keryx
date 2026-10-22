@@ -61,7 +61,12 @@ The int8 model was slower than fp32 on this CPU: 11.9 to 16.0 s against 3.0 to 4
 CUDA ships as the `cuda` extra (about 2 GB of NVIDIA wheels); `onnxruntime-gpu` replaces
 kokoro-onnx's CPU-only `onnxruntime` through a uv override, and falls back to its CPU
 provider when the CUDA libraries are missing or will not start (cuDNN failing to load
-is one case). Synthesis runs ahead of playback by the play queue's two sentences, the one in
+is one case). On CUDA the arena grows by the amount requested and each run hands its unused
+memory back, so an idle Kokoro holds 569 MiB of GPU memory instead of 1178 MiB and a long
+sentence peaks at 1366 MiB, with synthesis time unchanged
+([CUDA execution provider](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)).
+No `gpu_mem_limit` is set: one below the peak fails in the middle of a sentence, where the CPU
+fallback cannot catch it. Synthesis runs ahead of playback by the play queue's two sentences, the one in
 flight and one waiting for room. The model files are checked against pinned SHA-256 sums after download.
 
 ## Voices
