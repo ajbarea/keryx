@@ -24,6 +24,8 @@ back to the default.
 | `model` | `gemma3:4b` | Ollama model that shortens replies; empty to speak the opening sentences instead |
 | `ollama_host` | `http://localhost:11434` | Ollama server |
 | `keep_alive` | `5m` | How long Ollama keeps the summarizer loaded after a reply or a warm-up: a Go duration such as `90s` or `10m`, or seconds. `0` unloads after every reply, the lightest setting; the next reply then waits about 5 s for the model to load. Anything else falls back to `5m` with a warning |
+| `min_free_ram_mb` | `2048` | With the summarizer not loaded and less RAM than this available (MB), a long reply's opening is spoken instead of loading the model. `0` turns the check off. The default is the model's 1.22 GB peak RSS plus earlyoom's 0.5 GB floor, rounded up |
+| `min_free_vram_mb` | `4096` | The same for free GPU memory (MiB), read with `nvidia-smi`; no GPU means no check. `0` turns it off. The default is the 3.8 GB loading `gemma3:4b` took, plus margin |
 | `duck_apps` | `["Spotify"]` | Windows process names turned down while keryx speaks; `[]` for none |
 | `duck_ratio` | `0.25` | The share of their volume ducked apps keep |
 | `speaking_signal` | `true` | Write `speaking.json` into klepsydra's fleet folder while a line plays, when that folder exists ([format](speaking-signal.md)) |

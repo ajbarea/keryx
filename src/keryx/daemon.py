@@ -28,11 +28,12 @@ from pathlib import Path
 from keryx import older, version
 from keryx.client import read_all
 from keryx.config import Config, cache_dir, socket_path
+from keryx.headroom import gpu_free_mb, low_memory, mem_available_mb, model_loaded
 from keryx.player import WindowsPlayer
 from keryx.pronounce import Lexicon
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.speaking import SpeakingSignal, fleet_dir
-from keryx.summarize import OllamaClient, spoken_line
+from keryx.summarize import OllamaClient, spoken
 from keryx.voice import KokoroVoice
 from keryx.voices import SELECTABLE, VoiceBook, VoiceSpec, holder
 
@@ -80,12 +81,14 @@ def handle(
     speaker: SpeechQueue,
     warm: Callable[[], None] | None = None,
     latest_prompt: dict[str, str] | None = None,
+    status: Callable[[], dict] | None = None,
 ) -> dict:
-    """`latest_prompt` maps session to its newest prompt id, to drop replies that lost a race."""
+    """`latest_prompt` maps session to its newest prompt id, to drop replies that lost a race;
+    `status` supplies extra fields for the ping reply."""
     latest = latest_prompt if latest_prompt is not None else {}
     op = request.get("op")
     if op == "ping":
-        return {"ok": True, "pid": os.getpid(), "version": VERSION}
+        return {"ok": True, "pid": os.getpid(), "version": VERSION, **(status() if status else {})}
     if op == "quit":
         speaker.stop()
         return {"ok": True, "quit": True}
@@ -182,14 +185,29 @@ def one_at_a_time(fn: Callable[[], None]) -> Callable[[], None]:
     return once
 
 
-def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], None] | None]:
+def build_speaker(
+    cfg: Config, state: dict | None = None
+) -> tuple[Speaker, WindowsPlayer, Callable[[], None] | None]:
+    """`state` receives `last_reply`, the path the latest reply took."""
+    state = state if state is not None else {}
     client = (
         OllamaClient(cfg.model, cfg.ollama_host, keep_alive=cfg.keep_alive) if cfg.model else None
     )
 
+    def gate() -> str | None:
+        """Why not to load the model now; a model already loaded costs nothing more."""
+        if model_loaded(cfg.ollama_host, cfg.model):
+            return None
+        return low_memory(
+            cfg.min_free_ram_mb, cfg.min_free_vram_mb, mem_available_mb(), gpu_free_mb()
+        )
+
     @one_at_a_time
     def warm() -> None:
         assert client is not None
+        if reason := gate():
+            log.info("not warming %s: %s", cfg.model, reason)
+            return
         try:
             client.warm()
         except (OSError, http.client.HTTPException) as exc:
@@ -197,8 +215,15 @@ def build_speaker(cfg: Config) -> tuple[Speaker, WindowsPlayer, Callable[[], Non
 
     def shorten(text: str) -> str:
         started = time.monotonic()
-        line = spoken_line(text, client)
-        log.info("shortened %d chars to %r in %.2fs", len(text), line, time.monotonic() - started)
+        line, path = spoken(text, client, gate)
+        state["last_reply"] = path
+        log.info(
+            "shortened %d chars to %r (%s) in %.2fs",
+            len(text),
+            line,
+            path,
+            time.monotonic() - started,
+        )
         return line
 
     player = WindowsPlayer(
@@ -258,8 +283,9 @@ def _serve_locked(
     with contextlib.suppress(FileNotFoundError):
         sock_path.unlink()
     player = None
+    state: dict = {}
     if speaker is None:
-        speaker, player, warm = build_speaker(cfg)
+        speaker, player, warm = build_speaker(cfg, state)
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(sock_path))
     os.chmod(sock_path, 0o600)
@@ -267,6 +293,10 @@ def _serve_locked(
     server.settimeout(poll)
     log.info("listening on %s (voice=%s, model=%s)", sock_path, cfg.voice, cfg.model)
     last_activity = time.monotonic()
+
+    def status() -> dict:
+        return {"last_reply": state.get("last_reply")}
+
     latest_prompt: dict[str, str] = {}
     try:
         # `keryx off` saves the setting, then sends quit. Saved before this check (even while
@@ -290,7 +320,7 @@ def _serve_locked(
                 try:
                     request = json.loads(read_all(conn))
                     reply = (
-                        handle(request, speaker, warm, latest_prompt)
+                        handle(request, speaker, warm, latest_prompt, status)
                         if isinstance(request, dict)
                         else {"ok": False}
                     )

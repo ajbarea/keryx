@@ -52,6 +52,11 @@ class Config:
     ollama_host: str = "http://localhost:11434"
     # How long Ollama keeps the summarizer loaded after its last use; "0" unloads after every reply.
     keep_alive: str = "5m"
+    # With the model not loaded and less than this free, replies are trimmed, not summarized;
+    # 0 turns the check off. RAM: the model's 1.22 GB peak RSS plus earlyoom's 0.5 GB floor.
+    min_free_ram_mb: int = 2048
+    # GPU memory (MiB): loading gemma3:4b took 3.8 GB, plus margin.
+    min_free_vram_mb: int = 4096
     # Apps (Windows process names) turned down to `duck_ratio` of their volume while speaking.
     duck_apps: list[str] = field(default_factory=lambda: ["Spotify"])
     duck_ratio: float = 0.25
@@ -161,6 +166,8 @@ def _fits(value: object, default: object) -> bool:
         return isinstance(value, int | float) and not isinstance(value, bool)
     if isinstance(default, list):
         return isinstance(value, list) and all(isinstance(v, str) for v in value)
+    if isinstance(default, int):
+        return isinstance(value, int) and not isinstance(value, bool)
     return isinstance(value, type(default))
 
 
