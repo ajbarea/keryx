@@ -4,9 +4,27 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
+import math
 import os
+import re
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
+
+log = logging.getLogger("keryx")
+
+# Go's duration units, which Ollama's `keep_alive` uses, in seconds.
+_UNITS = {
+    "ns": 1e-9,
+    "us": 1e-6,
+    "µs": 1e-6,
+    "μs": 1e-6,
+    "ms": 1e-3,
+    "s": 1.0,
+    "m": 60.0,
+    "h": 3600.0,
+}
+_DURATION_PART = re.compile(r"(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|μs|ms|s|m|h)")
 
 
 def config_dir() -> Path:
@@ -32,6 +50,8 @@ class Config:
     loudness: float = -16.0
     model: str = "gemma3:4b"
     ollama_host: str = "http://localhost:11434"
+    # How long Ollama keeps the summarizer loaded after its last use; "0" unloads after every reply.
+    keep_alive: str = "5m"
     # Apps (Windows process names) turned down to `duck_ratio` of their volume while speaking.
     duck_apps: list[str] = field(default_factory=lambda: ["Spotify"])
     duck_ratio: float = 0.25
@@ -44,6 +64,11 @@ class Config:
     def load(cls, env: bool = True) -> Config:
         """Settings from the file, then `KERYX_*` env overrides unless `env` is False."""
         raw = read_raw()
+        # JSON `0` or `300` (seconds) is as good as "0" or "300".
+        if isinstance(raw.get("keep_alive"), int | float) and not isinstance(
+            raw["keep_alive"], bool
+        ):
+            raw["keep_alive"] = str(raw["keep_alive"])
         defaults = cls()
         # A value of the wrong type (a string where a list belongs) falls back to the default.
         cfg = cls(
@@ -60,6 +85,13 @@ class Config:
                 # `KERYX_SPEED=1.3` an int.
                 with contextlib.suppress(ValueError):
                     setattr(cfg, f.name, _coerce(value, type(getattr(defaults, f.name))))
+        if keep_alive_seconds(cfg.keep_alive) is None:
+            log.warning(
+                "keep_alive %r is not seconds or a duration such as 10m; using %s",
+                cfg.keep_alive,
+                defaults.keep_alive,
+            )
+            cfg.keep_alive = defaults.keep_alive
         return cfg
 
     def save(self) -> None:
@@ -105,6 +137,21 @@ def set_stored(**changes: object) -> None:
         with contextlib.suppress(OSError):
             path.replace(path.with_name(path.name + ".bad"))
     write_raw({**raw, **changes})
+
+
+def keep_alive_seconds(value: str) -> float | None:
+    """`value` (seconds, or a Go duration such as `1h30m`) in seconds; None when it is neither."""
+    text = value.strip()
+    try:
+        seconds = float(text)
+    except ValueError:
+        sign = -1.0 if text.startswith("-") else 1.0
+        body = text[1:] if text[:1] in "+-" else text
+        parts = _DURATION_PART.findall(body)
+        if not body or "".join(n + u for n, u in parts) != body:
+            return None
+        seconds = sign * sum(float(n) * _UNITS[u] for n, u in parts)
+    return seconds if math.isfinite(seconds) else None
 
 
 def _fits(value: object, default: object) -> bool:

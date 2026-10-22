@@ -506,3 +506,18 @@ def test_set_voice_refuses_a_selectable_voice_this_kokoro_lacks():
 
     reply = handle({"op": "set_voice", "voice": "af_nicole", "terminal": "9:1"}, Lacking())
     assert reply["ok"] is False and "available" in reply["error"]
+
+
+def test_build_speaker_hands_keep_alive_to_the_summarizer(monkeypatch):
+    from keryx import daemon
+
+    seen = {}
+
+    class Recorder:
+        def __init__(self, model, host="", **kw):
+            seen.update(kw)
+
+    monkeypatch.setattr(daemon, "OllamaClient", Recorder)
+    speaker, _player, _warm = daemon.build_speaker(Config(keep_alive="90s"))
+    speaker.close()
+    assert seen["keep_alive"] == "90s"

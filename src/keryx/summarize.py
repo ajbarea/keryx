@@ -7,6 +7,7 @@ import json
 import urllib.request
 from typing import Protocol
 
+from keryx.config import Config, keep_alive_seconds
 from keryx.text import clean_for_speech, first_sentences
 
 SYSTEM_PROMPT = (
@@ -40,8 +41,21 @@ EXAMPLES = (
     ),
 )
 
-# Long enough to cover a working session, short enough to hand the VRAM back.
-KEEP_ALIVE = "30m"
+# Ollama turns seconds into a Go duration, which overflows to negative (unload now) past
+# about 9.2e9 s; anything that long means "keep it loaded", which is -1.
+MAX_KEEP_ALIVE_SECONDS = 9e9
+
+
+def ollama_keep_alive(value: str) -> float:
+    """`keep_alive` as the seconds Ollama is sent: a number always, so Ollama never parses a
+    duration string; -1 (keep loaded) for any negative or overlong value."""
+    seconds = keep_alive_seconds(value)
+    if seconds is None:
+        seconds = keep_alive_seconds(Config().keep_alive) or 0.0
+    if seconds < 0 or seconds > MAX_KEEP_ALIVE_SECONDS:
+        return -1
+    return int(seconds) if seconds == int(seconds) else seconds
+
 
 # Ollama aborts a load when its client hangs up, so this must outlast a cold load:
 # 4-14 s with the model file in the page cache, 44 s read from disk (2026-10-02).
@@ -71,11 +85,13 @@ class OllamaClient:
         host: str = "http://localhost:11434",
         timeout: float = GENERATE_TIMEOUT,
         load_timeout: float = LOAD_TIMEOUT,
+        keep_alive: str = Config().keep_alive,
     ):
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout
         self.load_timeout = load_timeout
+        self.keep_alive = keep_alive
 
     def generate(self, prompt: str, system: str) -> str:
         # Load first under the long timeout; `timeout` then bounds generation alone.
@@ -90,7 +106,7 @@ class OllamaClient:
             "messages": messages,
             "stream": False,
             "think": False,
-            "keep_alive": KEEP_ALIVE,
+            "keep_alive": ollama_keep_alive(self.keep_alive),
             "options": {"temperature": 0.2, "num_predict": NUM_PREDICT, "num_ctx": NUM_CTX},
         }
         req = urllib.request.Request(
@@ -103,13 +119,13 @@ class OllamaClient:
 
     def warm(self) -> None:
         """Load the model now (an empty generate) so the next reply skips the cold load."""
-        self._load(KEEP_ALIVE)
+        self._load(ollama_keep_alive(self.keep_alive))
 
     def unload(self) -> None:
-        """Hand the model's VRAM back now instead of when `KEEP_ALIVE` runs out."""
+        """Hand the model's VRAM back now instead of when `keep_alive` runs out."""
         self._load(0)
 
-    def _load(self, keep_alive: str | int) -> None:
+    def _load(self, keep_alive: float) -> None:
         body = {
             "model": self.model,
             "keep_alive": keep_alive,

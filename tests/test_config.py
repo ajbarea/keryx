@@ -140,3 +140,41 @@ def test_speaking_signal_defaults_on_and_has_an_env_override(monkeypatch, tmp_pa
     assert Config.load().speaking_signal is True
     monkeypatch.setenv("KERYX_SPEAKING_SIGNAL", "off")
     assert Config.load().speaking_signal is False
+
+
+def _write(tmp_path, monkeypatch, data):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    (tmp_path / "keryx").mkdir(exist_ok=True)
+    (tmp_path / "keryx" / "config.json").write_text(json.dumps(data))
+
+
+def test_keep_alive_defaults_to_five_minutes():
+    assert Config().keep_alive == "5m"
+    assert Config.load().keep_alive == "5m"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [(0, "0"), (300, "300"), (90.5, "90.5"), ("10m", "10m")]
+)
+def test_keep_alive_from_the_file_is_kept_as_a_string(tmp_path, monkeypatch, raw, expected):
+    _write(tmp_path, monkeypatch, {"keep_alive": raw})
+    assert Config.load(env=False).keep_alive == expected
+
+
+def test_keep_alive_env_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("KERYX_KEEP_ALIVE", "0")
+    assert Config.load().keep_alive == "0"
+
+
+def test_a_keep_alive_env_value_that_is_not_a_duration_is_not_used(tmp_path, monkeypatch, caplog):
+    # `keryx status` prints the loaded config, so it must hold the value actually in use.
+    monkeypatch.setenv("KERYX_KEEP_ALIVE", "abc")
+    with caplog.at_level("WARNING", logger="keryx"):
+        assert Config.load().keep_alive == "5m"
+    assert "abc" in caplog.text
+
+
+@pytest.mark.parametrize("bad", [True, False, ["5m"], None, "soon", "5M", "", "nan"])
+def test_keep_alive_of_the_wrong_type_falls_back_to_the_default(tmp_path, monkeypatch, bad):
+    _write(tmp_path, monkeypatch, {"keep_alive": bad})
+    assert Config.load(env=False).keep_alive == "5m"

@@ -211,7 +211,7 @@ unduck started a new player that restored it 3.1 s later. AJ confirmed the 25% l
   34 s while models were downloading, and 44 s read from disk after a night idle. Ollama
   aborts a load when its client hangs up, so the summarizer loads the model first under a
   120 s timeout, then generates under 30 s. A loaded model answers the load call in about
-  10 ms. The model stays loaded 30 minutes after its last use. `SessionStart` and each prompt
+  10 ms. The model stays loaded for `keep_alive` (5 minutes by default) after its last use; a summary takes 0.5 s loaded and about 5.5 s after an unload with the model file cached. `SessionStart` and each prompt
   preload it, which puts the load behind the developer's typing and Claude's working time.
   Shortening runs on its own thread, so a permission prompt is spoken while a reply waits
   on a load.
