@@ -11,6 +11,10 @@ Last reviewed: 2026-10-03.
 
 ## Completed
 
+- 2026-10-26: replies you can replay from klepsydra (0.11.0, #59 to #61). Each session's latest
+  spoken reply is kept as one clip in klepsydra's `replies/` folder for its play buttons
+  (`reply_clips`, on by default). af_aoede (Dokimasia) is now the last of the ten portrait
+  voices handed out. onnxruntime-gpu 1.31, checked on CUDA.
 - 2026-10-21: lighter beside a fleet of agents (0.10.0, #48 to #52). Kokoro hands its CUDA
   arena back after each sentence (idle 570 MiB, was 1178). The summarizer's `keep_alive` is a
   setting, 5 minutes by default (was 30). Replies are trimmed instead of loading the model when
