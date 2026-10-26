@@ -32,10 +32,10 @@ POOL = (
     "am_puck",  # C+
     "af_bella",  # A-
     "bf_isabella",  # C
-    "af_aoede",  # C+
     "af_kore",  # C+
     "af_sarah",  # C+
     "af_nova",  # C
+    "af_aoede",  # C+, Dokimasia: last of the ten on purpose
     "bm_george",  # C
     "am_fenrir",  # C+
     "bm_fable",  # C
