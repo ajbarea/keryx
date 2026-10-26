@@ -31,6 +31,7 @@ from keryx.config import Config, cache_dir, socket_path
 from keryx.headroom import gpu_free_mb, low_memory, mem_available_mb, model_loaded
 from keryx.player import WindowsPlayer
 from keryx.pronounce import Lexicon
+from keryx.replies import ReplyClips, replies_dir
 from keryx.speaker import Speaker, SpeechQueue, Utterance, slot_names
 from keryx.speaking import SpeakingSignal, fleet_dir
 from keryx.summarize import OllamaClient, spoken
@@ -249,8 +250,10 @@ def build_speaker(
         if cfg.distinct_voices
         else None
     )
-    signal = SpeakingSignal(fleet_dir(), cfg.speaking_signal)
-    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book, Lexicon(), signal)
+    fleet = fleet_dir()
+    signal = SpeakingSignal(fleet, cfg.speaking_signal)
+    replies = ReplyClips(replies_dir(fleet), cfg.reply_clips)
+    speaker = Speaker(shorten, voice, player, Path(cfg.audio_dir), book, Lexicon(), signal, replies)
     return speaker, player, warm if client else None
 
 

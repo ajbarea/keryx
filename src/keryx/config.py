@@ -62,6 +62,8 @@ class Config:
     duck_ratio: float = 0.25
     # Write speaking.json into klepsydra's fleet folder (when it exists) as each clip plays.
     speaking_signal: bool = True
+    # Keep each session's latest reply as one WAV beside klepsydra's fleet folder (when it exists).
+    reply_clips: bool = True
     # Spoken WAVs are written here because Windows can only play from its own drives.
     audio_dir: str = "/mnt/c/Windows/Temp/keryx"
 

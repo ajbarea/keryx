@@ -200,3 +200,10 @@ def test_a_memory_threshold_of_the_wrong_type_falls_back(tmp_path, monkeypatch, 
 def test_memory_threshold_env_override(monkeypatch):
     monkeypatch.setenv("KERYX_MIN_FREE_RAM_MB", "0")
     assert Config.load().min_free_ram_mb == 0
+
+
+def test_reply_clips_default_on_and_have_an_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert Config.load().reply_clips is True
+    monkeypatch.setenv("KERYX_REPLY_CLIPS", "off")
+    assert Config.load().reply_clips is False

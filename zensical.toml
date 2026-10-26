@@ -14,6 +14,7 @@ nav = [
   { "Commands" = "commands.md" },
   { "Configuration" = "configuration.md" },
   { "Speaking signal" = "speaking-signal.md" },
+  { "Reply clips" = "reply-clips.md" },
   { "Architecture" = "architecture.md" },
   { "Design record" = "design.md" },
   { "Troubleshooting" = "troubleshooting.md" },

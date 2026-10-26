@@ -24,6 +24,7 @@ from typing import Protocol
 import numpy as np
 
 from keryx.player import Player
+from keryx.replies import ReplyClips
 from keryx.speaking import SpeakingSignal, envelope
 from keryx.text import split_sentences
 from keryx.voice import write_wav
@@ -89,11 +90,13 @@ class Speaker:
         voices: Voices | None = None,
         pronounce: Callable[[str], str] | None = None,
         signal: SpeakingSignal | None = None,
+        replies: ReplyClips | None = None,
     ):
         """`voices` picks each session's voice; None speaks everything in the default.
         `pronounce` rewrites each sentence just before synthesis; `signal` tells klepsydra
-        which clip is playing."""
+        which clip is playing; `replies` keeps each session's latest reply for it."""
         self._signal = signal
+        self._replies = replies
         self._shorten = shorten
         self._voices = voices
         self._pronounce = pronounce or (lambda text: text)
@@ -251,10 +254,16 @@ class Speaker:
                 if sentences and utt.source:
                     # Whether it is said is decided as it comes up to play.
                     self._clip(utt, f"{utt.source}:", announcement=True)
+                said: list[tuple[np.ndarray, int]] = []
                 for sentence in sentences:
                     if utt.cancelled.is_set():
                         break
-                    self._clip(utt, sentence)
+                    if (audio := self._clip(utt, sentence)) is not None:
+                        said.append(audio)
+                # A reply without its repo name, as far as it was synthesized when cut off;
+                # a replay is a notice.
+                if self._replies is not None and utt.kind == "reply":
+                    self._replies.save(utt.session, said)
             except Exception:
                 log.exception("could not synthesize %r", utt.text[:80])
             finally:
@@ -265,15 +274,18 @@ class Speaker:
     def _text(utt: Utterance) -> str:
         return utt.line if utt.line is not None else utt.text
 
-    def _clip(self, utt: Utterance, sentence: str, announcement: bool = False) -> None:
-        """Synthesize one sentence and queue it; one bad sentence does not cost the rest."""
+    def _clip(
+        self, utt: Utterance, sentence: str, announcement: bool = False
+    ) -> tuple[np.ndarray, int] | None:
+        """Synthesize one sentence and queue it, returning its audio; one bad sentence does not
+        cost the rest."""
         try:
             samples, rate = self._speak(utt, sentence, announcement)
             wav = self._audio_dir / slot_name(next(self._slots))
             seconds = write_wav(wav, samples, rate)
         except Exception:
             log.exception("could not synthesize %r", sentence[:80])
-            return
+            return None
         levels: list[float] = []
         if self._signal is not None:
             try:
@@ -283,6 +295,7 @@ class Speaker:
         if not announcement:
             self.spoken.append(sentence)
         self._play_q.put((wav, seconds, utt, announcement, levels))
+        return samples, rate
 
     def _speak(self, utt: Utterance, sentence: str, announcement: bool) -> tuple[np.ndarray, int]:
         said = self._pronounce(sentence)
