@@ -1,22 +1,15 @@
 # IMPL
 
-## Current: memory and performance batch (0.10.0, PRs #48 to #52)
+## Current: 0.11.0 released (PRs #59 to #61)
 
-✅ Done (merged; numbers are in each PR)
-- #44 / #48: `num_ctx` 4096 on warm and chat, and the reply sent to the model is capped at 5600
-  chars (its opening and close). 2048 would save only 44 MiB of VRAM.
-- #43 / #49: `keep_alive` setting, 5m by default, always sent to Ollama as seconds.
-- #46 / #50: Kokoro CUDA `kSameAsRequested` + per-run arena shrinkage: idle 570 MiB (was
-  1178), peak 1368. No `gpu_mem_limit`, because one under the need fails mid-sentence.
-- #45 / #51: below `min_free_ram_mb` / `min_free_vram_mb` with the model not loaded (or
-  loading), the reply is trimmed; `keryx status` shows `last_reply`.
-- #47 / #52: `keryx status` reports `ollama-memory` (KV cache, flash attention, keep-alive) and
-  `ollama-loaded`.
+✅ Done
+- #61: each session's latest spoken reply kept as `replies/<session>.wav` beside klepsydra's
+  `fleet/` (klepsydra #100's play buttons); `reply_clips` on by default.
+- #60: af_aoede (Dokimasia) handed out last of the ten portrait voices.
+- #59: onnxruntime-gpu 1.31; CUDA load and synthesis checked on AJ's GPU.
 
 📋 Next
-- AJ: apply the Ollama drop-in in docs/troubleshooting.md#ollama-server-memory (sudo; restarting
-  Ollama unloads every model). Measured: 113 MiB less GPU memory and 73 MB less RSS per load.
-- AJ: `/keryx on` when ready; the live daemon stayed off for this batch.
+- After install: tap a reply clip on klepsydra's iPhone wall once.
 
 ## Verify
 - `make lint`; `uv run pytest -q` (`test_the_real_powershell_loop_plays_a_clip_to_its_end`
