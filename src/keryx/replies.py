@@ -42,14 +42,18 @@ class ReplyClips:
 
     def save(self, session: str, sentences: list[tuple[np.ndarray, int]]) -> None:
         """Write `sentences` (samples and rate, in order) as `session`'s one clip, replacing
-        its last, then drop all but the newest `keep` clips."""
+        its last, then drop all but the newest `keep` clips. No sentences removes the
+        session's clip, which an older reply would otherwise stand in for."""
         folder = self._folder
-        if not (self._enabled and folder and sentences and SESSION.fullmatch(session)):
+        if not (self._enabled and folder and SESSION.fullmatch(session)):
             return
         tmp = folder / f"tmp-{os.getpid()}-{session}.wav"
         try:
             fleet = folder.parent / "fleet"
             if fleet.is_symlink() or not fleet.is_dir() or folder.is_symlink():
+                return
+            if not sentences:
+                (folder / f"{session}.wav").unlink(missing_ok=True)
                 return
             folder.mkdir(exist_ok=True)
             rate = sentences[0][1]

@@ -10,7 +10,7 @@ keryx keeps each session's latest spoken reply as one WAV beside klepsydra's fle
 
 - One reply: the sentences keryx said for a Claude Code session's reply, in order, with 0.25 s of silence between them. The repo-name announcement is left out.
 - 16-bit PCM mono at Kokoro's rate (24 kHz), the same format as keryx's playback slots.
-- Only a reply keryx synthesized to the end. A reply cut off before its last sentence was synthesized (a new prompt, `keryx stop`) leaves the session's previous clip in place. Notices (approvals, questions) and replays (`keryx again`) are not kept.
+- A reply cut off (a new prompt, `keryx stop`) keeps the sentences synthesized by then, which run up to three ahead of the one playing. A reply with no sentence synthesized, or nothing to say, removes the session's clip, so an older reply never stands in for it. A reply cut off before it reached synthesis (while being summarized) changes nothing. Notices (approvals, questions) and replays (`keryx again`) are not kept.
 - The file is named by the Claude Code session id, lower-case, as in the hook input. A `/clear` starts a new session id, so the new session has no clip until it replies.
 
 ## Lifetime

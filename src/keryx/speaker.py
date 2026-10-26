@@ -260,13 +260,9 @@ class Speaker:
                         break
                     if (audio := self._clip(utt, sentence)) is not None:
                         said.append(audio)
-                # A whole reply only, without its repo name; a replay is a notice.
-                if (
-                    self._replies is not None
-                    and utt.kind == "reply"
-                    and said
-                    and not utt.cancelled.is_set()
-                ):
+                # A reply without its repo name, as far as it was synthesized when cut off;
+                # a replay is a notice.
+                if self._replies is not None and utt.kind == "reply":
                     self._replies.save(utt.session, said)
             except Exception:
                 log.exception("could not synthesize %r", utt.text[:80])
