@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from keryx.config import cache_dir, socket_path
+from keryx.config import cache_dir, log_dir, move_old_logs, socket_path
 
 
 def read_all(conn: socket.socket) -> bytes:
@@ -40,8 +40,10 @@ def spawn() -> subprocess.Popen:
     previous one moves to `daemon.stderr.1`, where a retiring daemon keeps writing its last
     words instead of having them overwritten.
     """
-    err = cache_dir() / "daemon.stderr"
-    err.parent.mkdir(parents=True, exist_ok=True)
+    # Only the newest: the rotation below would replace a moved `.1` at once, so the old one
+    # stays in the cache folder.
+    move_old_logs(("daemon.stderr",))
+    err = log_dir() / "daemon.stderr"
     with contextlib.suppress(FileNotFoundError):
         os.replace(err, err.with_name("daemon.stderr.1"))
     fd = os.open(err, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)

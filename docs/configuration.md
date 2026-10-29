@@ -10,7 +10,7 @@ variable named `KERYX_<FIELD>`, such as `KERYX_SPEED=1.3`. The environment wins 
 
 `config.json` holds only what you or `keryx on` and `keryx off` set. A file that cannot be read
 is ignored, and `on` and `off` keep it as `config.json.bad`. A value of the wrong type falls
-back to the default.
+back to the default, and the daemon log names it.
 
 ## Settings
 
@@ -38,12 +38,13 @@ back to the default.
 | --- | --- |
 | `KERYX_<FIELD>` | Overrides the setting of that name, one variable per field above |
 | `XDG_CONFIG_HOME` | Moves the config directory; `config.json` and `pronounce.json` live in `$XDG_CONFIG_HOME/keryx` |
-| `XDG_CACHE_HOME` | Moves the cache directory; the daemon socket, `daemon.log`, `voices.json` and the venvs live in `$XDG_CACHE_HOME/keryx` |
+| `XDG_CACHE_HOME` | Moves the cache directory; the daemon socket, `voices.json` and the venvs live in `$XDG_CACHE_HOME/keryx` |
+| `XDG_STATE_HOME` | Moves the state directory; `daemon.log` and `daemon.stderr` live in `$XDG_STATE_HOME/keryx/log` |
 | `CLAUDE_CODE_ENTRYPOINT` | Read, not set: a value starting with `sdk` marks a headless session (`claude -p`, the Agent SDK), which keryx keeps silent |
 
 An environment value is read as the type of its field. A boolean is true for `1`, `true`, `yes` and
 `on`, and false for anything else. A list such as `duck_apps` is comma-separated:
-`KERYX_DUCK_APPS=Spotify,vlc`. A number that does not parse is ignored.
+`KERYX_DUCK_APPS=Spotify,vlc`. A number that does not parse is ignored, and the daemon log names it.
 
 ## Files
 
@@ -51,7 +52,8 @@ An environment value is read as the type of its field. A boolean is true for `1`
 | --- | --- |
 | `~/.config/keryx/config.json` | The settings you changed |
 | `~/.config/keryx/pronounce.json` | Pronunciations |
-| `~/.cache/keryx/daemon.log` | The daemon's log, readable only by you; one older file of about 1 MB is kept |
+| `~/.local/state/keryx/log/daemon.log` | The daemon's log, one JSON object per line (`ts`, `level`, `logger`, `message`, `exc`), readable only by you; one older file of about 1 MB is kept |
+| `~/.local/state/keryx/log/daemon.stderr` | What a dying daemon wrote to stderr (an import error, a native abort); the one before it is `daemon.stderr.1` |
 | `~/.cache/keryx/voices.json` | Which voice each repo was given |
 | `~/.cache/keryx/venv-<version>-<checksum>` | One venv per plugin version and checkout |
 | `<audio_dir>` | Spoken WAVs, rotating through 8 slots; deleted when the daemon exits |

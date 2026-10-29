@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import re
+import shutil
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -33,6 +34,26 @@ def config_dir() -> Path:
 
 def cache_dir() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "keryx"
+
+
+def log_dir() -> Path:
+    """Where the daemon's logs live: XDG state data, not cache, so clearing a cache keeps them."""
+    return (
+        Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "keryx" / "log"
+    )
+
+
+def move_old_logs(names: tuple[str, ...]) -> None:
+    """Bring logs over from the cache folder earlier versions used. A file already in the new
+    folder is never replaced; the old one then stays where it is."""
+    log_dir().mkdir(parents=True, exist_ok=True)
+    for name in names:
+        old, new = cache_dir() / name, log_dir() / name
+        if old.is_file() and not new.exists():
+            try:
+                shutil.move(old, new)  # a rename, or a copy when the folders are on two drives
+            except OSError as exc:
+                log.warning("could not move %s to %s: %s", old, new, exc)
 
 
 def socket_path() -> Path:
@@ -78,20 +99,38 @@ class Config:
             raw["keep_alive"] = str(raw["keep_alive"])
         defaults = cls()
         # A value of the wrong type (a string where a list belongs) falls back to the default.
+        misfits = [
+            f.name
+            for f in fields(cls)
+            if f.name in raw and not _fits(raw[f.name], getattr(defaults, f.name))
+        ]
+        for name in misfits:
+            log.warning(
+                "config.json %s=%r is not a %s; using %r",
+                name,
+                raw[name],
+                type(getattr(defaults, name)).__name__,
+                getattr(defaults, name),
+            )
         cfg = cls(
-            **{
-                f.name: raw[f.name]
-                for f in fields(cls)
-                if f.name in raw and _fits(raw[f.name], getattr(defaults, f.name))
-            }
+            **{f.name: raw[f.name] for f in fields(cls) if f.name in raw and f.name not in misfits}
         )
         for f in fields(cls) if env else ():
             value = os.environ.get(f"KERYX_{f.name.upper()}")
             if value is not None:
                 # By the default's type: a file value such as `1` for a float must not make
                 # `KERYX_SPEED=1.3` an int.
-                with contextlib.suppress(ValueError):
-                    setattr(cfg, f.name, _coerce(value, type(getattr(defaults, f.name))))
+                kind = type(getattr(defaults, f.name))
+                try:
+                    setattr(cfg, f.name, _coerce(value, kind))
+                except ValueError:
+                    log.warning(
+                        "KERYX_%s=%r is not a %s; using %r",
+                        f.name.upper(),
+                        value,
+                        kind.__name__,
+                        getattr(cfg, f.name),
+                    )
         if keep_alive_seconds(cfg.keep_alive) is None:
             log.warning(
                 "keep_alive %r is not seconds or a duration such as 10m; using %s",

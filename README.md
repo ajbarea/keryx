@@ -94,7 +94,7 @@ the last line; set `duck_apps` to turn down other apps instead.
 Turn keryx off before a long local-LLM run: Ollama sizes GPU offload when a model loads, so a
 large model loaded beside keryx can end up partly on the CPU.
 
-If keryx goes silent, check `~/.cache/keryx/daemon.log`: `mci error 326` means Windows has
+If keryx goes silent, check `~/.local/state/keryx/log/daemon.log`: `mci error 326` means Windows has
 no audio output device, for example because the speakers are off. Nothing needs restarting;
 the next reply plays once a device is back.
 
@@ -117,8 +117,9 @@ the next reply plays once a device is back.
 | `reply_clips` | `true` | Keep each session's latest spoken reply as one WAV in `replies/` beside klepsydra's fleet folder, when that folder exists, for its wall to play again ([format](docs/reply-clips.md)) |
 | `audio_dir` | `/mnt/c/Windows/Temp/keryx` | Where WAVs are written; must be on a Windows drive |
 
-The daemon logs to `~/.cache/keryx/daemon.log`, readable only by you, and keeps one
-older file of about 1 MB. Each plugin version runs in its own venv under `~/.cache/keryx/`;
+The daemon logs to `~/.local/state/keryx/log/daemon.log`, one JSON object per line, readable only
+by you, and keeps one older file of about 1 MB. A log from an earlier version moves there from
+`~/.cache/keryx/` the next time the daemon starts. Each plugin version runs in its own venv under `~/.cache/keryx/`;
 one whose checkout has been removed is deleted the next time keryx runs. The unversioned
 `~/.cache/keryx/venv` from 0.5.0 and earlier is never deleted by keryx; remove it by hand
 once no daemon runs from it.

@@ -12,6 +12,7 @@ there was a line to say again; `set_voice` answers whether a terminal was pinned
 from __future__ import annotations
 
 import contextlib
+import datetime
 import fcntl
 import http.client
 import json
@@ -27,7 +28,7 @@ from pathlib import Path
 
 from keryx import older, version
 from keryx.client import read_all
-from keryx.config import Config, cache_dir, socket_path
+from keryx.config import Config, cache_dir, log_dir, move_old_logs, socket_path
 from keryx.headroom import gpu_free_mb, low_memory, mem_available_mb, model_loaded
 from keryx.player import WindowsPlayer
 from keryx.pronounce import Lexicon
@@ -54,22 +55,40 @@ class PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
         return os.fdopen(fd, "a", encoding=self.encoding)
 
 
+class JsonLines(logging.Formatter):
+    """One JSON object per line: UTC time, level, logger, message, and a traceback if any."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        when = datetime.datetime.fromtimestamp(record.created, datetime.UTC)
+        entry = {
+            "ts": when.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            entry["exc"] = self.formatException(record.exc_info)
+        return json.dumps(entry)
+
+
 def log_path() -> Path:
-    return cache_dir() / "daemon.log"
+    return log_dir() / "daemon.log"
 
 
 def configure_logging(to_terminal: bool) -> None:
-    """Log to the terminal in the foreground, else to the bounded `daemon.log`."""
-    format_ = "%(asctime)s %(levelname)s %(message)s"
+    """Log to the terminal in the foreground as plain lines, else to the bounded `daemon.log`
+    as JSON lines."""
     if to_terminal:
         handler: logging.Handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     else:
-        log_path().parent.mkdir(parents=True, exist_ok=True)
+        move_old_logs(("daemon.log", "daemon.log.1"))
         handler = PrivateRotatingFileHandler(log_path(), maxBytes=LOG_BYTES, backupCount=1)
+        handler.setFormatter(JsonLines())
     # The phonemizer warns on every sentence it cannot place a stress mark in. Its own level
     # cannot be set: importing it, which happens when Kokoro loads, resets it to WARNING.
     handler.addFilter(lambda record: record.name != "phonemizer" or record.levelno >= logging.ERROR)
-    logging.basicConfig(level=logging.INFO, format=format_, handlers=[handler], force=True)
+    logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
 
     def thread_failed(args: threading.ExceptHookArgs) -> None:
         log.error("thread %s failed", args.thread and args.thread.name, exc_info=args.exc_value)
@@ -370,4 +389,7 @@ def request_summary(request: object) -> str:
     if not isinstance(request, dict):
         return "bad request"
     text = str(request.get("text") or "")
-    return f"{request.get('op')} {request.get('source', '')} {len(text)} chars".strip()
+    summary = f"{request.get('op')} {request.get('source', '')} {len(text)} chars".strip()
+    # The Claude Code session id ties this line to the hook call that sent it.
+    session = request.get("session")
+    return f"{summary} session={session}" if session else summary
