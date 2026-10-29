@@ -20,7 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # The CUDA and cuDNN runtime wheels, ~2 GB; Kokoro runs about 10x faster with them.
-cuda = ["onnxruntime-gpu[cuda,cudnn]>=1.30.0"]
+cuda = ["onnxruntime-gpu[cuda,cudnn]>=1.31.0"]
 
 [project.scripts]
 keryx = "keryx.__main__:main"
