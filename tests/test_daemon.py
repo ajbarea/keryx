@@ -430,8 +430,8 @@ def test_the_daemon_log_is_private_and_bounded(tmp_path, monkeypatch, clean_logg
 
     from keryx import daemon
 
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    log = tmp_path / "keryx" / "daemon.log"
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    log = tmp_path / "keryx" / "log" / "daemon.log"
     log.parent.mkdir(parents=True)
     log.write_text("old\n")
     log.chmod(0o644)  # left by a version that wrote it world-readable
@@ -451,12 +451,12 @@ def test_phonemizer_warnings_stay_out_of_the_log(tmp_path, monkeypatch, clean_lo
 
     from keryx import daemon
 
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     daemon.configure_logging(to_terminal=False)
     get_logger()  # what importing the phonemizer does once Kokoro loads: level back to WARNING
     logging.getLogger("phonemizer").warning("words count mismatch on 1 lines")
     logging.getLogger("phonemizer").error("real failure")
-    text = (tmp_path / "keryx" / "daemon.log").read_text()
+    text = (tmp_path / "keryx" / "log" / "daemon.log").read_text()
     assert "mismatch" not in text and "real failure" in text
 
 
@@ -464,8 +464,8 @@ def test_a_spawned_daemon_keeps_what_it_writes_to_stderr_in_a_private_file(tmp_p
     import stat
     import subprocess
 
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    err = tmp_path / "keryx" / "daemon.stderr"
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    err = tmp_path / "keryx" / "log" / "daemon.stderr"
     err.parent.mkdir(parents=True)
     err.write_text("from the last daemon\n")
     seen = {}
@@ -482,7 +482,7 @@ def test_a_thread_that_dies_is_logged(tmp_path, monkeypatch, clean_logging):
 
     from keryx import daemon
 
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     daemon.configure_logging(to_terminal=False)
 
     def boom():
@@ -491,7 +491,54 @@ def test_a_thread_that_dies_is_logged(tmp_path, monkeypatch, clean_logging):
     t = threading.Thread(target=boom, name="synth")
     t.start()
     t.join()
-    assert "synth thread died" in (tmp_path / "keryx" / "daemon.log").read_text()
+    assert "synth thread died" in (tmp_path / "keryx" / "log" / "daemon.log").read_text()
+
+
+def test_the_daemon_log_is_json_lines(tmp_path, monkeypatch, clean_logging):
+    import json
+    import logging
+
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    daemon.configure_logging(to_terminal=False)
+    logging.getLogger("keryx").warning("could not play %s: %s", "slot3.wav", "mci error 326")
+    try:
+        raise ValueError("bad wav")
+    except ValueError:
+        logging.getLogger("keryx").exception("could not synthesize %r", "Done.")
+    lines = (tmp_path / "keryx" / "log" / "daemon.log").read_text().splitlines()
+    first, second = (json.loads(line) for line in lines)
+    assert first["level"] == "WARNING" and first["logger"] == "keryx"
+    assert first["message"] == "could not play slot3.wav: mci error 326"
+    assert first["ts"].endswith("Z") and "T" in first["ts"]
+    assert second["level"] == "ERROR" and "ValueError: bad wav" in second["exc"]
+
+
+def test_logs_from_the_old_cache_folder_move_to_the_state_folder(
+    tmp_path, monkeypatch, clean_logging
+):
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    old = tmp_path / "cache" / "keryx"
+    old.mkdir(parents=True)
+    (old / "daemon.log").write_text("kept\n")
+    (old / "daemon.log.1").write_text("older\n")
+    daemon.configure_logging(to_terminal=False)
+    new = tmp_path / "state" / "keryx" / "log"
+    assert (new / "daemon.log").read_text().startswith("kept\n")
+    assert (new / "daemon.log.1").read_text() == "older\n"
+    assert not (old / "daemon.log").exists()
+
+
+def test_a_request_line_names_its_session():
+    from keryx import daemon
+
+    request = {"op": "say", "text": "Done.", "source": "stop", "session": "0b1e5b4e"}
+    assert daemon.request_summary(request) == "say stop 5 chars session=0b1e5b4e"
+    assert daemon.request_summary({"op": "ping"}) == "ping  0 chars"
 
 
 def say(reply_prompt):

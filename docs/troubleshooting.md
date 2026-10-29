@@ -5,7 +5,9 @@ description: What to check when keryx is silent, slow or speaking the wrong thin
 
 # Troubleshooting
 
-The daemon logs to `~/.cache/keryx/daemon.log`. Check it first.
+The daemon logs to `~/.local/state/keryx/log/daemon.log`, one JSON object per line. Check it first:
+`grep '"level": "ERROR"' ~/.local/state/keryx/log/daemon.log` lists the failures, and each
+request line names the Claude Code session that sent it (`session=<id>`).
 
 ## keryx says it needs uv
 

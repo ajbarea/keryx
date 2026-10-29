@@ -35,6 +35,13 @@ def cache_dir() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "keryx"
 
 
+def log_dir() -> Path:
+    """Where the daemon's logs live: XDG state data, not cache, so clearing a cache keeps them."""
+    return (
+        Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "keryx" / "log"
+    )
+
+
 def socket_path() -> Path:
     return cache_dir() / "keryx.sock"
 
