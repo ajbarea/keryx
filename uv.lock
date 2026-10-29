@@ -221,7 +221,7 @@ requires-dist = [
     { name = "kokoro-onnx", specifier = ">=0.6.1" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "onnxruntime-gpu", specifier = ">=1.31.0" },
-    { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "extra == 'cuda'", specifier = ">=1.30.0" },
+    { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "extra == 'cuda'", specifier = ">=1.31.0" },
     { name = "pyloudnorm", specifier = ">=0.2.0" },
     { name = "scipy", specifier = ">=1.13" },
     { name = "soundfile", specifier = ">=0.14.0" },
