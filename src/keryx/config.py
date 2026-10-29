@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import re
+import shutil
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -40,6 +41,19 @@ def log_dir() -> Path:
     return (
         Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "keryx" / "log"
     )
+
+
+def move_old_logs(names: tuple[str, ...]) -> None:
+    """Bring logs over from the cache folder earlier versions used. A file already in the new
+    folder is never replaced; the old one then stays where it is."""
+    log_dir().mkdir(parents=True, exist_ok=True)
+    for name in names:
+        old, new = cache_dir() / name, log_dir() / name
+        if old.is_file() and not new.exists():
+            try:
+                shutil.move(old, new)  # a rename, or a copy when the folders are on two drives
+            except OSError as exc:
+                log.warning("could not move %s to %s: %s", old, new, exc)
 
 
 def socket_path() -> Path:

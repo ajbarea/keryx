@@ -564,6 +564,48 @@ def test_a_line_that_cannot_be_encoded_is_still_written(tmp_path, monkeypatch, c
     assert json.loads(line)["message"] == "odd text \udcff"
 
 
+def test_a_spawn_brings_the_old_crash_file_over_before_rotating(tmp_path, monkeypatch):
+    import subprocess
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    old = tmp_path / "cache" / "keryx"
+    old.mkdir(parents=True)
+    (old / "daemon.stderr").write_text("last words of an old daemon\n")
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: None)
+    client.spawn()
+    new = tmp_path / "state" / "keryx" / "log"
+    # Moved, then rotated beside the new daemon's empty file, as any previous daemon's is.
+    assert (new / "daemon.stderr.1").read_text() == "last words of an old daemon\n"
+    assert (new / "daemon.stderr").read_text() == ""
+    assert not (old / "daemon.stderr").exists()
+
+
+def test_a_log_that_cannot_move_is_named_and_the_daemon_still_logs(
+    tmp_path, monkeypatch, caplog, clean_logging
+):
+    import logging
+    import shutil
+
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    (tmp_path / "cache" / "keryx").mkdir(parents=True)
+    (tmp_path / "cache" / "keryx" / "daemon.log").write_text("old\n")
+
+    def refuse(src, dst):
+        raise PermissionError(13, "Permission denied", str(dst))
+
+    monkeypatch.setattr(shutil, "move", refuse)
+    with caplog.at_level(logging.WARNING):
+        daemon.configure_logging(to_terminal=False)
+    assert any("could not move" in r.getMessage() for r in caplog.records)
+    logging.getLogger("keryx").warning("still logging")
+    assert "still logging" in (tmp_path / "state" / "keryx" / "log" / "daemon.log").read_text()
+    assert (tmp_path / "cache" / "keryx" / "daemon.log").read_text() == "old\n"
+
+
 def test_a_request_line_names_its_session():
     from keryx import daemon
 

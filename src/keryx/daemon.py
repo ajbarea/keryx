@@ -19,7 +19,6 @@ import json
 import logging
 import logging.handlers
 import os
-import shutil
 import socket
 import sys
 import threading
@@ -29,7 +28,7 @@ from pathlib import Path
 
 from keryx import older, version
 from keryx.client import read_all
-from keryx.config import Config, cache_dir, log_dir, socket_path
+from keryx.config import Config, cache_dir, log_dir, move_old_logs, socket_path
 from keryx.headroom import gpu_free_mb, low_memory, mem_available_mb, model_loaded
 from keryx.player import WindowsPlayer
 from keryx.pronounce import Lexicon
@@ -76,21 +75,6 @@ def log_path() -> Path:
     return log_dir() / "daemon.log"
 
 
-OLD_LOGS = ("daemon.log", "daemon.log.1", "daemon.stderr", "daemon.stderr.1")
-
-
-def move_old_logs() -> None:
-    """Bring the logs over from the cache folder earlier versions used. A file already in the
-    new folder is never replaced; the old one then stays where it is."""
-    for name in OLD_LOGS:
-        old, new = cache_dir() / name, log_dir() / name
-        if old.is_file() and not new.exists():
-            try:
-                shutil.move(old, new)  # a rename, or a copy when the folders are on two drives
-            except OSError as exc:
-                log.warning("could not move %s to %s: %s", old, new, exc)
-
-
 def configure_logging(to_terminal: bool) -> None:
     """Log to the terminal in the foreground as plain lines, else to the bounded `daemon.log`
     as JSON lines."""
@@ -99,7 +83,7 @@ def configure_logging(to_terminal: bool) -> None:
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     else:
         log_dir().mkdir(parents=True, exist_ok=True)
-        move_old_logs()
+        move_old_logs(("daemon.log", "daemon.log.1"))
         handler = PrivateRotatingFileHandler(log_path(), maxBytes=LOG_BYTES, backupCount=1)
         handler.setFormatter(JsonLines())
     # The phonemizer warns on every sentence it cannot place a stress mark in. Its own level
