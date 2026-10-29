@@ -82,7 +82,6 @@ def configure_logging(to_terminal: bool) -> None:
         handler: logging.Handler = logging.StreamHandler(sys.stderr)
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     else:
-        log_dir().mkdir(parents=True, exist_ok=True)
         move_old_logs(("daemon.log", "daemon.log.1"))
         handler = PrivateRotatingFileHandler(log_path(), maxBytes=LOG_BYTES, backupCount=1)
         handler.setFormatter(JsonLines())

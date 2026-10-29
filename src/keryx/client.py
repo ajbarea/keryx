@@ -40,7 +40,9 @@ def spawn() -> subprocess.Popen:
     previous one moves to `daemon.stderr.1`, where a retiring daemon keeps writing its last
     words instead of having them overwritten.
     """
-    move_old_logs(("daemon.stderr", "daemon.stderr.1"))
+    # Only the newest: the rotation below would replace a moved `.1` at once, so the old one
+    # stays in the cache folder.
+    move_old_logs(("daemon.stderr",))
     err = log_dir() / "daemon.stderr"
     with contextlib.suppress(FileNotFoundError):
         os.replace(err, err.with_name("daemon.stderr.1"))

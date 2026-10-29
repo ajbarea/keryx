@@ -572,6 +572,7 @@ def test_a_spawn_brings_the_old_crash_file_over_before_rotating(tmp_path, monkey
     old = tmp_path / "cache" / "keryx"
     old.mkdir(parents=True)
     (old / "daemon.stderr").write_text("last words of an old daemon\n")
+    (old / "daemon.stderr.1").write_text("the daemon before it\n")
     monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: None)
     client.spawn()
     new = tmp_path / "state" / "keryx" / "log"
@@ -579,6 +580,8 @@ def test_a_spawn_brings_the_old_crash_file_over_before_rotating(tmp_path, monkey
     assert (new / "daemon.stderr.1").read_text() == "last words of an old daemon\n"
     assert (new / "daemon.stderr").read_text() == ""
     assert not (old / "daemon.stderr").exists()
+    # The older one is left where it was rather than replaced by the rotation.
+    assert (old / "daemon.stderr.1").read_text() == "the daemon before it\n"
 
 
 def test_a_log_that_cannot_move_is_named_and_the_daemon_still_logs(
