@@ -533,6 +533,37 @@ def test_logs_from_the_old_cache_folder_move_to_the_state_folder(
     assert not (old / "daemon.log").exists()
 
 
+def test_a_log_already_in_the_state_folder_is_never_replaced(tmp_path, monkeypatch, clean_logging):
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    old, new = tmp_path / "cache" / "keryx", tmp_path / "state" / "keryx" / "log"
+    old.mkdir(parents=True)
+    new.mkdir(parents=True)
+    (old / "daemon.log").write_text("from an old daemon\n")
+    (old / "daemon.log.1").write_text("older\n")
+    (new / "daemon.log").write_text("current\n")
+    daemon.configure_logging(to_terminal=False)
+    assert (new / "daemon.log").read_text().startswith("current\n")
+    assert (old / "daemon.log").read_text() == "from an old daemon\n"
+    # A file the new folder lacks still moves.
+    assert (new / "daemon.log.1").read_text() == "older\n" and not (old / "daemon.log.1").exists()
+
+
+def test_a_line_that_cannot_be_encoded_is_still_written(tmp_path, monkeypatch, clean_logging):
+    import json
+    import logging
+
+    from keryx import daemon
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    daemon.configure_logging(to_terminal=False)
+    logging.getLogger("keryx").warning("odd text %s", "\udcff")
+    [line] = (tmp_path / "keryx" / "log" / "daemon.log").read_text().splitlines()
+    assert json.loads(line)["message"] == "odd text \udcff"
+
+
 def test_a_request_line_names_its_session():
     from keryx import daemon
 

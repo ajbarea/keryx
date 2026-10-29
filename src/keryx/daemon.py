@@ -19,6 +19,7 @@ import json
 import logging
 import logging.handlers
 import os
+import shutil
 import socket
 import sys
 import threading
@@ -68,20 +69,26 @@ class JsonLines(logging.Formatter):
         }
         if record.exc_info:
             entry["exc"] = self.formatException(record.exc_info)
-        return json.dumps(entry, ensure_ascii=False)
+        return json.dumps(entry)
 
 
 def log_path() -> Path:
     return log_dir() / "daemon.log"
 
 
+OLD_LOGS = ("daemon.log", "daemon.log.1", "daemon.stderr", "daemon.stderr.1")
+
+
 def move_old_logs() -> None:
-    """Bring `daemon.log` and its older file over from the cache folder earlier versions used."""
-    for name in ("daemon.log", "daemon.log.1"):
+    """Bring the logs over from the cache folder earlier versions used. A file already in the
+    new folder is never replaced; the old one then stays where it is."""
+    for name in OLD_LOGS:
         old, new = cache_dir() / name, log_dir() / name
-        if old.exists() and not new.exists():
-            with contextlib.suppress(OSError):
-                os.replace(old, new)
+        if old.is_file() and not new.exists():
+            try:
+                shutil.move(old, new)  # a rename, or a copy when the folders are on two drives
+            except OSError as exc:
+                log.warning("could not move %s to %s: %s", old, new, exc)
 
 
 def configure_logging(to_terminal: bool) -> None:
