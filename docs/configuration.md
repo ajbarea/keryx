@@ -10,7 +10,7 @@ variable named `KERYX_<FIELD>`, such as `KERYX_SPEED=1.3`. The environment wins 
 
 `config.json` holds only what you or `keryx on` and `keryx off` set. A file that cannot be read
 is ignored, and `on` and `off` keep it as `config.json.bad`. A value of the wrong type falls
-back to the default.
+back to the default, and the daemon log names it.
 
 ## Settings
 
@@ -44,7 +44,7 @@ back to the default.
 
 An environment value is read as the type of its field. A boolean is true for `1`, `true`, `yes` and
 `on`, and false for anything else. A list such as `duck_apps` is comma-separated:
-`KERYX_DUCK_APPS=Spotify,vlc`. A number that does not parse is ignored.
+`KERYX_DUCK_APPS=Spotify,vlc`. A number that does not parse is ignored, and the daemon log names it.
 
 ## Files
 
