@@ -21,6 +21,7 @@ concurrency:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +35,8 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
+          prune-cache: true
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       # No `cuda` extra: the suite never loads Kokoro, and the extra is ~2 GB.
       - run: uv sync --frozen
       - run: make lint
@@ -41,6 +44,7 @@ jobs:
 
   mod:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
