@@ -3,6 +3,7 @@
 keryx hook             read a Claude Code hook payload on stdin
 keryx replay-hook      the same for the synchronous "say that again" prompt hook
 keryx on | off         turn speech on or off
+keryx speak-only [ID|FILE ...] | --everyone   let only these sessions speak (none: show the list)
 keryx status           show settings, daemon state and setup checks; exit 1 if one is missing
 keryx say TEXT         speak TEXT as given
 keryx again            say this terminal's last line again
@@ -23,7 +24,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from keryx import client
-from keryx.config import Config, set_stored
+from keryx.config import Config, may_speak, set_stored
 
 if TYPE_CHECKING:
     # Only for annotations (`from __future__ import annotations` keeps them unevaluated), so the
@@ -35,6 +36,7 @@ COMMANDS = (
     "replay-hook",
     "on",
     "off",
+    "speak-only",
     "status",
     "say",
     "again",
@@ -146,7 +148,11 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "hook":
         from keryx import hook
 
-        request = hook.request_for(hook.parse(sys.stdin.read()), hook.entrypoint())
+        event = hook.parse(sys.stdin.read())
+        # A session speak_only leaves out stops here: no summarizer call, no speech.
+        if not may_speak(cfg, str(event.get("session_id", ""))):
+            return 0
+        request = hook.request_for(event, hook.entrypoint())
         if request is None:
             return 0
         # Spawning on a prompt, not just a reply, loads the voice while Claude works.
@@ -174,6 +180,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"keryx is {cmd}")
         if Config.load().enabled != enabled:
             print("note: KERYX_ENABLED in the environment overrides this")
+        return 0
+
+    if cmd == "speak-only":
+        targets = args[1:]
+        if targets == ["--everyone"]:
+            set_stored(speak_only=[])
+            print("every session speaks")
+            return 0
+        if not targets:
+            print("\n".join(cfg.speak_only) if cfg.speak_only else "every session speaks")
+            return 0
+        if any(t.startswith("-") for t in targets):
+            print("usage: keryx speak-only [ID|FILE ...] | --everyone", file=sys.stderr)
+            return 2
+        set_stored(speak_only=targets)
+        print("only these speak: " + ", ".join(targets))
         return 0
 
     if cmd == "status":
@@ -226,7 +248,9 @@ def main(argv: list[str] | None = None) -> int:
         from keryx.procs import terminal_id
 
         event = hook.parse(sys.stdin.read())
-        if not hook.is_replay_event(event, hook.entrypoint()):
+        if not may_speak(cfg, str(event.get("session_id", ""))) or not hook.is_replay_event(
+            event, hook.entrypoint()
+        ):
             return 0
         who = {"terminal": terminal_id(), "session": event.get("session_id", "")}
         try:

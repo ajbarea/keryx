@@ -66,6 +66,9 @@ class Config:
     voice: str = "af_heart"
     # Give each terminal its own voice; `voice` is the first one handed out.
     distinct_voices: bool = True
+    # Only these sessions speak: session ids, or files (an absolute or ~ path) holding one id a
+    # line, read at each hook event so a change applies at once. Empty: every session speaks.
+    speak_only: list[str] = field(default_factory=list)
     speed: float = 1.0
     # Every sentence is brought to this integrated loudness (LUFS) before it plays.
     loudness: float = -16.0
@@ -218,3 +221,23 @@ def _coerce(value: str, kind: type) -> object:
     if kind is list:
         return [part.strip() for part in value.split(",") if part.strip()]
     return kind(value)
+
+
+def may_speak(cfg: Config, session: str) -> bool:
+    """Whether hook events from `session` may reach the daemon under `speak_only`: every session
+    when it is empty; else one it names, or one listed in a file it names. A file that cannot be
+    read names nobody, so a missing file keeps every session quiet rather than all speaking."""
+    if not cfg.speak_only:
+        return True
+    if not session:
+        return False
+    for entry in cfg.speak_only:
+        if entry.startswith(("/", "~")):
+            try:
+                if session in Path(entry).expanduser().read_text().split():
+                    return True
+            except (OSError, UnicodeDecodeError):
+                continue
+        elif entry == session:
+            return True
+    return False

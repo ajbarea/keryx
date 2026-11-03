@@ -627,3 +627,58 @@ def test_main_import_does_not_pull_in_voices():
 
     code = "import keryx.__main__, sys; sys.exit(0 if 'keryx.voices' not in sys.modules else 1)"
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+
+
+def test_speak_only_lets_listed_sessions_speak_and_stops_the_rest(monkeypatch, sent, tmp_path):
+    allowed = tmp_path / "orchestrator.session"
+    allowed.write_text("heph-1\n")
+    assert cli.main(["speak-only", str(allowed), "s-direct"]) == 0
+    stop = {"hook_event_name": "Stop", "last_assistant_message": "Done."}
+    for session in ("heph-1", "s-direct", "worker", ""):
+        run_hook(monkeypatch, {**stop, "session_id": session})
+    assert [r["session"] for r in sent["spawn"]] == ["heph-1", "s-direct"]
+    # The file is read at each event, so a new id in it speaks at once.
+    allowed.write_text("worker\n")
+    run_hook(monkeypatch, {**stop, "session_id": "worker"})
+    run_hook(monkeypatch, {**stop, "session_id": "heph-1"})
+    assert [r["session"] for r in sent["spawn"]][2:] == ["worker"]
+
+
+def test_speak_only_with_an_unreadable_file_lets_nobody_speak(monkeypatch, sent, tmp_path):
+    assert cli.main(["speak-only", str(tmp_path / "missing")]) == 0
+    run_hook(
+        monkeypatch, {"hook_event_name": "Stop", "session_id": "s", "last_assistant_message": "Hi."}
+    )
+    assert sent["spawn"] == []
+
+
+def test_speak_only_everyone_clears_it_and_no_argument_shows_it(monkeypatch, sent, capsys):
+    cli.main(["speak-only", "a", "b"])
+    capsys.readouterr()
+    cli.main(["speak-only"])
+    assert capsys.readouterr().out.split() == ["a", "b"]
+    cli.main(["speak-only", "--everyone"])
+    assert Config.load().speak_only == []
+    run_hook(
+        monkeypatch, {"hook_event_name": "Stop", "session_id": "z", "last_assistant_message": "Hi."}
+    )
+    assert sent["spawn"][0]["session"] == "z"
+    assert cli.main(["speak-only", "--bogus"]) == 2
+
+
+def test_a_session_speak_only_leaves_out_never_replays(monkeypatch, sent):
+    cli.main(["speak-only", "heph"])
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(
+            json.dumps(
+                {
+                    "hook_event_name": "UserPromptSubmit",
+                    "session_id": "worker",
+                    "prompt": "say that again",
+                }
+            )
+        ),
+    )
+    assert cli.main(["replay-hook"]) == 0
+    assert sent["send"] == []

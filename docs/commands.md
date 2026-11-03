@@ -30,6 +30,7 @@ The same `keryx` binary runs from a shell:
 | Command | What it does |
 | --- | --- |
 | `keryx on`, `keryx off` | Turn speech on or off |
+| `keryx speak-only [ID\|FILE ...]` | Let only these sessions speak (session ids, or files holding them); `--everyone` lets every session speak again; no argument shows the list |
 | `keryx status` | Show settings, whether the daemon is up, and one line per setup check (exit 1 if one is missing) |
 | `keryx say TEXT` | Speak TEXT as given |
 | `keryx again` | Say this terminal's last line again |
