@@ -10,7 +10,7 @@ variable named `KERYX_<FIELD>`, such as `KERYX_SPEED=1.3`. The environment wins 
 
 `config.json` holds only what you or `keryx on` and `keryx off` set. A file that cannot be read
 is ignored, and `on` and `off` keep it as `config.json.bad`. A value of the wrong type falls
-back to the default, and the daemon log names it.
+back to the default, and the daemon log names it; `speak_only` instead lets nobody speak.
 
 ## Settings
 
@@ -19,6 +19,7 @@ back to the default, and the daemon log names it.
 | `enabled` | `true` | Speak at all |
 | `voice` | `af_heart` | Any [Kokoro voice](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md); the first voice handed out |
 | `distinct_voices` | `true` | Give each terminal its own voice; `false` speaks every terminal in `voice` |
+| `speak_only` | `[]` | Only these sessions speak: session ids, or files (an absolute or `~` path) listing one id a line (text after a `#` is a comment), read at every hook event, so editing the file takes effect at once. A session id changes on `/clear`, so a file the caller keeps current (such as an orchestrator's session record) outlasts a raw id. Every other session's hook stops before the daemon, so it costs nothing. A file that cannot be read, is not a regular file, or is over 64 KiB names nobody. `[]`: every session speaks. Set it with `keryx speak-only` |
 | `speed` | `1.0` | Speaking rate |
 | `loudness` | `-16.0` | Loudness (LUFS) every sentence is brought to before it plays |
 | `model` | `gemma3:4b` | Ollama model that shortens replies; empty to speak the opening sentences instead |

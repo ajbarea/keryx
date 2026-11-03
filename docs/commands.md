@@ -20,6 +20,10 @@ from Claude Code 2.1.287. It runs at once, without a Claude turn, even while Cla
 On an older Claude Code it is an unknown command. Run `keryx on`, `off`, `again` or `status` in
 a shell instead.
 
+To silence one session only, start it with `KERYX_ENABLED=false` in its environment; its hook
+then exits at once. `speak_only` (see [Configuration](configuration.md)) does the same for every
+session but the ones it names, and applies to running sessions too.
+
 `on` and `off` write only the `enabled` key to `config.json`. If `KERYX_ENABLED` is set in the
 environment, it overrides the file, and keryx prints a note saying so.
 
@@ -30,6 +34,7 @@ The same `keryx` binary runs from a shell:
 | Command | What it does |
 | --- | --- |
 | `keryx on`, `keryx off` | Turn speech on or off |
+| `keryx speak-only [ID\|FILE ...]` | Let only these sessions speak. An argument with a `/`, or naming something that exists here, is stored as an absolute path (a folder is refused; a note if it is not a file yet); anything else is a session id. `--everyone` lets every session speak again; no argument shows the list |
 | `keryx status` | Show settings, whether the daemon is up, and one line per setup check (exit 1 if one is missing) |
 | `keryx say TEXT` | Speak TEXT as given |
 | `keryx again` | Say this terminal's last line again |

@@ -66,6 +66,9 @@ class Config:
     voice: str = "af_heart"
     # Give each terminal its own voice; `voice` is the first one handed out.
     distinct_voices: bool = True
+    # Only these sessions speak: session ids, or files (an absolute or ~ path) holding one id a
+    # line, read at each hook event so a change applies at once. Empty: every session speaks.
+    speak_only: list[str] = field(default_factory=list)
     speed: float = 1.0
     # Every sentence is brought to this integrated loudness (LUFS) before it plays.
     loudness: float = -16.0
@@ -92,6 +95,17 @@ class Config:
     def load(cls, env: bool = True) -> Config:
         """Settings from the file, then `KERYX_*` env overrides unless `env` is False."""
         raw = read_raw()
+        # speak_only fails closed: a plain string is a list of one, and any other value
+        # that is not a list of strings names nobody rather than letting every session speak.
+        if "speak_only" in raw:
+            only = raw["speak_only"]
+            if isinstance(only, str):
+                raw["speak_only"] = [only]
+            elif not (isinstance(only, list) and all(isinstance(v, str) for v in only)):
+                log.warning(
+                    "config.json speak_only=%r is not a list of strings; nobody speaks", only
+                )
+                raw["speak_only"] = [SPEAK_ONLY_NOBODY]
         # JSON `0` or `300` (seconds) is as good as "0" or "300".
         if isinstance(raw.get("keep_alive"), int | float) and not isinstance(
             raw["keep_alive"], bool
@@ -218,3 +232,45 @@ def _coerce(value: str, kind: type) -> object:
     if kind is list:
         return [part.strip() for part in value.split(",") if part.strip()]
     return kind(value)
+
+
+# A speak_only file larger than this names nobody: the hook reads it on every event.
+SPEAK_ONLY_FILE_MAX = 64 * 1024
+# What a malformed speak_only becomes: an entry no session id can equal.
+SPEAK_ONLY_NOBODY = "(malformed speak_only: nobody speaks)"
+
+
+def speak_only_ids(path: str) -> list[str]:
+    """The session ids in a speak_only file: one a line, anything after a `#` a comment,
+    blank lines skipped. Anything but a readable regular file of at most SPEAK_ONLY_FILE_MAX
+    bytes names nobody."""
+    file = Path(path).expanduser()
+    try:
+        if not file.is_file():
+            return []
+        with file.open("rb") as f:
+            data = f.read(SPEAK_ONLY_FILE_MAX + 1)  # bounded even if the file grows meanwhile
+        if len(data) > SPEAK_ONLY_FILE_MAX:
+            return []
+        lines = data.decode().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    ids = (line.split("#", 1)[0].strip() for line in lines)
+    return [i for i in ids if i]
+
+
+def may_speak(cfg: Config, session: str) -> bool:
+    """Whether hook events from `session` may reach the daemon under `speak_only`: every session
+    when it is empty; else one it names, or one listed in a file it names. A file that cannot be
+    read names nobody, so a missing file keeps every session quiet rather than all speaking."""
+    if not cfg.speak_only:
+        return True
+    if not session:
+        return False
+    for entry in cfg.speak_only:
+        if entry.startswith(("/", "~")):
+            if session in speak_only_ids(entry):
+                return True
+        elif entry == session:
+            return True
+    return False
