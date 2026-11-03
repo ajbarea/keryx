@@ -697,7 +697,7 @@ def test_speak_only_as_a_plain_string_is_a_list_of_one_not_everyone(monkeypatch,
 
 def test_speak_only_file_reads_one_id_a_line_and_skips_comments(monkeypatch, sent, tmp_path):
     f = tmp_path / "ids"
-    f.write_text("# worker is quiet\n heph \r\n\n")
+    f.write_text("# worker is quiet\n heph # the orchestrator\r\n\n")
     cli.main(["speak-only", str(f)])
     for session in ("heph", "worker", "#"):
         run_hook(
@@ -712,7 +712,9 @@ def test_speak_only_never_reads_a_directory_or_an_oversized_file(monkeypatch, se
 
     big = tmp_path / "big"
     big.write_text("heph\n" + "x" * SPEAK_ONLY_FILE_MAX)
-    cli.main(["speak-only", str(tmp_path), str(big)])
+    # A folder in the file (the CLI refuses one) still names nobody.
+    config_dir().mkdir(parents=True, exist_ok=True)
+    (config_dir() / "config.json").write_text(json.dumps({"speak_only": [str(tmp_path), str(big)]}))
     run_hook(
         monkeypatch,
         {"hook_event_name": "Stop", "session_id": "heph", "last_assistant_message": "Hi."},
@@ -741,3 +743,21 @@ def test_speak_only_says_when_the_environment_overrides_it(monkeypatch, capsys):
     monkeypatch.setenv("KERYX_SPEAK_ONLY", "zzz")
     cli.main(["speak-only", "heph"])
     assert "KERYX_SPEAK_ONLY in the environment overrides this" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("value", [5, None, {"a": 1}, ["heph", 5]])
+def test_a_malformed_speak_only_lets_nobody_speak(monkeypatch, sent, value):
+    config_dir().mkdir(parents=True, exist_ok=True)
+    (config_dir() / "config.json").write_text(json.dumps({"speak_only": value}))
+    run_hook(
+        monkeypatch,
+        {"hook_event_name": "Stop", "session_id": "heph", "last_assistant_message": "Hi."},
+    )
+    assert sent["spawn"] == []
+
+
+def test_speak_only_refuses_a_folder_and_strips_spaces(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["speak-only", "."]) == 2
+    assert cli.main(["speak-only", " heph "]) == 0
+    assert Config.load().speak_only == ["heph"]

@@ -34,7 +34,7 @@ The same `keryx` binary runs from a shell:
 | Command | What it does |
 | --- | --- |
 | `keryx on`, `keryx off` | Turn speech on or off |
-| `keryx speak-only [ID\|FILE ...]` | Let only these sessions speak. An argument with a `/`, or naming a file here, is stored as an absolute path (with a note if it is not a file yet); anything else is a session id. `--everyone` lets every session speak again; no argument shows the list |
+| `keryx speak-only [ID\|FILE ...]` | Let only these sessions speak. An argument with a `/`, or naming something that exists here, is stored as an absolute path (a folder is refused; a note if it is not a file yet); anything else is a session id. `--everyone` lets every session speak again; no argument shows the list |
 | `keryx status` | Show settings, whether the daemon is up, and one line per setup check (exit 1 if one is missing) |
 | `keryx say TEXT` | Speak TEXT as given |
 | `keryx again` | Say this terminal's last line again |

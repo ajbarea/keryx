@@ -95,10 +95,17 @@ class Config:
     def load(cls, env: bool = True) -> Config:
         """Settings from the file, then `KERYX_*` env overrides unless `env` is False."""
         raw = read_raw()
-        # One entry written as a plain string is a list of one, never a misfit that lets
-        # every session speak.
-        if isinstance(raw.get("speak_only"), str):
-            raw["speak_only"] = [raw["speak_only"]]
+        # speak_only fails closed: a plain string is a list of one, and any other value
+        # that is not a list of strings names nobody rather than letting every session speak.
+        if "speak_only" in raw:
+            only = raw["speak_only"]
+            if isinstance(only, str):
+                raw["speak_only"] = [only]
+            elif not (isinstance(only, list) and all(isinstance(v, str) for v in only)):
+                log.warning(
+                    "config.json speak_only=%r is not a list of strings; nobody speaks", only
+                )
+                raw["speak_only"] = [SPEAK_ONLY_NOBODY]
         # JSON `0` or `300` (seconds) is as good as "0" or "300".
         if isinstance(raw.get("keep_alive"), int | float) and not isinstance(
             raw["keep_alive"], bool
@@ -229,19 +236,27 @@ def _coerce(value: str, kind: type) -> object:
 
 # A speak_only file larger than this names nobody: the hook reads it on every event.
 SPEAK_ONLY_FILE_MAX = 64 * 1024
+# What a malformed speak_only becomes: an entry no session id can equal.
+SPEAK_ONLY_NOBODY = "(malformed speak_only: nobody speaks)"
 
 
 def speak_only_ids(path: str) -> list[str]:
-    """The session ids in a speak_only file: one a line, blank lines and `#` comments skipped.
-    Anything but a readable regular file under SPEAK_ONLY_FILE_MAX names nobody."""
+    """The session ids in a speak_only file: one a line, anything after a `#` a comment,
+    blank lines skipped. Anything but a readable regular file of at most SPEAK_ONLY_FILE_MAX
+    bytes names nobody."""
     file = Path(path).expanduser()
     try:
-        if not file.is_file() or file.stat().st_size > SPEAK_ONLY_FILE_MAX:
+        if not file.is_file():
             return []
-        lines = file.read_text().splitlines()
+        with file.open("rb") as f:
+            data = f.read(SPEAK_ONLY_FILE_MAX + 1)  # bounded even if the file grows meanwhile
+        if len(data) > SPEAK_ONLY_FILE_MAX:
+            return []
+        lines = data.decode().splitlines()
     except (OSError, UnicodeDecodeError):
         return []
-    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+    ids = (line.split("#", 1)[0].strip() for line in lines)
+    return [i for i in ids if i]
 
 
 def may_speak(cfg: Config, session: str) -> bool:

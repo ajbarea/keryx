@@ -152,11 +152,17 @@ def _speak_only(cfg: Config, targets: list[str]) -> int:
         return 2
     else:
         entries = []
-        for t in targets:
-            # A path (it has a / or names a file here) is stored absolute, so the hook,
+        for t in (t.strip() for t in targets):
+            # A path (it has a / or names something here) is stored absolute, so the hook,
             # which runs in each session's own folder, finds it; anything else is an id.
             if "/" in t or Path(t).expanduser().exists():
                 path = os.path.abspath(os.path.expanduser(t))
+                if Path(path).is_dir():
+                    print(
+                        f"keryx speak-only: {path} is a folder, not a file of session ids",
+                        file=sys.stderr,
+                    )
+                    return 2
                 if not Path(path).is_file():
                     print(f"note: {path} is not a file yet; until it is, it names nobody")
                 entries.append(path)
