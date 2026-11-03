@@ -11,6 +11,9 @@ Last reviewed: 2026-10-03.
 
 ## Completed
 
+- 2026-11-02: only the sessions you name speak (0.12.0, #75). `speak_only` lists session ids or
+  files holding them, read at every hook event, so a change reaches running sessions; every other
+  session's hook stops before the daemon. It fails closed. klepsydra's "Heph only" Voices mode uses it.
 - 2026-10-26: replies you can replay from klepsydra (0.11.0, #59 to #61). Each session's latest
   spoken reply is kept as one clip in klepsydra's `replies/` folder for its play buttons
   (`reply_clips`, on by default). af_aoede (Dokimasia) is now the last of the ten portrait
