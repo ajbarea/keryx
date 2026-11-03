@@ -10,7 +10,7 @@ variable named `KERYX_<FIELD>`, such as `KERYX_SPEED=1.3`. The environment wins 
 
 `config.json` holds only what you or `keryx on` and `keryx off` set. A file that cannot be read
 is ignored, and `on` and `off` keep it as `config.json.bad`. A value of the wrong type falls
-back to the default, and the daemon log names it.
+back to the default, and the daemon log names it; `speak_only` instead lets nobody speak.
 
 ## Settings
 

@@ -761,3 +761,17 @@ def test_speak_only_refuses_a_folder_and_strips_spaces(monkeypatch, tmp_path):
     assert cli.main(["speak-only", "."]) == 2
     assert cli.main(["speak-only", " heph "]) == 0
     assert Config.load().speak_only == ["heph"]
+
+
+def test_a_speak_only_file_of_exactly_the_limit_is_read(monkeypatch, sent, tmp_path):
+    from keryx.config import SPEAK_ONLY_FILE_MAX
+
+    f = tmp_path / "ids"
+    f.write_bytes(b"heph\n" + b"#" * (SPEAK_ONLY_FILE_MAX - 5))
+    assert f.stat().st_size == SPEAK_ONLY_FILE_MAX
+    cli.main(["speak-only", str(f)])
+    run_hook(
+        monkeypatch,
+        {"hook_event_name": "Stop", "session_id": "heph", "last_assistant_message": "Hi."},
+    )
+    assert [r["session"] for r in sent["spawn"]] == ["heph"]
