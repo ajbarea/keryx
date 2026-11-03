@@ -95,6 +95,10 @@ class Config:
     def load(cls, env: bool = True) -> Config:
         """Settings from the file, then `KERYX_*` env overrides unless `env` is False."""
         raw = read_raw()
+        # One entry written as a plain string is a list of one, never a misfit that lets
+        # every session speak.
+        if isinstance(raw.get("speak_only"), str):
+            raw["speak_only"] = [raw["speak_only"]]
         # JSON `0` or `300` (seconds) is as good as "0" or "300".
         if isinstance(raw.get("keep_alive"), int | float) and not isinstance(
             raw["keep_alive"], bool
@@ -223,6 +227,23 @@ def _coerce(value: str, kind: type) -> object:
     return kind(value)
 
 
+# A speak_only file larger than this names nobody: the hook reads it on every event.
+SPEAK_ONLY_FILE_MAX = 64 * 1024
+
+
+def speak_only_ids(path: str) -> list[str]:
+    """The session ids in a speak_only file: one a line, blank lines and `#` comments skipped.
+    Anything but a readable regular file under SPEAK_ONLY_FILE_MAX names nobody."""
+    file = Path(path).expanduser()
+    try:
+        if not file.is_file() or file.stat().st_size > SPEAK_ONLY_FILE_MAX:
+            return []
+        lines = file.read_text().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+
+
 def may_speak(cfg: Config, session: str) -> bool:
     """Whether hook events from `session` may reach the daemon under `speak_only`: every session
     when it is empty; else one it names, or one listed in a file it names. A file that cannot be
@@ -233,11 +254,8 @@ def may_speak(cfg: Config, session: str) -> bool:
         return False
     for entry in cfg.speak_only:
         if entry.startswith(("/", "~")):
-            try:
-                if session in Path(entry).expanduser().read_text().split():
-                    return True
-            except (OSError, UnicodeDecodeError):
-                continue
+            if session in speak_only_ids(entry):
+                return True
         elif entry == session:
             return True
     return False

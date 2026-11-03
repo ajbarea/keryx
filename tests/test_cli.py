@@ -14,7 +14,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.setenv("CLAUDE_CODE_ENTRYPOINT", "cli")
-    for key in ("KERYX_ENABLED", "KERYX_VOICE", "KERYX_MODEL"):
+    for key in ("KERYX_ENABLED", "KERYX_VOICE", "KERYX_MODEL", "KERYX_SPEAK_ONLY"):
         monkeypatch.delenv(key, raising=False)
 
 
@@ -682,3 +682,62 @@ def test_a_session_speak_only_leaves_out_never_replays(monkeypatch, sent):
     )
     assert cli.main(["replay-hook"]) == 0
     assert sent["send"] == []
+
+
+def test_speak_only_as_a_plain_string_is_a_list_of_one_not_everyone(monkeypatch, sent, tmp_path):
+    config_dir().mkdir(parents=True, exist_ok=True)
+    (config_dir() / "config.json").write_text(json.dumps({"speak_only": "heph"}))
+    for session in ("heph", "worker"):
+        run_hook(
+            monkeypatch,
+            {"hook_event_name": "Stop", "session_id": session, "last_assistant_message": "Hi."},
+        )
+    assert [r["session"] for r in sent["spawn"]] == ["heph"]
+
+
+def test_speak_only_file_reads_one_id_a_line_and_skips_comments(monkeypatch, sent, tmp_path):
+    f = tmp_path / "ids"
+    f.write_text("# worker is quiet\n heph \r\n\n")
+    cli.main(["speak-only", str(f)])
+    for session in ("heph", "worker", "#"):
+        run_hook(
+            monkeypatch,
+            {"hook_event_name": "Stop", "session_id": session, "last_assistant_message": "Hi."},
+        )
+    assert [r["session"] for r in sent["spawn"]] == ["heph"]
+
+
+def test_speak_only_never_reads_a_directory_or_an_oversized_file(monkeypatch, sent, tmp_path):
+    from keryx.config import SPEAK_ONLY_FILE_MAX
+
+    big = tmp_path / "big"
+    big.write_text("heph\n" + "x" * SPEAK_ONLY_FILE_MAX)
+    cli.main(["speak-only", str(tmp_path), str(big)])
+    run_hook(
+        monkeypatch,
+        {"hook_event_name": "Stop", "session_id": "heph", "last_assistant_message": "Hi."},
+    )
+    assert sent["spawn"] == []
+
+
+def test_speak_only_cli_stores_paths_absolute_and_says_when_a_file_is_missing(
+    monkeypatch, capsys, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "orchestrator.session").write_text("heph\n")
+    assert cli.main(["speak-only", "orchestrator.session", "sub/later", "s-id"]) == 0
+    out = capsys.readouterr().out
+    assert Config.load().speak_only == [
+        str(tmp_path / "orchestrator.session"),
+        str(tmp_path / "sub/later"),
+        "s-id",
+    ]
+    assert f"note: {tmp_path / 'sub/later'} is not a file yet" in out
+    assert cli.main(["speak-only", ""]) == 2
+    assert cli.main(["speak-only", "a", "--everyone"]) == 2
+
+
+def test_speak_only_says_when_the_environment_overrides_it(monkeypatch, capsys):
+    monkeypatch.setenv("KERYX_SPEAK_ONLY", "zzz")
+    cli.main(["speak-only", "heph"])
+    assert "KERYX_SPEAK_ONLY in the environment overrides this" in capsys.readouterr().out

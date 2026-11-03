@@ -19,8 +19,10 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from keryx import client
@@ -137,6 +139,36 @@ def _set_voice(cfg: Config, arg: str | None) -> int:
     return 0
 
 
+def _speak_only(cfg: Config, targets: list[str]) -> int:
+    """`keryx speak-only`: show, set or clear the sessions that may speak."""
+    usage = "usage: keryx speak-only [ID|FILE ...] | --everyone"
+    if not targets:
+        print("\n".join(cfg.speak_only) if cfg.speak_only else "every session speaks")
+        return 0
+    if targets == ["--everyone"]:
+        entries: list[str] = []
+    elif any(t.startswith("-") or not t.strip() for t in targets):
+        print(usage, file=sys.stderr)
+        return 2
+    else:
+        entries = []
+        for t in targets:
+            # A path (it has a / or names a file here) is stored absolute, so the hook,
+            # which runs in each session's own folder, finds it; anything else is an id.
+            if "/" in t or Path(t).expanduser().exists():
+                path = os.path.abspath(os.path.expanduser(t))
+                if not Path(path).is_file():
+                    print(f"note: {path} is not a file yet; until it is, it names nobody")
+                entries.append(path)
+            else:
+                entries.append(t)
+    set_stored(speak_only=entries)
+    print("only these speak: " + ", ".join(entries) if entries else "every session speaks")
+    if Config.load().speak_only != entries:
+        print("note: KERYX_SPEAK_ONLY in the environment overrides this")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     cmd = args[0] if args else "status"
@@ -183,20 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if cmd == "speak-only":
-        targets = args[1:]
-        if targets == ["--everyone"]:
-            set_stored(speak_only=[])
-            print("every session speaks")
-            return 0
-        if not targets:
-            print("\n".join(cfg.speak_only) if cfg.speak_only else "every session speaks")
-            return 0
-        if any(t.startswith("-") for t in targets):
-            print("usage: keryx speak-only [ID|FILE ...] | --everyone", file=sys.stderr)
-            return 2
-        set_stored(speak_only=targets)
-        print("only these speak: " + ", ".join(targets))
-        return 0
+        return _speak_only(cfg, args[1:])
 
     if cmd == "status":
         from keryx import doctor
