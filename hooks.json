@@ -1,0 +1,25 @@
+{
+  "keryx": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "\"./bin/keryx\" hook",
+        "timeout": 60
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "\"./bin/keryx\" hook",
+        "timeout": 60
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "\"./bin/keryx\" hook",
+        "timeout": 60
+      }
+    ]
+  }
+}

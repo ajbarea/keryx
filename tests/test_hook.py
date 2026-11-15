@@ -1,3 +1,4 @@
+import json
 import subprocess
 
 import pytest
@@ -290,3 +291,101 @@ def test_a_curly_apostrophe_is_still_a_replay_request():
     from keryx.hook import is_replay
 
     assert is_replay("I didn\u2019t catch that")
+
+
+def test_agy_stop_payload_reads_transcript(tmp_path):
+    transcript = tmp_path / "transcript.jsonl"
+    lines = [
+        json.dumps({"type": "USER_INPUT", "content": "hello"}),
+        json.dumps(
+            {"type": "PLANNER_RESPONSE", "content": "", "tool_calls": [{"name": "run_command"}]}
+        ),
+        json.dumps({"type": "GENERIC", "content": "command output"}),
+        json.dumps({"type": "PLANNER_RESPONSE", "content": "All tests pass successfully."}),
+    ]
+    transcript.write_text("\n".join(lines) + "\n")
+
+    agy_event = {
+        "hookEventName": "Stop",
+        "conversationId": "conv-123",
+        "transcriptPath": str(transcript),
+        "terminationReason": "NO_TOOL_CALL",
+        "workspacePaths": [str(tmp_path)],
+    }
+    req = request_for(agy_event, "")
+    assert req == {
+        "op": "say",
+        "kind": "reply",
+        "text": "All tests pass successfully.",
+        "session": "conv-123",
+        "prompt": "",
+        "terminal": "",
+        "source": tmp_path.name,
+    }
+
+
+def test_agy_pre_invocation_stops_and_warms(tmp_path):
+    agy_event = {
+        "hookEventName": "PreInvocation",
+        "conversationId": "conv-456",
+        "lastUserInput": "check status",
+        "workspacePaths": [str(tmp_path)],
+    }
+    req = request_for(agy_event, "")
+    assert req == {
+        "op": "stop",
+        "session": "conv-456",
+        "prompt": "",
+        "terminal": "",
+        "source": tmp_path.name,
+        "warm": True,
+    }
+
+
+def test_agy_pre_invocation_replay_phrase():
+    agy_event = {
+        "hookEventName": "PreInvocation",
+        "conversationId": "conv-789",
+        "lastUserInput": "what did you say?",
+    }
+    req = request_for(agy_event, "")
+    assert req is not None
+    assert req["op"] == "stop"
+    assert req["interrupt"] is False
+
+
+def test_agy_session_start(tmp_path):
+    agy_event = {
+        "hookEventName": "SessionStart",
+        "conversationId": "conv-init",
+        "workspacePaths": [str(tmp_path)],
+    }
+    req = request_for(agy_event, "")
+    assert req == {
+        "op": "warm",
+        "version": version(),
+        "session": "conv-init",
+        "terminal": "",
+        "source": tmp_path.name,
+    }
+
+
+def test_agy_canceled_stop_is_silent(tmp_path):
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(json.dumps({"type": "PLANNER_RESPONSE", "content": "ignored"}))
+    agy_event = {
+        "hookEventName": "Stop",
+        "conversationId": "conv-canceled",
+        "transcriptPath": str(transcript),
+        "terminationReason": "USER_CANCELED",
+    }
+    assert request_for(agy_event, "") is None
+
+
+def test_agy_missing_or_empty_transcript_is_silent():
+    agy_event = {
+        "hookEventName": "Stop",
+        "conversationId": "conv-missing",
+        "transcriptPath": "/nonexistent/path/transcript.jsonl",
+    }
+    assert request_for(agy_event, "") is None

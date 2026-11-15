@@ -37,6 +37,19 @@ def test_an_npm_install_is_found_by_its_command_line(tmp_path):
     assert terminal_id(50, proc) == "30:700"
 
 
+def test_agy_is_found_as_a_terminal(tmp_path):
+    proc = fake_proc(
+        tmp_path,
+        {
+            50: ("python3", 40, 900, ["python3", "-m", "keryx", "hook"]),
+            40: ("sh", 30, 800, ["sh", "-c", "keryx hook"]),
+            30: ("agy", 20, 700, ["agy"]),
+            20: ("bash", 10, 600, ["bash"]),
+        },
+    )
+    assert terminal_id(50, proc) == "30:700"
+
+
 def test_a_script_merely_mentioning_claude_is_not_a_terminal(tmp_path):
     proc = fake_proc(
         tmp_path,

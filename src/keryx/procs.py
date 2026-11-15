@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 PROC = Path("/proc")
-CLAUDE_NAMES = {"claude", "claude-code"}
+CLAUDE_NAMES = {"claude", "claude-code", "agy", "antigravity", "antigravity-cli"}
 
 
 def _stat(pid: int, proc: Path) -> list[str] | None:

@@ -1,29 +1,21 @@
 # IMPL
 
-## Current: 0.11.0 released (PRs #59 to #61)
+## Current: Dual-Runtime Compatibility (Claude Code + Antigravity)
+
+Slice: Add native normalization and transcript extraction so keryx speaks for both Claude Code and Antigravity (AGY) sessions without separate forks.
 
 ✅ Done
-- #61: each session's latest spoken reply kept as `replies/<session>.wav` beside klepsydra's
-  `fleet/` (klepsydra #100's play buttons); `reply_clips` on by default.
-- #60: af_aoede (Dokimasia) handed out last of the ten portrait voices.
-- #59: onnxruntime-gpu 1.31; CUDA load and synthesis checked on AJ's GPU.
+- `src/keryx/hook.py`: Added `last_assistant_message_from_transcript` to extract `PLANNER_RESPONSE` from AGY `transcriptPath` (constant-time tail seek up to 128KB).
+- `src/keryx/hook.py`: Added `normalize()` to map `conversationId` -> `session_id`, `hookEventName` -> `hook_event_name`, and `PreInvocation` -> `UserPromptSubmit` (for prompt interruption and replay detection).
+- `src/keryx/procs.py`: Added `agy`, `antigravity`, `antigravity-cli` to `CLAUDE_NAMES` so `terminal_id()` detects Antigravity sessions and allocates terminal voices.
+- `hooks.json`: Created root hook manifest configuring `SessionStart`, `PreInvocation`, and `Stop`.
+- `tests/`: Added unit tests in `test_hook.py` and `test_procs.py` covering AGY `Stop`, `PreInvocation`, `SessionStart`, cancellation, empty transcripts, and `agy` terminal detection (672 passed, 96% coverage).
 
 📋 Next
-- After install: tap a reply clip on klepsydra's iPhone wall once.
+- Commit changes with conventional commit (`feat(hook): dual-runtime adapter for Claude Code and Antigravity`).
+- Document delivery in desktop note.
 
 ## Verify
-- `make lint`; `uv run pytest -q` (`test_the_real_powershell_loop_plays_a_clip_to_its_end`
-  drives real Windows audio and fails intermittently on main too).
-- A worktree's `uv sync` leaves out the `cuda` extra, so Kokoro there falls back to the CPU.
-  Measure GPU numbers with main's venv (`bin/keryx` adds `--extra cuda` when nvidia-smi exists).
-
-## Install state
-
-- Installed from the `techne` marketplace (`ajbarea/techne`); this repo has no
-  marketplace of its own. To test local changes, start a session with
-  `claude --plugin-dir .` from this clone.
-- The plugin cache is keyed by version: after changing code, bump `version` in
-  `.claude-plugin/plugin.json` and `pyproject.toml`, or `claude plugin uninstall` then
-  `install`, or `claude plugin update` reports "already at the latest version".
-
-The long view lives in `ROADMAP.md`.
+- `make lint`: clean (61 files formatted, ruff checks passed, ty checks passed).
+- `make test`: 672 passed, 1 skipped (audio device offline), 96% total coverage.
+- Live hook test: verified `bin/keryx hook` handles AGY `SessionStart` and `Stop` payloads without error.

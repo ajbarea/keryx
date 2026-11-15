@@ -87,6 +87,81 @@ def source_name(cwd: str) -> str:
     return here.name
 
 
+def last_assistant_message_from_transcript(path: str | Path, max_bytes: int = 128 * 1024) -> str:
+    """Extract the latest PLANNER_RESPONSE content from an Antigravity transcript.jsonl."""
+    try:
+        p = Path(path)
+        if not p.is_file():
+            return ""
+        size = p.stat().st_size
+        with p.open("r", encoding="utf-8", errors="replace") as f:
+            if size > max_bytes:
+                f.seek(size - max_bytes)
+                f.readline()
+            for line in reversed(f.readlines()):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    step = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if step.get("type") == "PLANNER_RESPONSE":
+                    content = step.get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content
+    except OSError:
+        pass
+    return ""
+
+
+def normalize(event: dict) -> dict:
+    """Normalize Claude Code or Antigravity (AGY) hook payload into canonical format."""
+    if not isinstance(event, dict):
+        return {}
+
+    out = dict(event)
+
+    # 1. Hook event name: Claude Code "hook_event_name", AGY "hookEventName"
+    event_name = event.get("hook_event_name") or event.get("hookEventName")
+    if event_name:
+        if event_name == "PreInvocation":
+            event_name = "UserPromptSubmit"
+        out["hook_event_name"] = event_name
+
+    # 2. Session ID: Claude Code "session_id", AGY "conversationId"
+    session_id = event.get("session_id") or event.get("conversationId")
+    if session_id:
+        out["session_id"] = str(session_id)
+
+    # 3. Working directory: Claude Code "cwd", AGY "cwd" or first item in "workspacePaths"
+    if not out.get("cwd"):
+        ws = event.get("workspacePaths")
+        if isinstance(ws, list) and ws:
+            out["cwd"] = str(ws[0])
+
+    # 4. User prompt: Claude Code "prompt" or "user_input", AGY "lastUserInput"
+    if not out.get("prompt"):
+        if "user_input" in event:
+            out["prompt"] = event["user_input"]
+        elif "lastUserInput" in event:
+            out["prompt"] = event["lastUserInput"]
+
+    # 5. Assistant reply: Claude Code "last_assistant_message", AGY transcriptPath
+    if not out.get("last_assistant_message") and event_name == "Stop":
+        term_reason = event.get("terminationReason")
+        if term_reason in ("USER_CANCELED", "ERROR"):
+            out["last_assistant_message"] = ""
+        else:
+            transcript_path = event.get("transcriptPath")
+            if transcript_path:
+                out["last_assistant_message"] = last_assistant_message_from_transcript(
+                    transcript_path
+                )
+
+    return out
+
+
 def request_for(event: dict, entrypoint: str) -> dict | None:
     """The daemon request for one hook payload, or None to stay silent.
 
@@ -95,6 +170,7 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
     """
     if entrypoint.startswith(HEADLESS_PREFIX):
         return None
+    event = normalize(event)
     name = event.get("hook_event_name")
     session = event.get("session_id", "")
     if name == "SessionStart":
@@ -170,4 +246,4 @@ def parse(stdin_text: str) -> dict:
         event = json.loads(stdin_text)
     except json.JSONDecodeError:
         return {}
-    return event if isinstance(event, dict) else {}
+    return normalize(event) if isinstance(event, dict) else {}
