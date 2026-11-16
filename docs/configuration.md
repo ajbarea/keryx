@@ -38,6 +38,7 @@ back to the default, and the daemon log names it; `speak_only` instead lets nobo
 | Variable | Effect |
 | --- | --- |
 | `KERYX_<FIELD>` | Overrides the setting of that name, one variable per field above |
+| `KERYX_VOICE` | In a session's environment, the voice that session asks for: its terminal holds it unless it already holds one, so a `keryx voice` pick stays. The daemon serves every session and takes its default voice from the file |
 | `XDG_CONFIG_HOME` | Moves the config directory; `config.json` and `pronounce.json` live in `$XDG_CONFIG_HOME/keryx` |
 | `XDG_CACHE_HOME` | Moves the cache directory; the daemon socket, `voices.json` and the venvs live in `$XDG_CACHE_HOME/keryx` |
 | `XDG_STATE_HOME` | Moves the state directory; `daemon.log` and `daemon.stderr` live in `$XDG_STATE_HOME/keryx/log` |

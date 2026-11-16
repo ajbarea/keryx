@@ -849,3 +849,19 @@ def test_pin_accepts_available_voice_outside_catalogue(tmp_path):
     b = VoiceBook(path, clock=clock, active_seconds=60)
     assert b.pin("s1", "bf_alice") is True
     assert b.assign("s1", "repo") == VoiceSpec(("bf_alice",))
+
+
+def test_a_keryx_voice_pick_outlasts_the_session_voice(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60, alive=lambda _h: True)
+    assert b.assign("9:1", "repo", requested="bf_emma") == VoiceSpec(("bf_emma",))
+    assert b.pin("9:1", "am_michael") is True
+    # Every later hook request still names bf_emma; the pick stays.
+    assert b.assign("9:1", "repo", requested="bf_emma") == VoiceSpec(("am_michael",))
+    assert b.assign("9:1", "repo") == VoiceSpec(("am_michael",))
+
+
+def test_a_requested_blend_is_kept_on_later_requests(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60, alive=lambda _h: True)
+    blend = "af_heart(0.5)+am_michael(0.5)"
+    assert b.assign("9:1", "repo", requested=blend).label() == blend
+    assert b.assign("9:1", "repo", requested=blend).label() == blend

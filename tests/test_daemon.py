@@ -855,3 +855,39 @@ def test_handle_render_failure_logged():
         sp,
     )
     assert reply == {"ok": False, "error": "render failed"}
+
+
+def test_the_daemon_never_takes_a_sessions_voice_as_its_default(tmp_path, monkeypatch):
+    import subprocess
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    monkeypatch.setenv("KERYX_VOICE", "bf_emma")
+    monkeypatch.setenv("KERYX_SPEED", "1.3")
+    seen = {}
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: seen.update(kw))
+    client.spawn()
+    assert "KERYX_VOICE" not in seen["env"]
+    assert seen["env"]["KERYX_SPEED"] == "1.3"
+
+
+def test_a_hooks_say_speaks_in_the_voice_its_terminal_holds():
+    from keryx.voices import VoiceSpec
+
+    class Holding(FakeSpeaker):
+        def claim(self, holder, source, voice=None):
+            super().claim(holder, source, voice)
+            return VoiceSpec(("am_michael",))  # a `keryx voice` pick outranks the session's
+
+    sp = Holding()
+    reply = handle(
+        {"op": "say", "text": "Hi.", "session": "s1", "terminal": "9:1", "voice": "bf_emma"}, sp
+    )
+    assert reply["ok"] is True
+    assert sp.claimed == [("9:1", "", "bf_emma")]
+    assert sp.submitted[0].voice == VoiceSpec(("am_michael",))
+
+
+def test_a_say_with_no_terminal_keeps_its_own_voice_and_claims_nothing():
+    sp = FakeSpeaker()
+    handle({"op": "say", "text": "Hi.", "voice": "am_adam"}, sp)
+    assert sp.claimed == [] and sp.submitted[0].voice.names == ("am_adam",)
