@@ -865,3 +865,13 @@ def test_a_requested_blend_is_kept_on_later_requests(tmp_path):
     blend = "af_heart(0.5)+am_michael(0.5)"
     assert b.assign("9:1", "repo", requested=blend).label() == blend
     assert b.assign("9:1", "repo", requested=blend).label() == blend
+
+
+def test_a_blend_spelled_another_way_is_the_same_voice_on_every_request(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60, alive=lambda _h: True)
+    asked = "af_bella(0.70)+af_heart(0.30)"
+    held = [b.assign("9:1", "repo", requested=asked).label() for _ in range(3)]
+    assert held == ["af_bella(0.7)+af_heart(0.3)"] * 3
+    specs = len(b._specs)
+    b.assign("9:1", "repo", requested=asked)
+    assert len(b._specs) == specs  # no new entry per request

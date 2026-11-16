@@ -214,6 +214,9 @@ class VoiceBook:
             spec = VoiceSpec.parse(label)
         except ValueError:
             return None
+        # Another spelling of a voice already here (`a(0.70)+b(0.30)`) is that voice.
+        if spec.label() in self._index:
+            return self._index[spec.label()]
         if not all(_VOICE_NAME.match(name) for name in spec.names):
             return None
         if not self._available(spec):
