@@ -22,6 +22,7 @@ class FakeSpeaker:
         self.stopped = []
         self.claimed = []
         self.closed = False
+        self.fail_render = False
 
     def submit(self, utt):
         self.submitted.append(utt)
@@ -43,6 +44,12 @@ class FakeSpeaker:
     def again(self, holder):
         self.replays = [*getattr(self, "replays", []), holder]
         return holder == "9:1"
+
+    def render(self, text, path, voice=None):
+        self.rendered = [*getattr(self, "rendered", []), (text, path, voice)]
+        if getattr(self, "fail_render", False):
+            raise RuntimeError("render failed")
+        return 2.5
 
     def close(self, timeout=5.0):
         self.closed = True
@@ -796,3 +803,55 @@ def test_thresholds_of_zero_run_no_probes(monkeypatch):
     assert built.shorten(LONG_REPLY) == "Parser fixed."
     built.warm()
     assert built.warmed == [True]
+
+
+def test_handle_render_success():
+    sp = FakeSpeaker()
+    reply = handle(
+        {"op": "render", "text": "Slide content.", "path": "/tmp/s1.wav", "voice": "am_michael"},
+        sp,
+    )
+    assert reply == {"ok": True, "seconds": 2.5}
+    assert len(sp.rendered) == 1
+    assert sp.rendered[0][0] == "Slide content."
+    assert str(sp.rendered[0][1]) == "/tmp/s1.wav"
+    assert sp.rendered[0][2] is not None and sp.rendered[0][2].names == ("am_michael",)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"op": "render", "text": "", "path": "/tmp/s1.wav"},
+        {"op": "render", "text": "   ", "path": "/tmp/s1.wav"},
+        {"op": "render", "text": "Slide.", "path": ""},
+    ],
+)
+def test_handle_render_empty_text_or_path(payload):
+    sp = FakeSpeaker()
+    reply = handle(payload, sp)
+    assert reply == {"ok": False, "error": "empty text or path"}
+
+
+def test_handle_render_bad_voice():
+    sp = FakeSpeaker()
+    reply = handle({"op": "render", "text": "Slide.", "path": "/tmp/s1.wav", "voice": "bad(x)"}, sp)
+    assert reply["ok"] is False
+
+
+def test_handle_render_unknown_voice():
+    sp = FakeSpeaker()
+    reply = handle(
+        {"op": "render", "text": "Slide.", "path": "/tmp/s1.wav", "voice": "zz_nope"},
+        sp,
+    )
+    assert reply == {"ok": False, "error": "unknown voice 'zz_nope'"}
+
+
+def test_handle_render_failure_logged():
+    sp = FakeSpeaker()
+    sp.fail_render = True
+    reply = handle(
+        {"op": "render", "text": "Slide.", "path": "/tmp/s1.wav"},
+        sp,
+    )
+    assert reply == {"ok": False, "error": "render failed"}

@@ -28,7 +28,7 @@ from keryx.replies import ReplyClips
 from keryx.speaking import SpeakingSignal, envelope
 from keryx.text import split_sentences
 from keryx.voice import write_wav
-from keryx.voices import VoiceSpec, holder
+from keryx.voices import POOL, VoiceSpec, holder
 
 log = logging.getLogger("keryx")
 
@@ -59,6 +59,7 @@ class SpeechQueue(Protocol):
     def again(self, holder: str) -> bool: ...
     def close(self, timeout: float = 5.0) -> None: ...
     def idle(self) -> bool: ...
+    def render(self, text: str, path: Path, voice: VoiceSpec | None = None) -> float: ...
 
 
 _Clip = tuple[Path | None, float, "Utterance", bool, list[float]]
@@ -105,6 +106,7 @@ class Speaker:
         self._player = player
         self._audio_dir = audio_dir
         self._cond = threading.Condition()
+        self._synth_lock = threading.Lock()
         self._to_shorten: list[Utterance] = []  # replies waiting for the summarizer
         self._pending: list[Utterance] = []  # waiting for synthesis
         self._active: list[Utterance] = []  # submitted and not yet fully played
@@ -150,6 +152,14 @@ class Speaker:
 
     def knows(self, spec: VoiceSpec) -> bool:
         return self._voice.has(spec)
+
+    def render(self, text: str, path: Path, voice: VoiceSpec | None = None) -> float:
+        """Synthesize `text` directly to `path` as a single WAV file without playing it."""
+        from keryx.voice import render_wav
+
+        spec = voice or getattr(self._voice, "voice", VoiceSpec((POOL[0],)))
+        with self._synth_lock:
+            return render_wav(text, path, spec, self._voice, self._pronounce)
 
     def stop(self, session: str | None = None, terminal: str = "") -> None:
         """Cancel queued and playing speech, for one session and its terminal, which a
@@ -286,7 +296,8 @@ class Speaker:
         """Synthesize one sentence and queue it, returning its audio; one bad sentence does not
         cost the rest."""
         try:
-            samples, rate = self._speak(utt, sentence, announcement)
+            with self._synth_lock:
+                samples, rate = self._speak(utt, sentence, announcement)
             wav = self._audio_dir / slot_name(next(self._slots))
             seconds = write_wav(wav, samples, rate)
         except Exception:

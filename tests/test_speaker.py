@@ -585,3 +585,43 @@ def test_a_replayed_line_keeps_its_repo_when_the_name_was_not_said_the_first_tim
     sp.again("b")
     wait_idle(sp)
     assert list(sp.spoken)[-2:] == ["ariadne:", "Two."]
+
+
+def test_speaker_render_writes_wav_and_plays_nothing(tmp_path):
+    player = FakePlayer()
+    voice = FakeVoice()
+    sp = Speaker(lambda t: t, voice, player, tmp_path / "audio")
+    out = tmp_path / "out.wav"
+    dur = sp.render("Slide one. Slide two.", out, VoiceSpec(("am_michael",)))
+    assert dur > 0
+    assert out.exists()
+    assert player.played == []
+    assert voice.voices == [VoiceSpec(("am_michael",)), VoiceSpec(("am_michael",))]
+    sp.close()
+
+
+def test_speaker_render_applies_pronounce(tmp_path):
+    player = FakePlayer()
+
+    class CapturingVoice(FakeVoice):
+        def __init__(self):
+            super().__init__()
+            self.texts = []
+
+        def synth(self, text, voice=None):
+            self.texts.append(text)
+            return super().synth(text, voice)
+
+    capturing = CapturingVoice()
+    sp = Speaker(
+        lambda t: t,
+        capturing,
+        player,
+        tmp_path / "audio",
+        pronounce=lambda s: s.replace("Klepsydra", "clepsydra"),
+    )
+    out = tmp_path / "out.wav"
+    sp.render("Look at Klepsydra.", out)
+    assert capturing.texts == ["Look at clepsydra."]
+    assert player.played == []
+    sp.close()
