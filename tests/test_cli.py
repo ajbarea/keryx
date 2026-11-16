@@ -212,6 +212,7 @@ def test_off_then_on_persists(sent, capsys, monkeypatch):
     assert unloaded == [Config().model]
     assert cli.main(["on"]) == 0
     assert Config.load().enabled is True
+    assert sent["spawn"] == [{"op": "warm"}]
     assert "keryx is on" in capsys.readouterr().out
 
 
@@ -245,6 +246,9 @@ def test_say_while_off_says_so_and_starts_nothing(sent, capsys):
 
 
 def test_status_without_daemon(sent, capsys):
+    assert cli.main(["status"]) == 0
+    assert '"daemon": "starts with the next reply"' in capsys.readouterr().out
+    assert cli.main(["off"]) == 0
     assert cli.main(["status"]) == 0
     assert '"daemon": "not running"' in capsys.readouterr().out
 

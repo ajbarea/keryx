@@ -802,3 +802,50 @@ def test_pool_hands_out_the_kourai_voices_first():
         "af_heart", "am_michael", "bf_emma", "am_puck", "af_bella", "bf_isabella", "af_kore",
         "af_sarah", "af_nova", "af_aoede", "bm_george", "am_fenrir", "bm_fable", "af_alloy",
     )  # fmt: skip
+
+
+def test_session_can_request_named_voice(tmp_path):
+    clock = Clock()
+    path = tmp_path / "v.json"
+    b = VoiceBook(path, clock=clock, active_seconds=60)
+    # s1 requests bf_alice in repo ariadne
+    v1 = b.assign("s1", "ariadne", requested="bf_alice")
+    assert v1 == VoiceSpec(("bf_alice",))
+
+    # s1 keeps bf_alice
+    assert b.assign("s1", "ariadne") == VoiceSpec(("bf_alice",))
+
+    # Repo ariadne's home voice was NOT changed to bf_alice
+    # s2 starting in ariadne without a request gets ariadne's home voice (af_heart)
+    v2 = b.assign("s2", "ariadne")
+    assert v2 == VoiceSpec(("af_heart",))
+
+    # On restart, s1's hold on bf_alice is restored from voices.json
+    b2 = VoiceBook(path, clock=clock, active_seconds=60)
+    assert b2.assign("s1", "ariadne") == VoiceSpec(("bf_alice",))
+
+
+def test_unknown_or_unavailable_requested_voice_falls_back_to_rotation(tmp_path):
+    clock = Clock()
+    path = tmp_path / "v.json"
+    b = VoiceBook(
+        path,
+        clock=clock,
+        active_seconds=60,
+        available=lambda spec: "unavailable" not in spec.names,
+    )
+    # Malformed string falls back
+    v = b.assign("s1", "repo", requested="???invalid???")
+    assert v == VoiceSpec(("af_heart",))
+
+    # Unavailable voice falls back
+    v2 = b.assign("s2", "repo2", requested="unavailable")
+    assert v2 == VoiceSpec(("am_michael",))
+
+
+def test_pin_accepts_available_voice_outside_catalogue(tmp_path):
+    clock = Clock()
+    path = tmp_path / "v.json"
+    b = VoiceBook(path, clock=clock, active_seconds=60)
+    assert b.pin("s1", "bf_alice") is True
+    assert b.assign("s1", "repo") == VoiceSpec(("bf_alice",))

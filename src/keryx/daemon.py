@@ -162,9 +162,15 @@ def handle(
         try:
             voice = VoiceSpec.parse(request["voice"]) if request.get("voice") else None
         except ValueError as exc:
-            return {"ok": False, "error": str(exc)}
+            if request.get("terminal") or request.get("session"):
+                voice = None
+            else:
+                return {"ok": False, "error": str(exc)}
         if voice is not None and not speaker.knows(voice):
-            return {"ok": False, "error": f"unknown voice {voice.label()!r}"}
+            if request.get("terminal") or request.get("session"):
+                voice = None
+            else:
+                return {"ok": False, "error": f"unknown voice {voice.label()!r}"}
         speaker.submit(
             Utterance(
                 text=text,
@@ -182,7 +188,8 @@ def handle(
 def claim(request: dict, speaker: SpeechQueue) -> None:
     """Hold the requesting terminal's voice (its session's, outside a terminal)."""
     who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
-    speaker.claim(who, str(request.get("source") or ""))
+    voice = request.get("voice")
+    speaker.claim(who, str(request.get("source") or ""), voice=str(voice) if voice else None)
 
 
 def start_warming(warm: Callable[[], None] | None) -> None:

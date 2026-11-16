@@ -15,12 +15,15 @@ import contextlib
 import itertools
 import json
 import math
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from keryx.procs import is_alive
+
+_VOICE_NAME = re.compile(r"^[a-z]{2}_[a-z0-9_]+$")
 
 # Kokoro v1.0's English voices graded C or better in its VOICES.md (research 2026-10). The
 # first ten have character portraits on klepsydra's fleet wall, so the first ten terminals
@@ -170,7 +173,7 @@ class VoiceBook:
         active_seconds: float = ACTIVE_SECONDS,
         home_seconds: float = HOME_SECONDS,
         alive: Callable[[str], bool | None] = is_alive,
-        available: Callable[[VoiceSpec], bool] = lambda _spec: True,
+        available: Callable[[VoiceSpec], bool] | None = None,
     ):
         """`clock` is wall time, since holds and homes outlive the daemon in `path`.
 
@@ -181,10 +184,16 @@ class VoiceBook:
         the current Kokoro lacks is dropped, so rotation never hands out one it cannot speak.
         """
         self._alive = alive
+        if available is None:
+            self._available = lambda spec: all(
+                name in SELECTABLE or name == "bf_alice" for name in spec.names
+            )
+        else:
+            self._available = available
         self._path = path
         # Rotation must never be empty, even if `available` rejects everything, so it always has
         # a voice to hand out and `_first_free` never divides by zero.
-        self._specs = [spec for spec in catalogue(first) if available(spec)] or [
+        self._specs = [spec for spec in catalogue(first) if self._available(spec)] or [
             VoiceSpec((POOL[0],))
         ]
         self._singles = sum(len(spec.names) == 1 for spec in self._specs)  # they lead the list
@@ -197,17 +206,42 @@ class VoiceBook:
         self._home, self._held = self._load()  # by source, by holder
         self._saved = float("-inf")
 
+    def _ensure_spec(self, label: str) -> int | None:
+        """Ensure a voice spec for `label` is indexed in `self._specs` if valid and available."""
+        if label in self._index:
+            return self._index[label]
+        try:
+            spec = VoiceSpec.parse(label)
+        except ValueError:
+            return None
+        if not all(_VOICE_NAME.match(name) for name in spec.names):
+            return None
+        if not self._available(spec):
+            return None
+        idx = len(self._specs)
+        self._specs.append(spec)
+        self._index[spec.label()] = idx
+        return idx
+
     def default(self) -> VoiceSpec:
         return self._specs[0]
 
-    def assign(self, holder: str, source: str) -> VoiceSpec:
+    def assign(self, holder: str, source: str, requested: str | None = None) -> VoiceSpec:
         """The voice for `holder` (a terminal, else a session), working in repo `source`.
 
+        When `requested` names a valid, available Kokoro voice, `holder` holds that voice
+        without changing the repo's home voice.
         Without a holder (`keryx say`, scripts): the first voice nobody holds, so a notice
         is never mistaken for a terminal's line.
         """
         now = self._clock()
         self._expire(now)
+        if holder and requested:
+            req_index = self._ensure_spec(requested)
+            if req_index is not None:
+                self._held[holder] = (req_index, now)
+                self._save(now, force=True)
+                return self._specs[req_index]
         taken = {i for h, (i, _) in self._held.items() if h != holder}
         if not holder:
             return self._specs[next((i for i in range(len(self._specs)) if i not in taken), 0)]
@@ -217,13 +251,13 @@ class VoiceBook:
         home_free = home is not None and home[0] not in taken
         single = (
             home[0]
-            if home_free and home[0] < self._singles
+            if home_free and len(self._specs[home[0]].names) == 1
             else self._first_free(taken, now, self._singles)
         )
         if not changed:
             index = self._held[holder][0]
             # A terminal on a blend (only rotation hands one out) moves to a single voice.
-            if index >= self._singles and single is not None:
+            if len(self._specs[index].names) > 1 and single is not None:
                 index, changed = single, True
         elif single is not None:
             index = single
@@ -243,7 +277,10 @@ class VoiceBook:
             source
             and changed
             and not homed_elsewhere
-            and (home is None or (home[0] >= self._singles > index))
+            and (
+                home is None
+                or (len(self._specs[home[0]].names) > 1 and len(self._specs[index].names) == 1)
+            )
         ):
             self._home[source] = (index, now)
         self._held[holder] = (index, now)
@@ -260,8 +297,10 @@ class VoiceBook:
         pick again, while every other terminal keeps its own. Returns False when the label is
         not a voice in the catalogue, or there is no terminal to pin (a bare shell).
         """
-        index = self._index.get(label)
-        if index is None or not holder:
+        if not holder:
+            return False
+        index = self._ensure_spec(label)
+        if index is None:
             return False
         now = self._clock()
         self._expire(now)
@@ -313,13 +352,10 @@ class VoiceBook:
             if not isinstance(entry, dict):
                 continue
             label, seen = entry.get("voice"), entry.get("seen")
-            if (
-                isinstance(label, str)
-                and label in self._index
-                and isinstance(seen, int | float)
-                and math.isfinite(seen)
-            ):
-                out[str(key)] = (self._index[label], float(seen))
+            if isinstance(label, str) and isinstance(seen, int | float) and math.isfinite(seen):
+                idx = self._ensure_spec(label)
+                if idx is not None:
+                    out[str(key)] = (idx, float(seen))
         return out
 
     def _save(self, now: float, force: bool) -> None:

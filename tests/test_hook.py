@@ -389,3 +389,31 @@ def test_agy_missing_or_empty_transcript_is_silent():
         "transcriptPath": "/nonexistent/path/transcript.jsonl",
     }
     assert request_for(agy_event, "") is None
+
+
+def test_requests_include_requested_voice_from_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("KERYX_VOICE", "bf_alice")
+    events = [
+        stop(cwd=str(tmp_path)),
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s", "cwd": str(tmp_path)},
+        {"hook_event_name": "SessionStart", "session_id": "s", "cwd": str(tmp_path)},
+        {
+            "hook_event_name": "Notification",
+            "notification_type": "permission_prompt",
+            "message": "Claude needs your permission",
+            "session_id": "s",
+            "cwd": str(tmp_path),
+        },
+    ]
+    for ev in events:
+        req = request_for(ev, "cli")
+        assert req is not None
+        assert req["voice"] == "bf_alice"
+
+
+def test_requests_include_voice_from_event_payload(monkeypatch, tmp_path):
+    monkeypatch.delenv("KERYX_VOICE", raising=False)
+    ev = stop(cwd=str(tmp_path), voice="am_michael")
+    req = request_for(ev, "cli")
+    assert req is not None
+    assert req["voice"] == "am_michael"

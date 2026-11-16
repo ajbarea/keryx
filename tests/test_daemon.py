@@ -30,8 +30,8 @@ class FakeSpeaker:
         self.stopped.append(session)
         self.stopped_terminals = [*getattr(self, "stopped_terminals", []), terminal]
 
-    def claim(self, holder, source):
-        self.claimed.append((holder, source))
+    def claim(self, holder, source, voice=None):
+        self.claimed.append((holder, source, voice) if voice else (holder, source))
 
     def pin(self, holder, label):
         self.pinned = [*getattr(self, "pinned", []), (holder, label)]
@@ -86,6 +86,30 @@ def test_say_carries_its_terminal():
     sp = FakeSpeaker()
     handle({"op": "say", "text": "Hi.", "session": "s", "terminal": "9:1"}, sp)
     assert sp.submitted[0].terminal == "9:1"
+
+
+def test_claim_with_requested_voice():
+    sp = FakeSpeaker()
+    handle(
+        {"op": "warm", "session": "s1", "terminal": "9:1", "source": "r", "voice": "bf_alice"},
+        sp,
+        None,
+    )
+    handle(
+        {"op": "stop", "session": "s2", "terminal": "9:2", "source": "r", "voice": "am_michael"},
+        sp,
+    )
+    assert sp.claimed == [("9:1", "r", "bf_alice"), ("9:2", "r", "am_michael")]
+
+
+def test_session_say_with_unknown_voice_falls_back_to_rotation():
+    sp = FakeSpeaker()
+    reply = handle(
+        {"op": "say", "text": "Hi.", "session": "s1", "terminal": "9:1", "voice": "zz_nope"},
+        sp,
+    )
+    assert reply["ok"] is True
+    assert sp.submitted[0].voice is None
 
 
 def test_ping_reports_the_version():

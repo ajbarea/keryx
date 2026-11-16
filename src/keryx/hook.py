@@ -162,6 +162,11 @@ def normalize(event: dict) -> dict:
     return out
 
 
+def requested_voice() -> str:
+    """A voice the session asked for, e.g. from KERYX_VOICE in its environment."""
+    return os.environ.get("KERYX_VOICE", "").strip()
+
+
 def request_for(event: dict, entrypoint: str) -> dict | None:
     """The daemon request for one hook payload, or None to stay silent.
 
@@ -173,26 +178,30 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
     event = normalize(event)
     name = event.get("hook_event_name")
     session = event.get("session_id", "")
+    voice = str(event.get("voice") or requested_voice()).strip()
     if name == "SessionStart":
         # Start the cold load while the developer types the first prompt; hold a voice.
-        return {
+        req = {
             "op": "warm",
             "version": version(),
             "session": session,
             "terminal": terminal_id(),
             "source": source_name(event.get("cwd", "")),
         }
+        if voice:
+            req["voice"] = voice
+        return req
     if name == "UserPromptSubmit":
         # `/keryx:pronounce` must not restart the daemon or reload the model. `/keryx on` and
         # the rest are mod commands, which never reach this hook.
         if prompt_text(event).startswith("/keryx:"):
             return None
-        return prompt_request(event, replay=is_replay_event(event, entrypoint))
+        return prompt_request(event, replay=is_replay_event(event, entrypoint), voice=voice)
     if name == "Stop":
         text = event.get("last_assistant_message") or ""
         if not text.strip():
             return None
-        return {
+        req = {
             "op": "say",
             "kind": "reply",
             "text": text,
@@ -201,11 +210,14 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
             "terminal": terminal_id(),
             "source": source_name(event.get("cwd", "")),
         }
+        if voice:
+            req["voice"] = voice
+        return req
     if name == "Notification" and event.get("notification_type") in SPOKEN_NOTIFICATIONS:
         message = (event.get("message") or "").strip()
         if not message:
             return None
-        return {
+        req = {
             "op": "say",
             "kind": "notice",
             "text": _CLAUDE_NEEDS.sub("I need", message),
@@ -213,10 +225,13 @@ def request_for(event: dict, entrypoint: str) -> dict | None:
             "terminal": terminal_id(),
             "source": source_name(event.get("cwd", "")),
         }
+        if voice:
+            req["voice"] = voice
+        return req
     return None
 
 
-def prompt_request(event: dict, replay: bool = False) -> dict:
+def prompt_request(event: dict, replay: bool = False, voice: str = "") -> dict:
     """The `stop` request for a prompt: cut off the speech, record the prompt, load the model.
 
     A replay request holds back all three. The synchronous hook may answer it with a replay
@@ -232,6 +247,9 @@ def prompt_request(event: dict, replay: bool = False) -> dict:
         "terminal": terminal_id(),
         "source": source_name(event.get("cwd", "")),
     }
+    voice = voice or str(event.get("voice") or requested_voice()).strip()
+    if voice:
+        request["voice"] = voice
     if replay:
         return {**request, "interrupt": False}
     return {**request, "prompt": event.get("prompt_id", ""), "warm": True}

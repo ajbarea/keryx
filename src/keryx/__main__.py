@@ -215,6 +215,9 @@ def main(argv: list[str] | None = None) -> int:
 
                 with contextlib.suppress(OSError):
                     OllamaClient(cfg.model, cfg.ollama_host).unload()
+        else:
+            with contextlib.suppress(OSError):
+                client.send_or_spawn({"op": "warm"})
         print(f"keryx is {cmd}")
         if Config.load().enabled != enabled:
             print("note: KERYX_ENABLED in the environment overrides this")
@@ -230,7 +233,10 @@ def main(argv: list[str] | None = None) -> int:
             daemon = client.send({"op": "ping"})
         except (OSError, ValueError):
             daemon = None
-        state = {**vars(cfg), "daemon": daemon or "not running"}
+        state = {
+            **vars(cfg),
+            "daemon": daemon or ("starts with the next reply" if cfg.enabled else "not running"),
+        }
         print(json.dumps(state, indent=2))
         found = doctor.checks(cfg)
         print()
