@@ -214,6 +214,9 @@ class VoiceBook:
             spec = VoiceSpec.parse(label)
         except ValueError:
             return None
+        # Another spelling of a voice already here (`a(0.70)+b(0.30)`) is that voice.
+        if spec.label() in self._index:
+            return self._index[spec.label()]
         if not all(_VOICE_NAME.match(name) for name in spec.names):
             return None
         if not self._available(spec):
@@ -229,8 +232,9 @@ class VoiceBook:
     def assign(self, holder: str, source: str, requested: str | None = None) -> VoiceSpec:
         """The voice for `holder` (a terminal, else a session), working in repo `source`.
 
-        When `requested` names a valid, available Kokoro voice, `holder` holds that voice
-        without changing the repo's home voice.
+        When `requested` (the session's `KERYX_VOICE`) names a valid, available Kokoro voice and
+        `holder` holds none yet, `holder` holds that voice without changing the repo's home
+        voice. A voice it already holds, such as a `keryx voice` pick, stays.
         Without a holder (`keryx say`, scripts): the first voice nobody holds, so a notice
         is never mistaken for a terminal's line.
         """
@@ -238,9 +242,10 @@ class VoiceBook:
         self._expire(now)
         if holder and requested:
             req_index = self._ensure_spec(requested)
-            if req_index is not None:
+            held = self._held.get(holder)
+            if req_index is not None and (held is None or held[0] == req_index):
                 self._held[holder] = (req_index, now)
-                self._save(now, force=True)
+                self._save(now, force=held is None)
                 return self._specs[req_index]
         taken = {i for h, (i, _) in self._held.items() if h != holder}
         if not holder:

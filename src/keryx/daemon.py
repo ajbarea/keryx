@@ -160,17 +160,23 @@ def handle(
         session, prompt = request.get("session"), request.get("prompt")
         if session and prompt and latest.get(session, prompt) != prompt:
             return {"ok": True, "dropped": "stale"}
-        try:
-            voice = VoiceSpec.parse(request["voice"]) if request.get("voice") else None
-        except ValueError as exc:
-            if request.get("terminal") or request.get("session"):
-                voice = None
-            else:
+        voice = None
+        if request.get("terminal") or request.get("session"):
+            # A hook names its session's voice: the terminal holds it unless it holds one
+            # already (a `keryx voice` pick), and the hold decides.
+            if request.get("voice"):
+                voice = claim(request, speaker)
+                # No voice book (distinct_voices off): the asked-for voice, if Kokoro has it.
+                if voice is None:
+                    with contextlib.suppress(ValueError):
+                        asked = VoiceSpec.parse(request["voice"])
+                        voice = asked if speaker.knows(asked) else None
+        elif request.get("voice"):
+            try:
+                voice = VoiceSpec.parse(request["voice"])
+            except ValueError as exc:
                 return {"ok": False, "error": str(exc)}
-        if voice is not None and not speaker.knows(voice):
-            if request.get("terminal") or request.get("session"):
-                voice = None
-            else:
+            if not speaker.knows(voice):
                 return {"ok": False, "error": f"unknown voice {voice.label()!r}"}
         speaker.submit(
             Utterance(
@@ -203,11 +209,11 @@ def handle(
     return {"ok": False, "error": f"unknown op {op!r}"}
 
 
-def claim(request: dict, speaker: SpeechQueue) -> None:
-    """Hold the requesting terminal's voice (its session's, outside a terminal)."""
+def claim(request: dict, speaker: SpeechQueue) -> VoiceSpec | None:
+    """Hold the requesting terminal's voice (its session's, outside a terminal); return it."""
     who = holder(str(request.get("terminal") or ""), str(request.get("session") or ""))
     voice = request.get("voice")
-    speaker.claim(who, str(request.get("source") or ""), voice=str(voice) if voice else None)
+    return speaker.claim(who, str(request.get("source") or ""), voice=str(voice) if voice else None)
 
 
 def start_warming(warm: Callable[[], None] | None) -> None:

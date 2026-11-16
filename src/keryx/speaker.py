@@ -46,14 +46,14 @@ class Voice(Protocol):
 
 
 class Voices(Protocol):
-    def assign(self, holder: str, source: str) -> VoiceSpec: ...
+    def assign(self, holder: str, source: str, requested: str | None = None) -> VoiceSpec: ...
     def pin(self, holder: str, label: str) -> bool: ...
 
 
 class SpeechQueue(Protocol):
     def submit(self, utt: Utterance) -> None: ...
     def stop(self, session: str | None = None, terminal: str = "") -> None: ...
-    def claim(self, holder: str, source: str, voice: str | None = None) -> None: ...
+    def claim(self, holder: str, source: str, voice: str | None = None) -> VoiceSpec | None: ...
     def pin(self, holder: str, label: str) -> bool: ...
     def knows(self, spec: VoiceSpec) -> bool: ...
     def again(self, holder: str) -> bool: ...
@@ -130,21 +130,16 @@ class Speaker:
     def submit(self, utt: Utterance) -> None:
         if utt.voice is None and self._voices is not None:
             utt.voice = self._voices.assign(holder(utt.terminal, utt.session), utt.source)
-        elif utt.voice is not None and self._voices is not None and (utt.terminal or utt.session):
-            who = holder(utt.terminal, utt.session)
-            if hasattr(self._voices, "pin"):
-                self._voices.pin(who, utt.voice.label())
         with self._cond:
             (self._to_shorten if utt.kind == "reply" else self._pending).append(utt)
             self._active.append(utt)
             self._cond.notify_all()
 
-    def claim(self, holder: str, source: str, voice: str | None = None) -> None:
-        """`holder` started or sent a prompt: hold its voice before it speaks."""
+    def claim(self, holder: str, source: str, voice: str | None = None) -> VoiceSpec | None:
+        """`holder` started or sent a prompt: hold its voice before it speaks, and return it."""
         if self._voices is not None and holder:
-            if voice and hasattr(self._voices, "pin") and self._voices.pin(holder, voice):
-                return
-            self._voices.assign(holder, source)
+            return self._voices.assign(holder, source, requested=voice)
+        return None
 
     def pin(self, holder: str, label: str) -> bool:
         """Hold `holder` on the voice `label` (`keryx voice`); False if voices are off here."""

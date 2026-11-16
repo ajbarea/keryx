@@ -56,6 +56,9 @@ def spawn() -> subprocess.Popen:
             stderr=fd,
             start_new_session=True,
             cwd="/",  # don't pin the session's working directory for hours
+            # KERYX_VOICE in a session names that session's voice, sent with each request;
+            # the daemon serves every session, so its default comes from the config file.
+            env={k: v for k, v in os.environ.items() if k != "KERYX_VOICE"},
         )
     finally:
         os.close(fd)

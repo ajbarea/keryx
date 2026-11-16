@@ -291,8 +291,8 @@ class FakeVoices:
         self.picked = picked
         self.claimed = []
 
-    def assign(self, holder, source):
-        self.claimed.append((holder, source))
+    def assign(self, holder, source, requested=None):
+        self.claimed.append((holder, source, requested) if requested else (holder, source))
         return self.picked.get(holder)
 
     def pin(self, holder, label):
@@ -328,6 +328,15 @@ def test_claim_reaches_the_voices(tmp_path):
     sp.claim("a", "repo")
     sp.claim("", "repo")  # no holder: nothing to hold
     assert voices.claimed == [("a", "repo")]
+    sp.close()
+
+
+def test_a_claim_names_the_sessions_voice_and_returns_the_hold(tmp_path):
+    voices = FakeVoices({"9:1": VoiceSpec(("am_michael",))})
+    sp = Speaker(lambda t: t, FakeVoice(), FakePlayer(), tmp_path, voices)
+    assert sp.claim("9:1", "repo", voice="bf_emma") == VoiceSpec(("am_michael",))
+    assert voices.claimed == [("9:1", "repo", "bf_emma")]
+    assert not hasattr(voices, "pinned")  # the hold decides; nothing is pinned over it
     sp.close()
 
 
