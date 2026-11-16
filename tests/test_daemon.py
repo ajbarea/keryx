@@ -891,3 +891,11 @@ def test_a_say_with_no_terminal_keeps_its_own_voice_and_claims_nothing():
     sp = FakeSpeaker()
     handle({"op": "say", "text": "Hi.", "voice": "am_adam"}, sp)
     assert sp.claimed == [] and sp.submitted[0].voice.names == ("am_adam",)
+
+
+def test_with_no_voice_book_a_hooks_say_still_speaks_in_the_asked_for_voice():
+    sp = FakeSpeaker()  # its claim returns None, as Speaker does with distinct_voices off
+    handle({"op": "say", "text": "Hi.", "session": "s1", "terminal": "9:1", "voice": "bf_emma"}, sp)
+    handle({"op": "say", "text": "Hi.", "session": "s1", "terminal": "9:1", "voice": "zz_nope"}, sp)
+    assert sp.submitted[0].voice.names == ("bf_emma",)
+    assert sp.submitted[1].voice is None

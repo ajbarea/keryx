@@ -166,6 +166,11 @@ def handle(
             # already (a `keryx voice` pick), and the hold decides.
             if request.get("voice"):
                 voice = claim(request, speaker)
+                # No voice book (distinct_voices off): the asked-for voice, if Kokoro has it.
+                if voice is None:
+                    with contextlib.suppress(ValueError):
+                        asked = VoiceSpec.parse(request["voice"])
+                        voice = asked if speaker.knows(asked) else None
         elif request.get("voice"):
             try:
                 voice = VoiceSpec.parse(request["voice"])
