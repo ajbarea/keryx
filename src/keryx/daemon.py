@@ -2,6 +2,7 @@
 
 Requests are one JSON object per connection, answered with one JSON line:
 `{"op": "say", "text", "kind", "session", "prompt", "terminal", "source", "voice"}`,
+`{"op": "render", "text", "path", "voice"}`,
 `{"op": "stop", "session", "prompt", "terminal", "source", "warm", "interrupt"}`,
 `{"op": "warm", "version", "session", "terminal", "source"}`, `{"op": "ping"}`,
 `{"op": "again", "terminal", "session"}`, `{"op": "set_voice", "voice", "terminal", "session"}`,
@@ -182,6 +183,23 @@ def handle(
             )
         )
         return {"ok": True}
+    if op == "render":
+        text = str(request.get("text") or "")
+        path_str = str(request.get("path") or "")
+        if not text.strip() or not path_str:
+            return {"ok": False, "error": "empty text or path"}
+        try:
+            voice = VoiceSpec.parse(request["voice"]) if request.get("voice") else None
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        if voice is not None and not speaker.knows(voice):
+            return {"ok": False, "error": f"unknown voice {voice.label()!r}"}
+        try:
+            seconds = speaker.render(text, Path(path_str), voice)
+            return {"ok": True, "seconds": seconds}
+        except Exception as exc:
+            log.exception("could not render audio to %s", path_str)
+            return {"ok": False, "error": str(exc)}
     return {"ok": False, "error": f"unknown op {op!r}"}
 
 

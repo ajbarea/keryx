@@ -5,7 +5,7 @@ keryx replay-hook      the same for the synchronous "say that again" prompt hook
 keryx on | off         turn speech on or off
 keryx speak-only [ID|FILE ...] | --everyone   let only these sessions speak (none: show the list)
 keryx status           show settings, daemon state and setup checks; exit 1 if one is missing
-keryx say TEXT         speak TEXT as given
+keryx say [--out FILE] [--voice NAME] [TEXT]   speak TEXT or write to FILE (-: stdin)
 keryx again            say this terminal's last line again
 keryx pronounce [WORD [SAYING]]   list, forget (WORD only) or set how to say WORD; /ipa/ = phonemes
 keryx voice [NAME]     preview the voices and pick one, or set the one named (name or number)
@@ -175,6 +175,44 @@ def _speak_only(cfg: Config, targets: list[str]) -> int:
     return 0
 
 
+def _parse_say_args(args: list[str]) -> tuple[str | None, str | None, str]:
+    """Parse say arguments: returns (out_file, voice_name, text)."""
+    out_file: str | None = None
+    voice_name: str | None = None
+    positional: list[str] = []
+    it = iter(args)
+    for arg in it:
+        if arg == "--out":
+            try:
+                out_file = next(it)
+            except StopIteration:
+                raise ValueError("missing argument for --out") from None
+        elif arg.startswith("--out="):
+            out_file = arg.partition("=")[2]
+        elif arg == "--voice":
+            try:
+                voice_name = next(it)
+            except StopIteration:
+                raise ValueError("missing argument for --voice") from None
+        elif arg.startswith("--voice="):
+            voice_name = arg.partition("=")[2]
+        elif arg == "--":
+            positional.extend(it)
+            break
+        elif arg.startswith("-") and arg != "-":
+            raise ValueError(f"unknown option: {arg}")
+        else:
+            positional.append(arg)
+
+    if out_file is not None and not out_file.strip():
+        raise ValueError("missing argument for --out")
+    if voice_name is not None and not voice_name.strip():
+        raise ValueError("missing argument for --voice")
+
+    text = " ".join(positional)
+    return out_file, voice_name, text
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     cmd = args[0] if args else "status"
@@ -244,11 +282,81 @@ def main(argv: list[str] | None = None) -> int:
         return doctor.exit_code(found)
 
     if cmd == "say":
+        try:
+            out_file, voice_name, text = _parse_say_args(args[1:])
+        except ValueError as exc:
+            print(f"keryx say: {exc}", file=sys.stderr)
+            return 2
+
+        if text == "-" or (not text and not sys.stdin.isatty()):
+            text = sys.stdin.read()
+
+        if not text.strip():
+            print("keryx say: empty text", file=sys.stderr)
+            return 1
+
+        voice_spec: VoiceSpec | None = None
+        if voice_name:
+            from keryx.voices import VoiceSpec, resolve, stock
+
+            label = resolve(voice_name, stock(cfg.voice))
+            if label is not None:
+                voice_spec = VoiceSpec.parse(label)
+            else:
+                try:
+                    voice_spec = VoiceSpec.parse(voice_name)
+                except ValueError:
+                    print(f"keryx say: no voice matches {voice_name!r}", file=sys.stderr)
+                    return 2
+        elif out_file:
+            from keryx.voices import VoiceSpec
+
+            try:
+                voice_spec = VoiceSpec.parse(cfg.voice)
+            except ValueError:
+                voice_spec = None
+
+        if out_file:
+            out_path = Path(out_file).resolve()
+            voice_label = voice_spec.label() if voice_spec else None
+
+            # Try daemon first if running to reuse its loaded model
+            try:
+                reply = client.send(
+                    {"op": "render", "text": text, "path": str(out_path), "voice": voice_label}
+                )
+                if reply.get("ok"):
+                    return 0
+                if not str(reply.get("error", "")).startswith("unknown op"):
+                    print(f"keryx say: {reply.get('error')}", file=sys.stderr)
+                    return 1
+            except (OSError, ValueError):
+                pass
+
+            # In-process synthesis (daemon-free fallback)
+            try:
+                from keryx.pronounce import Lexicon
+                from keryx.voice import KokoroVoice, render_wav
+
+                lexicon = Lexicon()
+                engine = KokoroVoice(cfg.voice, cfg.speed, cfg.loudness)
+                if voice_spec and not engine.has(voice_spec):
+                    print(f"keryx say: unknown voice {voice_spec.label()!r}", file=sys.stderr)
+                    return 1
+                render_wav(text, out_path, voice_spec or engine.voice, engine, lexicon)
+                return 0
+            except Exception as exc:
+                print(f"keryx say: could not render audio: {exc}", file=sys.stderr)
+                return 1
+
         if not cfg.enabled:
             print("keryx is off; `keryx on` first", file=sys.stderr)
             return 1
-        text = " ".join(args[1:]) or sys.stdin.read()
-        print(client.send_or_spawn({"op": "say", "kind": "notice", "text": text}))
+
+        request = {"op": "say", "kind": "notice", "text": text}
+        if voice_spec:
+            request["voice"] = voice_spec.label()
+        print(client.send_or_spawn(request))
         return 0
 
     if cmd == "voices":

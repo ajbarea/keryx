@@ -6,7 +6,7 @@ import pytest
 from keryx import __main__ as cli
 from keryx import client, version
 from keryx.config import Config, config_dir
-from keryx.voices import stock
+from keryx.voices import VoiceSpec, stock
 
 
 @pytest.fixture(autouse=True)
@@ -243,6 +243,101 @@ def test_say_while_off_says_so_and_starts_nothing(sent, capsys):
     Config(enabled=False).save()
     assert cli.main(["say", "hello"]) == 1
     assert sent["spawn"] == [] and "keryx is off" in capsys.readouterr().err
+
+
+def test_say_out_writes_via_daemon_when_running(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(
+        client, "send", lambda req, *a, **k: calls.append(req) or {"ok": True, "seconds": 1.2}
+    )
+    out = tmp_path / "out.wav"
+    assert cli.main(["say", "--out", str(out), "Hello slide."]) == 0
+    assert len(calls) == 1
+    assert calls[0]["op"] == "render"
+    assert calls[0]["text"] == "Hello slide."
+    assert calls[0]["path"] == str(out.resolve())
+
+
+def test_say_out_passes_explicit_voice_to_daemon(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(
+        client, "send", lambda req, *a, **k: calls.append(req) or {"ok": True, "seconds": 1.2}
+    )
+    out = tmp_path / "out.wav"
+    assert cli.main(["say", "--out", str(out), "--voice", "am_michael", "Hello slide."]) == 0
+    assert calls[0]["voice"] == "am_michael"
+
+
+def test_say_out_falls_back_to_in_process_when_no_daemon(monkeypatch, tmp_path):
+    monkeypatch.setattr(client, "send", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError))
+    rendered = []
+
+    class MockVoice:
+        voice = VoiceSpec(("af_heart",))
+
+        def __init__(self, *a, **k):
+            pass
+
+        def has(self, spec):
+            return True
+
+    monkeypatch.setattr("keryx.voice.KokoroVoice", MockVoice)
+    monkeypatch.setattr(
+        "keryx.voice.render_wav",
+        lambda text, path, voice, engine, lex: rendered.append((text, path, voice)) or 1.5,
+    )
+    out = tmp_path / "out.wav"
+    assert cli.main(["say", "--out", str(out), "Hello in process."]) == 0
+    assert len(rendered) == 1
+    assert rendered[0][0] == "Hello in process."
+    assert rendered[0][1] == out.resolve()
+
+
+def test_say_out_stdin_dash(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(
+        client, "send", lambda req, *a, **k: calls.append(req) or {"ok": True, "seconds": 1.2}
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO("Hello from pipe."))
+    out = tmp_path / "out.wav"
+    assert cli.main(["say", "--out", str(out), "-"]) == 0
+    assert calls[0]["text"] == "Hello from pipe."
+
+
+def test_say_out_empty_text_fails_and_writes_nothing(tmp_path, capsys):
+    out = tmp_path / "empty.wav"
+    assert cli.main(["say", "--out", str(out), "   "]) == 1
+    assert not out.exists()
+    assert "empty text" in capsys.readouterr().err
+
+
+def test_say_out_bad_option_prints_error(capsys):
+    assert cli.main(["say", "--unknown", "hi"]) == 2
+    assert "unknown option: --unknown" in capsys.readouterr().err
+
+
+def test_say_out_unknown_voice_fails_and_writes_nothing(tmp_path, capsys):
+    out = tmp_path / "out.wav"
+    assert cli.main(["say", "--out", str(out), "--voice", "nonexistent_voice_123", "hello"]) != 0
+    assert not out.exists()
+    err = capsys.readouterr().err
+    assert "unknown voice" in err or "no voice matches" in err
+
+
+def test_say_out_works_when_keryx_is_off(monkeypatch, tmp_path):
+    Config(enabled=False).save()
+    calls = []
+    monkeypatch.setattr(
+        client, "send", lambda req, *a, **k: calls.append(req) or {"ok": True, "seconds": 1.2}
+    )
+    out = tmp_path / "out.wav"
+    assert cli.main(["say", "--out", str(out), "Hello while off."]) == 0
+    assert len(calls) == 1
+
+
+def test_say_normal_speech_plays_via_daemon(sent):
+    assert cli.main(["say", "Hello", "world"]) == 0
+    assert sent["spawn"][0] == {"op": "say", "kind": "notice", "text": "Hello world"}
 
 
 def test_status_without_daemon(sent, capsys):

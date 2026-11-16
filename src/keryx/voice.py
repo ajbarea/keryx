@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
+import os
 import re
 import subprocess
-from collections.abc import Container
+from collections.abc import Callable, Container
 from pathlib import Path
+from typing import Protocol
 
 import numpy as np
 import soundfile as sf
@@ -214,3 +217,65 @@ def write_wav(path: Path, samples: np.ndarray, rate: int) -> float:
     path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(path, samples, rate, subtype="PCM_16")
     return len(samples) / rate
+
+
+class VoiceEngine(Protocol):
+    def synth(self, text: str, voice: VoiceSpec | None = None) -> tuple[np.ndarray, int]: ...
+
+
+def render_wav(
+    text: str,
+    path: Path,
+    voice: VoiceSpec,
+    voice_engine: VoiceEngine,
+    pronounce: Callable[[str], str] | None = None,
+    gap_seconds: float = 0.25,
+) -> float:
+    """Synthesize `text` into a single WAV file at `path`, applying `pronounce` to each sentence.
+
+    Sentences are separated by `gap_seconds` of silence. The file is written atomically.
+    On synthesis or write failure, no file is written and any temp file is removed.
+    Returns the total duration in seconds.
+    """
+    from keryx.text import split_sentences
+
+    sentences = split_sentences(text)
+    if not sentences:
+        raise ValueError("empty text")
+
+    clean = pronounce or (lambda s: s)
+    parts: list[np.ndarray] = []
+    sample_rate: int | None = None
+
+    for sentence in sentences:
+        said = clean(sentence)
+        samples, rate = voice_engine.synth(said, voice)
+        if sample_rate is None:
+            sample_rate = rate
+        parts.append(np.asarray(samples, dtype=np.float32))
+
+    if not parts or sample_rate is None:
+        raise ValueError("no audio synthesized")
+
+    if len(parts) > 1 and gap_seconds > 0:
+        gap = np.zeros(round(sample_rate * gap_seconds), dtype=np.float32)
+        interleaved: list[np.ndarray] = []
+        for part in parts:
+            if interleaved:
+                interleaved.append(gap)
+            interleaved.append(part)
+        audio = np.concatenate(interleaved)
+    else:
+        audio = np.concatenate(parts)
+
+    target = Path(path).resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f".tmp-{os.getpid()}-{target.name}")
+    try:
+        duration = write_wav(tmp, audio, sample_rate)
+        tmp.replace(target)
+        return duration
+    except Exception:
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
