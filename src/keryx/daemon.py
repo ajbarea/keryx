@@ -290,6 +290,7 @@ def build_speaker(
         audio_dir=Path(cfg.audio_dir),
         duck_apps=tuple(cfg.duck_apps),
         duck_ratio=cfg.duck_ratio,
+        duck_exclude=tuple(cfg.duck_exclude),
     )
     voice = KokoroVoice(cfg.voice, cfg.speed, cfg.loudness)
     # `voice.voice` is the configured voice, or the fallback when it is not a real Kokoro voice;

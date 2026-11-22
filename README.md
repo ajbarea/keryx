@@ -88,8 +88,9 @@ each voice and lets you pick one (or `keryx voice bella` to set it directly); it
 specialty voices, like the `nicole` headphone voice, next in rotation after the pool voices.
 `keryx voices [N]` just plays the first N voices in the catalogue, stock voices first.
 
-While keryx speaks, Spotify drops to a quarter of its volume and comes back a second after
-the last line; set `duck_apps` to turn down other apps instead.
+While keryx speaks, other apps drop to a quarter of their volume and come back a second after
+the last line (by default every app is ducked; set `duck_exclude` to leave apps like Zoom or Teams
+untouched, or `duck_apps` to duck only specific processes).
 
 Turn keryx off before a long local-LLM run: Ollama sizes GPU offload when a model loads, so a
 large model loaded beside keryx can end up partly on the CPU.
@@ -112,7 +113,8 @@ the next reply plays once a device is back.
 | `loudness` | `-16.0` | Loudness (LUFS) every sentence is brought to before it plays |
 | `model` | `gemma3:4b` | Ollama model that shortens replies; empty to speak the opening sentences instead |
 | `ollama_host` | `http://localhost:11434` | Ollama server |
-| `duck_apps` | `["Spotify"]` | Windows process names turned down while keryx speaks; `[]` for none |
+| `duck_apps` | `["*"]` | Windows process names turned down while keryx speaks; `["*"]` lowers every active audio session except keryx's own player; `[]` for none |
+| `duck_exclude` | `[]` | Apps never lowered while speaking (e.g. `["Zoom", "Teams"]` to keep calls untouched) |
 | `duck_ratio` | `0.25` | The share of their volume ducked apps keep |
 | `speaking_signal` | `true` | Write `speaking.json` into klepsydra's fleet folder while a line plays, when that folder exists ([format](docs/speaking-signal.md)) |
 | `reply_clips` | `true` | Keep each session's latest spoken reply as one WAV in `replies/` beside klepsydra's fleet folder, when that folder exists, for its wall to play again ([format](docs/reply-clips.md)) |

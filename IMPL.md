@@ -1,23 +1,26 @@
 # IMPL
 
-## Current: Session Voice Naming & Immediate Daemon Startup (#73, #89)
+## Current: Duck All Other Apps While Speaking (#71)
 
-Slice: A session names its voice via `KERYX_VOICE` (passed on every request: warm, stop, say, notice), the daemon honours and pins the terminal hold without mutating the repo's home voice, unknown or unavailable voices fall back to rotation gracefully, and `keryx on` immediately warms Kokoro and starts the daemon.
+Slice: Duck everything by default (`duck_apps: ["*"]`) except keryx's own player PID (`myPid`), support `duck_exclude` (`KERYX_DUCK_EXCLUDE`) for untouched call apps (e.g. Zoom, Teams), lower sessions that start mid-speech and restore with the rest, maintain crash-safe leftover state file restoration, and document Windows Communications ducking vs Core Audio session APIs (`IAudioSessionManager2`, `IAudioSessionEnumerator`, `IAudioSessionControl2`, `ISimpleAudioVolume`).
 
 ✅ Done
-- `src/keryx/hook.py`: Added `requested_voice()` reading `KERYX_VOICE` and attached `"voice"` to `SessionStart` (warm), `UserPromptSubmit` (stop), `Stop` (say), and `Notification` (say) requests.
-- `src/keryx/voices.py`: Added `_ensure_spec()` to dynamically index valid, available Kokoro single voices (like `bf_alice`) for holders; updated `assign()` to honour requested voices and keep them pinned across turns and restarts without altering repo home voice; updated blend detection to check `len(names) > 1` rather than index threshold.
-- `src/keryx/speaker.py`: Updated `claim()` to pin requested voice for the holder when provided, falling back to rotation `assign()`; updated `submit()` to pin explicit voices for terminal holders.
-- `src/keryx/daemon.py`: Updated `claim()` to extract request voice and pass to `speaker.claim()`; updated `op == "say"` to fall back to rotation instead of rejecting session/terminal requests with unknown/unavailable voices.
-- `src/keryx/__main__.py`: Added `client.send_or_spawn({"op": "warm"})` when `keryx on` runs so the daemon and Kokoro warm up before the next reply; updated `keryx status` without a running daemon to report `"starts with the next reply"` when enabled and `"not running"` when disabled.
-- `tests/`: Added unit tests in `test_hook.py`, `test_voices.py`, `test_daemon.py`, and `test_cli.py` covering session voice naming, fallback to rotation on invalid/unavailable voices, pinning available single voices outside catalogue, and daemon startup on `on` (680 passed, 0 failed).
+- `src/keryx/ducker.cs`: Added `myPid` exclusion to skip keryx's own player process; added wildcard `*` support; added `duck_exclude` filtering; added `Duck(string statePath, string appList, float ratio, string excludeList)` overload; added mid-speech session detection reading existing state IDs and appending newly ducked sessions to `statePath`.
+- `src/keryx/config.py`: Changed `duck_apps` default to `["*"]`; added `duck_exclude: list[str] = field(default_factory=list)` with environment variable `KERYX_DUCK_EXCLUDE` support.
+- `src/keryx/player.py`: Updated `_PS_LOOP` duck handler to parse and pass `duck_exclude` and automatically duck new mid-speech sessions on `play` when ducked; updated `WindowsPlayer.__init__` to accept `duck_exclude` and format duck command.
+- `src/keryx/daemon.py`: Passed `duck_exclude=tuple(cfg.duck_exclude)` when instantiating `WindowsPlayer`.
+- `src/keryx/speaker.py`: Retained single run ducking lifecycle with mid-speech session lowering delegated to player `play` loop when ducked.
+- `docs/configuration.md`, `docs/design.md`, `README.md`: Documented `duck_apps: ["*"]` default, `duck_exclude`, Windows Communications ducking limitations, and cited Core Audio session APIs.
+- `tests/test_config.py`, `tests/test_player.py`: Added regression and unit tests for wildcard `*`, `duck_exclude` env/config parsing, process self-exclusion, mid-speech session appending, and leftover state file restoration.
 
 📋 Next
-- Fast-forward merge `feat/session-voice-73-89` to `main` and push to remote.
-- Proceed with `klepsydra#389` to align the card character and terminal voice launch.
+- Run verification (`ruff check`, `ruff format --check`, `ty check`, `pytest`).
+- Push branch `feat/duck-all-apps-71` and open PR for `ajbarea/keryx#71`.
+- Post Elenchus adversarial review.
+- Update desktop log and proceed to `klepsydra#515`.
 
 ## Verify
-- `ruff check src/ tests/`: clean.
-- `ruff format --check src/ tests/`: clean.
-- `ty check`: clean (0 errors).
-- `pytest`: 680 passed in 26.6s.
+- `ruff check .`: clean.
+- `ruff format --check .`: clean.
+- `ty check`: clean.
+- `pytest`: all tests passing.

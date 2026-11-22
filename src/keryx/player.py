@@ -47,6 +47,9 @@ public static class KeryxMci {
 $state = '@STATE@'
 $ducker = $false
 $duckError = 'not configured'
+$duckApps = ''
+$duckExclude = ''
+$duckRatio = 1.0
 if ($state) {
     try {
         Add-Type -Path '@SOURCE@'; $ducker = $true; [void][KeryxDucker]::Unduck($state)
@@ -57,6 +60,11 @@ try {
         if ($mciError -and ($line.StartsWith('play ') -or $line -eq 'mode')) {
             [Console]::Out.WriteLine('err MCI unavailable: ' + $mciError)
         } elseif ($line.StartsWith('play ')) {
+            if ($ducker -and (Test-Path $state)) {
+                try {
+                    [void][KeryxDucker]::Duck($state, $duckApps, $duckRatio, $duckExclude)
+                } catch {}
+            }
             [void][KeryxMci]::Send('close keryx')
             $r = [KeryxMci]::Send('open "' + $line.Substring(5) + '" type waveaudio alias keryx')
             if (-not $r.StartsWith('mci error')) { $r = [KeryxMci]::Send('play keryx') }
@@ -71,11 +79,15 @@ try {
             [void][KeryxMci]::Send('stop keryx'); [void][KeryxMci]::Send('close keryx')
             [Console]::Out.WriteLine('ok')
         } elseif ($line.StartsWith('duck ')) {
-            $f = $line.Split(' ', 3)
+            $f = $line.Split(' ', 4)
             if ($ducker) {
                 try {
-                    $ratio = [single]::Parse($f[1], [Globalization.CultureInfo]::InvariantCulture)
-                    [Console]::Out.WriteLine('ok ' + [KeryxDucker]::Duck($state, $f[2], $ratio))
+                    $ci = [Globalization.CultureInfo]::InvariantCulture
+                    $duckRatio = [single]::Parse($f[1], $ci)
+                    $duckApps = $f[2]
+                    $duckExclude = if ($f.Length -ge 4) { $f[3] } else { '' }
+                    $n = [KeryxDucker]::Duck($state, $duckApps, $duckRatio, $duckExclude)
+                    [Console]::Out.WriteLine('ok ' + $n)
                 } catch {
                     $why = $_.Exception.Message -replace '\s+', ' '
                     [Console]::Out.WriteLine("ok 0 failed: $why")
@@ -136,6 +148,7 @@ class WindowsPlayer:
         audio_dir: Path | None = None,
         duck_apps: tuple[str, ...] = (),
         duck_ratio: float = 1.0,
+        duck_exclude: tuple[str, ...] = (),
     ):
         """Ducks `duck_apps` (process names) to `duck_ratio` of their volume while speaking;
         ducking needs `audio_dir` on a Windows drive for its source and state files."""
@@ -157,7 +170,9 @@ class WindowsPlayer:
                 (audio_dir / DUCKER_SOURCE).write_text(code)
                 source = windows_path(audio_dir / DUCKER_SOURCE)
                 state = windows_path(audio_dir / DUCK_STATE)
-                self._duck = f"duck {duck_ratio:g} {','.join(duck_apps)}"
+                apps_arg = ",".join(duck_apps)
+                exclude_arg = f" {','.join(duck_exclude)}" if duck_exclude else ""
+                self._duck = f"duck {duck_ratio:g} {apps_arg}{exclude_arg}"
         script = _PS_LOOP.replace("@STATE@", _quoted(state)).replace("@SOURCE@", _quoted(source))
         self._cmd = [powershell, "-NoProfile", "-NonInteractive", "-Command", script]
         self._proc: subprocess.Popen[str] | None = None

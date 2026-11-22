@@ -69,6 +69,17 @@ def test_duck_and_unduck_send_the_configured_apps(echo_shell, tmp_path, on_windo
     assert (tmp_path / player_mod.DUCKER_SOURCE).read_text().startswith("// Lowers")
 
 
+def test_duck_wildcard_and_exclude(echo_shell, tmp_path, on_windows_drive):
+    shell, log = echo_shell
+    p = WindowsPlayer(
+        shell, tmp_path, duck_apps=("*",), duck_exclude=("Zoom", "Teams"), duck_ratio=0.25
+    )
+    p.duck()
+    p.unduck()
+    p.close()
+    assert log.read_text().splitlines() == ["duck 0.25 * Zoom,Teams", "unduck", "eof"]
+
+
 def test_close_lets_the_loop_restore_volumes_before_the_kill(
     echo_shell, tmp_path, on_windows_drive
 ):
@@ -342,3 +353,13 @@ def test_the_ducker_releases_a_devices_objects_on_every_path_out_of_it():
     # Sessions the loop did not keep are released where they are skipped.
     assert source.count("static void AddSession") == 1
     assert "if (!keep) Marshal.ReleaseComObject(control)" in source
+
+
+def test_the_ducker_excludes_self_matches_wildcard_and_appends_mid_speech():
+    source = (Path(player_mod.__file__).parent / "ducker.cs").read_text()
+    assert "if (pid == myPid) return;" in source
+    assert "IsWildcard(apps)" in source
+    assert "MatchesAny(name, exclude)" in source
+    assert "File.AppendAllLines(statePath, lines);" in source
+    script = WindowsPlayer("x", Path("/mnt/c/k"), duck_apps=("*",), duck_ratio=0.25)._cmd[-1]
+    assert "[KeryxDucker]::Duck($state, $duckApps, $duckRatio, $duckExclude)" in script

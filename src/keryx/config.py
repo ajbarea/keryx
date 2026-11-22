@@ -81,8 +81,11 @@ class Config:
     min_free_ram_mb: int = 2048
     # GPU memory (MiB): loading gemma3:4b took 3.8 GB, plus margin.
     min_free_vram_mb: int = 4096
-    # Apps (Windows process names) turned down to `duck_ratio` of their volume while speaking.
-    duck_apps: list[str] = field(default_factory=lambda: ["Spotify"])
+    # Apps (Windows process names) turned down to `duck_ratio` of their volume while speaking;
+    # `["*"]` ducks every active audio session except keryx's own player.
+    duck_apps: list[str] = field(default_factory=lambda: ["*"])
+    # Apps (Windows process names) never turned down, even under duck_apps: ["*"].
+    duck_exclude: list[str] = field(default_factory=list)
     duck_ratio: float = 0.25
     # Write speaking.json into klepsydra's fleet folder (when it exists) as each clip plays.
     speaking_signal: bool = True
