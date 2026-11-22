@@ -296,7 +296,12 @@ def build_speaker(
     # `voice.has` drops any rotation voice the current Kokoro lacks, so neither the default voice
     # nor a handed-out one can be a voice synthesis would reject.
     book = (
-        VoiceBook(cache_dir() / "voices.json", voice.voice.names[0], available=voice.has)
+        VoiceBook(
+            cache_dir() / "voices.json",
+            voice.voice.names[0],
+            available=voice.has,
+            reserved=cfg.reserved_voices,
+        )
         if cfg.distinct_voices
         else None
     )

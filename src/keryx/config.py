@@ -66,6 +66,9 @@ class Config:
     voice: str = "af_heart"
     # Give each terminal its own voice; `voice` is the first one handed out.
     distinct_voices: bool = True
+    # Voices never handed out from the pool or a repo home; a session gets one only by asking
+    # via KERYX_VOICE. klepsydra reserves orchestrator voices (am_michael, bf_emma).
+    reserved_voices: list[str] = field(default_factory=list)
     # Only these sessions speak: session ids, or files (an absolute or ~ path) holding one id a
     # line, read at each hook event so a change applies at once. Empty: every session speaks.
     speak_only: list[str] = field(default_factory=list)

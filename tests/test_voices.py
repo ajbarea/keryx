@@ -875,3 +875,78 @@ def test_a_blend_spelled_another_way_is_the_same_voice_on_every_request(tmp_path
     specs = len(b._specs)
     b.assign("9:1", "repo", requested=asked)
     assert len(b._specs) == specs  # no new entry per request
+
+
+def test_pool_rotation_skips_reserved_voices(tmp_path):
+    b = VoiceBook(
+        tmp_path / "v.json",
+        clock=Clock(),
+        active_seconds=60,
+        reserved=("am_michael", "bf_emma"),
+    )
+    # POOL is: af_heart, am_michael, bf_emma, am_puck, af_bella...
+    assert b.assign("s1", "repo1") == VoiceSpec(("af_heart",))
+    assert b.assign("s2", "repo2") == VoiceSpec(("am_puck",))
+    assert b.assign("s3", "repo3") == VoiceSpec(("af_bella",))
+
+
+def test_a_freed_reserved_home_voice_is_never_handed_out_without_keryx_voice(tmp_path):
+    path = tmp_path / "v.json"
+    clock = Clock()
+    # State where ajsoftworks calls am_michael home (e.g. Heph previously running)
+    path.write_text(
+        json.dumps(
+            {
+                "homes": {"ajsoftworks": {"voice": "am_michael", "seen": 10.0}},
+                "holders": {},
+            }
+        )
+    )
+    b = VoiceBook(
+        path,
+        clock=clock,
+        active_seconds=60,
+        reserved=("am_michael", "bf_emma"),
+    )
+    # Worker starts in ajsoftworks without KERYX_VOICE: must NOT get am_michael
+    worker = b.assign("worker-1", "ajsoftworks")
+    assert worker != VoiceSpec(("am_michael",))
+    assert worker == VoiceSpec(("af_heart",))
+
+    # Orchestrator session starts in ajsoftworks asking for am_michael: DOES get am_michael
+    heph = b.assign("orchestrator", "ajsoftworks", requested="am_michael")
+    assert heph == VoiceSpec(("am_michael",))
+
+
+def test_a_reserved_voice_does_not_become_repo_home_when_requested(tmp_path):
+    path = tmp_path / "v.json"
+    clock = Clock()
+    b = VoiceBook(
+        path,
+        clock=clock,
+        active_seconds=60,
+        reserved=("am_michael", "bf_emma"),
+    )
+    # A session explicitly asks for am_michael
+    assert b.assign("orch", "newrepo", requested="am_michael") == VoiceSpec(("am_michael",))
+    # Repo home must NOT be am_michael
+    assert "newrepo" not in b._home
+
+    # A subsequent worker without requested voice gets an unreserved pool voice
+    worker = b.assign("w1", "newrepo")
+    assert worker == VoiceSpec(("af_heart",))
+    # And now newrepo is homed in af_heart
+    assert b._home["newrepo"][0] == b._index["af_heart"]
+
+
+def test_holderless_call_avoids_reserved_voices(tmp_path):
+    b = VoiceBook(
+        tmp_path / "v.json",
+        first="am_michael",
+        clock=Clock(),
+        reserved=("am_michael", "bf_emma"),
+    )
+    # Even if first is am_michael, holderless call returns an unreserved voice
+    voice = b.assign("", "repo")
+    assert "am_michael" not in voice.names
+    assert "bf_emma" not in voice.names
