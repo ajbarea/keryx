@@ -228,6 +228,36 @@ def main(argv: list[str] | None = None) -> int:
         # A session speak_only leaves out stops here: no summarizer call, no speech.
         if not may_speak(cfg, str(event.get("session_id", ""))):
             return 0
+
+        # In AGY, PreInvocation acts as both prompt notification and synchronous replay hook:
+        if event.get("engine") == "agy" and hook.is_replay_event(event, hook.entrypoint()):
+            from keryx.procs import terminal_id
+
+            who = {"terminal": terminal_id(), "session": event.get("session_id", "")}
+            try:
+                replayed = client.send({"op": "again", **who}).get("replayed")
+            except (OSError, ValueError):
+                replayed = False
+            if replayed:
+                print(
+                    json.dumps(
+                        {
+                            "terminationBehavior": "terminate",
+                            "injectSteps": [
+                                {
+                                    "systemMessage": {
+                                        "systemMessage": "",
+                                        "metadata": {
+                                            "user_markdown": "*(keryx: saying that again)*"
+                                        },
+                                    }
+                                }
+                            ],
+                        }
+                    )
+                )
+                return 0
+
         request = hook.request_for(event, hook.entrypoint())
         if request is None:
             return 0

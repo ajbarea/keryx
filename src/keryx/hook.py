@@ -124,6 +124,8 @@ def normalize(event: dict) -> dict:
 
     # 1. Hook event name: Claude Code "hook_event_name", AGY "hookEventName"
     event_name = event.get("hook_event_name") or event.get("hookEventName")
+    if event.get("hookEventName"):
+        out["engine"] = "agy"
     if event_name:
         if event_name == "PreInvocation":
             event_name = "UserPromptSubmit"

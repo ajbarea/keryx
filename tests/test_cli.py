@@ -67,6 +67,42 @@ def test_session_start_spawns_and_warms(monkeypatch, sent):
     ]
 
 
+def test_agy_pre_invocation_replay_phrase_triggers_again_and_terminates(monkeypatch, capsys):
+    from keryx import client
+
+    sent = []
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: sent.append(req) or {"replayed": True})
+    event = {
+        "hookEventName": "PreInvocation",
+        "conversationId": "conv-agy-1",
+        "lastUserInput": "say that again",
+    }
+    assert run_hook(monkeypatch, event) == 0
+    assert len(sent) == 1
+    assert sent[0]["op"] == "again"
+    assert sent[0]["session"] == "conv-agy-1"
+    out = json.loads(capsys.readouterr().out)
+    assert out["terminationBehavior"] == "terminate"
+    assert (
+        "saying that again" in out["injectSteps"][0]["systemMessage"]["metadata"]["user_markdown"]
+    )
+
+
+def test_agy_pre_invocation_replay_phrase_proceeds_when_not_replayed(monkeypatch, sent, capsys):
+    from keryx import client
+
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: {"replayed": False})
+    event = {
+        "hookEventName": "PreInvocation",
+        "conversationId": "conv-agy-2",
+        "lastUserInput": "say that again",
+    }
+    assert run_hook(monkeypatch, event) == 0
+    assert capsys.readouterr().out == ""
+    assert sent["spawn"][0]["op"] == "stop"
+    assert sent["spawn"][0]["interrupt"] is False
+
+
 class ExitedDaemon:
     def __init__(self, status=0):
         self.status = status
