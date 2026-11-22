@@ -18,6 +18,8 @@ from keryx.summarize import (
     NUM_PREDICT,
     SPOKEN_MAX_CHARS,
     OllamaClient,
+    check_faithfulness,
+    is_faithful,
     model_input,
     ollama_keep_alive,
     spoken,
@@ -35,6 +37,9 @@ class FakeClient:
         self.prompts.append(prompt)
         if self.exc:
             raise self.exc
+        if isinstance(self.reply, list):
+            idx = min(len(self.prompts) - 1, len(self.reply) - 1)
+            return self.reply[idx]
         return self.reply
 
 
@@ -273,3 +278,103 @@ def test_spoken_line_applies_the_gate():
     client = FakeClient()
     assert spoken_line(LONG, client, gate=lambda: "low").startswith("I changed the parser.")
     assert client.prompts == []
+
+
+def test_check_faithfulness_detects_question_turned_into_action():
+    source = (
+        "Want me to add it to the deck? I can put it right after the intro slide and "
+        "adjust theme colors."
+    )
+    bad_sum = "Adding it to the deck is pending."
+    good_sum = "Would you like me to add it to the deck?"
+    valid, reason = check_faithfulness(bad_sum, source)
+    assert not valid
+    assert reason == "question_as_action"
+    assert is_faithful(good_sum, source)
+
+
+def test_check_faithfulness_detects_removed_item_claimed_as_done():
+    source = (
+        "CISC-820 ✅ off the list; CV ✅ leave it. The remaining graduation requirements are met."
+    )
+    bad_sum = "I updated CISC-820 and AWARE-AI CV."
+    good_sum = "CISC-820 is off the list and CV is left as is."
+    valid, reason = check_faithfulness(bad_sum, source)
+    assert not valid
+    assert reason == "removed_item_as_done"
+    assert is_faithful(good_sum, source)
+
+
+def test_check_faithfulness_detects_draft_claimed_by_assistant():
+    source = (
+        "Here is a draft team message with links for you to send:\nHi team, please review "
+        "the latest slides."
+    )
+    bad_sum = "I've created a pinned list and posted the team message."
+    good_sum = "Here is a draft team message for you to send."
+    valid, reason = check_faithfulness(bad_sum, source)
+    assert not valid
+    assert reason == "draft_claimed_by_assistant"
+    assert is_faithful(good_sum, source)
+
+
+def test_check_faithfulness_detects_attribution_flip():
+    source = (
+        'You noted that "the scatter-brained ideas are the good ones". '
+        "I fixed the markdown lint issues."
+    )
+    bad_sum = "I've identified several small annoyances and scatter-brained ideas."
+    good_sum = "You noted that scatter-brained ideas are good; I fixed the lint issues."
+    valid, reason = check_faithfulness(bad_sum, source)
+    assert not valid
+    assert reason == "attribution_flip"
+    assert is_faithful(good_sum, source)
+
+
+def test_check_faithfulness_detects_pending_claimed_as_done():
+    source = "The staging deploy is still running; I will check back when it finishes."
+    bad_sum = "The staging deploy is done and verified."
+    good_sum = "The staging deploy is still running and I will check back."
+    valid, reason = check_faithfulness(bad_sum, source)
+    assert not valid
+    assert reason == "pending_claimed_as_done"
+    assert is_faithful(good_sum, source)
+
+
+def test_spoken_retries_and_succeeds_on_unfaithful_first_attempt():
+    source = (
+        "CISC-820 ✅ off the list; CV ✅ leave it. The remaining degree graduation requirements "
+        "have been thoroughly verified across all university catalogs and departmental archives, "
+        "including prerequisite checks and elective distribution rules for the upcoming semester."
+    )
+    bad_sum = "I updated CISC-820 and AWARE-AI CV."
+    good_sum = "CISC-820 is off the list and graduation requirements are met."
+    client = FakeClient(reply=[bad_sum, good_sum])
+    line, path = spoken(source, client)
+    assert path == "model"
+    assert line == good_sum
+    assert len(client.prompts) == 2
+    assert "Your previous summary was unfaithful" in client.prompts[1]
+
+
+def test_spoken_falls_back_to_opening_if_retry_is_still_unfaithful():
+    source = (
+        "CISC-820 ✅ off the list; CV ✅ leave it. The remaining degree graduation requirements "
+        "have been thoroughly verified across all university catalogs and departmental archives, "
+        "including prerequisite checks and elective distribution rules for the upcoming semester."
+    )
+    bad_sum_1 = "I updated CISC-820."
+    bad_sum_2 = "I fixed and updated CISC-820."
+    client = FakeClient(reply=[bad_sum_1, bad_sum_2])
+    line, path = spoken(source, client)
+    assert path == "fallback"
+    assert line.startswith("CISC-820")
+    assert len(client.prompts) == 2
+
+
+def test_faithful_summary_does_not_retry():
+    client = FakeClient(reply="I fixed it. Please review the PR.")
+    line, path = spoken(LONG, client)
+    assert path == "model"
+    assert line == "I fixed it. Please review the PR."
+    assert len(client.prompts) == 1

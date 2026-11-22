@@ -1,0 +1,38 @@
+[
+  {
+    "category": "question_as_action",
+    "source": "Want me to add it to the deck? I can put it right after the intro slide and adjust theme colors.",
+    "bad_summary": "Adding it to the deck is pending.",
+    "good_summary": "Would you like me to add it to the deck?"
+  },
+  {
+    "category": "removed_item_as_done",
+    "source": "CISC-820 ✅ off the list; CV ✅ leave it. The remaining graduation requirements and forms are satisfied.",
+    "bad_summary": "I updated CISC-820 and AWARE-AI CV.",
+    "good_summary": "CISC-820 is off the list and CV is left as is."
+  },
+  {
+    "category": "draft_claimed_by_assistant",
+    "source": "Here is a draft team message with links for you to send:\nHi team, please review the latest slides.",
+    "bad_summary": "I've created a pinned list and posted the team message.",
+    "good_summary": "Here is a draft team message for you to send."
+  },
+  {
+    "category": "attribution_flip",
+    "source": "You noted that \"the scatter-brained ideas are the good ones\". I fixed the markdown lint issues and pushed the branch.",
+    "bad_summary": "I've identified several small annoyances and scatter-brained ideas.",
+    "good_summary": "You noted that scatter-brained ideas are good; I fixed the lint issues and pushed."
+  },
+  {
+    "category": "pending_as_done",
+    "source": "The staging deploy is still running; I will check back when it finishes. All 42 unit tests passed.",
+    "bad_summary": "The staging deploy is done and verified.",
+    "good_summary": "All 42 tests passed, and the staging deploy is still running."
+  },
+  {
+    "category": "faithful",
+    "source": "Status: Renamed the ocean-temperature column in the weather loader and updated both notebooks that read it. All 118 tests pass and the branch is pushed. One question: should the old column name stay as an alias for a release, or go now?",
+    "bad_summary": "",
+    "good_summary": "I renamed the ocean temperature column and updated both notebooks; tests pass and it's pushed. Should the old name stay as an alias for a release, or go now?"
+  }
+]
