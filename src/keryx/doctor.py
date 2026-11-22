@@ -6,6 +6,7 @@ import contextlib
 import http.client
 import ipaddress
 import json
+import os
 import re
 import shlex
 import shutil
@@ -16,7 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
-from keryx.config import Config
+from keryx.config import Config, config_path, read_raw
 
 UV_INSTALL = "curl -LsSf https://astral.sh/uv/install.sh | sh"
 OLLAMA_INSTALL = "curl -fsSL https://ollama.com/install.sh | sh"
@@ -175,7 +176,12 @@ def checks(
             tags = json.loads(fetch(f"{host}/api/tags")).get("models", [])
             names = {m.get("name", "") for m in tags}
         except (OSError, ValueError, AttributeError, http.client.HTTPException) as exc:
-            fix = "fix: ollama serve" if which("ollama") else f"fix: {OLLAMA_INSTALL}"
+            if which("ollama"):
+                fix = "fix: ollama serve"
+            elif which("ollama.exe"):
+                fix = "fix: start the Ollama app in Windows"
+            else:
+                fix = f"fix: {OLLAMA_INSTALL}"
             found.append(Check("missing", "ollama", f"{host} did not answer ({exc})", (fix,)))
             found.append(Check("n/a", "model", "Ollama is not reachable"))
         else:
@@ -202,13 +208,24 @@ def checks(
     if WINDOWS_DRIVE.match(cfg.audio_dir):
         found.append(Check("ok", "audio-dir", cfg.audio_dir))
     else:
+        if os.environ.get("KERYX_AUDIO_DIR"):
+            source = "environment variable KERYX_AUDIO_DIR"
+            fix = f"fix: unset KERYX_AUDIO_DIR or export KERYX_AUDIO_DIR={DEFAULT_AUDIO_DIR}"
+        else:
+            raw = read_raw()
+            if "audio_dir" in raw:
+                source = f"config file {config_path()}"
+                fix = f"fix: update audio_dir in {config_path()} to a Windows drive path"
+            else:
+                source = "default setting"
+                fix = f"fix: set audio_dir in {config_path()} to a Windows drive path"
         found.append(
             Check(
                 "missing",
                 "audio-dir",
-                f"{cfg.audio_dir} is not on a Windows drive;"
+                f"{cfg.audio_dir} (from {source}) is not on a Windows drive;"
                 " Windows plays only from its own drives",
-                (f"fix: export KERYX_AUDIO_DIR={DEFAULT_AUDIO_DIR}",),
+                (fix,),
             )
         )
     return found

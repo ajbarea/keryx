@@ -75,10 +75,14 @@ def test_ollama_down_names_serve_or_install():
     found = doctor.checks(Config(), which=which_all, fetch=fetch_down)
     assert lines(found)["ollama"] == "missing" and lines(found)["model"] == "n/a"
     assert "  fix: ollama serve" in doctor.render(found).splitlines()
-    no_ollama = doctor.checks(
-        Config(), which=lambda n: None if n == "ollama" else which_all(n), fetch=fetch_down
-    )
+    no_ollama = doctor.checks(Config(), which=lambda n: None, fetch=fetch_down)
     assert "  fix: curl -fsSL https://ollama.com/install.sh | sh" in doctor.render(no_ollama)
+    windows_ollama = doctor.checks(
+        Config(),
+        which=lambda n: "/mnt/c/Ollama/ollama.exe" if n == "ollama.exe" else None,
+        fetch=fetch_down,
+    )
+    assert "  fix: start the Ollama app in Windows" in doctor.render(windows_ollama)
 
 
 def test_model_not_pulled():
@@ -110,6 +114,25 @@ def test_audio_dir_off_a_windows_drive():
         Config(audio_dir="/tmp/keryx"), which=which_all, fetch=fetch_ok, server_env=env_none
     )
     assert lines(found)["audio-dir"] == "missing"
+
+
+def test_audio_dir_names_source_and_persistent_fix(tmp_path, monkeypatch):
+    monkeypatch.setenv("KERYX_AUDIO_DIR", "/tmp/bad")
+    found = doctor.checks(
+        Config(audio_dir="/tmp/bad"), which=which_all, fetch=fetch_ok, server_env=env_none
+    )
+    assert "environment variable KERYX_AUDIO_DIR" in by_name(found)["audio-dir"].detail
+    assert "unset KERYX_AUDIO_DIR" in by_name(found)["audio-dir"].fixes[0]
+
+    monkeypatch.delenv("KERYX_AUDIO_DIR")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    (tmp_path / "keryx").mkdir(parents=True)
+    (tmp_path / "keryx" / "config.json").write_text('{"audio_dir": "/tmp/custom"}')
+    found_cfg = doctor.checks(
+        Config(audio_dir="/tmp/custom"), which=which_all, fetch=fetch_ok, server_env=env_none
+    )
+    assert "config file" in by_name(found_cfg)["audio-dir"].detail
+    assert "update audio_dir" in by_name(found_cfg)["audio-dir"].fixes[0]
 
 
 def test_non_object_tags_payload_is_not_a_traceback():
