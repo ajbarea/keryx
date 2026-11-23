@@ -1,24 +1,20 @@
-# IMPL
+# IMPL: #95 reserved voices (PR #99) - PARKED 11-23 for the Personal 5h reset
 
-## Current: Reserved Voices in VoiceBook & Daemon (#95)
+Branch fix/reserved-voices-95 (agy's; Opus agy-review-k r1 fixes committed here).
+Push: `git push origin fix/reserved-voices-95:fix/reserved-voices-95`. Never push to main.
 
-Slice: A `reserved_voices` option (a list of voice ids) configures voices that keryx will never hand out from the pool or a repo home. A session can only obtain a reserved voice by asking explicitly via `KERYX_VOICE`.
+## Done (Opus r1)
+- Not wired: nothing set reserved_voices (AJ's config lacks it), so the option was dead.
+  Added `keryx reserve [VOICE ...] | --none` (names resolved against the stock list; refuses an
+  unknown voice), docs/commands.md, README + configuration rows.
+- default() rewritten through _is_reserved (agy duplicated the check); dead home-recording guard
+  removed (reachable only when every voice is reserved); wrap-around test added.
+- Mutations: home, first_free, holderless, wrap-around guards each turn a test red.
+- ruff, ty clean; pytest 721 passed + new CLI/voices tests; AJ's ~/.config/keryx unchanged.
 
-✅ Done
-- `src/keryx/config.py`: Added `reserved_voices: list[str] = field(default_factory=list)` to `Config` with env override `KERYX_RESERVED_VOICES`.
-- `docs/configuration.md`: Documented `reserved_voices` and its interaction with `KERYX_VOICE`.
-- `src/keryx/daemon.py`: Passed `cfg.reserved_voices` to `VoiceBook` in `build_speaker`.
-- `src/keryx/voices.py`: Added `reserved` parameter and `_is_reserved()` check in `VoiceBook`. Updated `assign()` and `_first_free()` so reserved voices are never handed out from pool rotation, repo homes (even if previously homed/freed in a reserved voice), or holderless requests, and cannot become a repo's home. Explicit `requested` voice (from `KERYX_VOICE`) still claims the requested voice without homing the repo.
-- `tests/test_config.py`: Added unit tests for `reserved_voices` defaults, config loading, and env overrides.
-- `tests/test_voices.py`: Added unit tests for pool rotation skipping reserved voices, freed repo home with reserved voice falling back to unreserved pool voice unless asked via `requested`, blends skipping reserved voices, and holderless requests avoiding reserved voices.
-
-📋 Next
-- Push branch `fix/reserved-voices-95` to origin.
-- Open PR for issue #95 with short top and folded verification details.
-- Self-review against elenchus bug-class catalog.
-
-## Verify
-- `ruff check`: clean.
-- `ruff format --check`: clean.
-- `ty check`: clean.
-- `pytest`: 720 passed in 41.5s.
+## Next
+1. Independent Opus reader round (none run yet on this PR).
+2. Wiring on the fleet side: klepsydra should run `keryx reserve am_michael bf_emma` (voices.sh
+   apply or fleet install) when keryx has `reserve`: open a klepsydra issue + PR.
+3. After 0.13.0 (#102) lands: run `keryx reserve am_michael bf_emma`, `keryx off; keryx on`, and
+   check a new worker's voice in voices.json is not am_michael/bf_emma (live proof).

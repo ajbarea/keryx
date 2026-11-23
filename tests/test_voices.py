@@ -950,3 +950,10 @@ def test_holderless_call_avoids_reserved_voices(tmp_path):
     voice = b.assign("", "repo")
     assert "am_michael" not in voice.names
     assert "bf_emma" not in voice.names
+
+
+def test_with_every_unreserved_voice_held_the_next_repeats_one_never_a_reserved_one(tmp_path):
+    reserved = ("am_michael", "bf_emma")
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60, reserved=reserved)
+    given = [b.assign(f"s{i}", f"repo{i}") for i in range(len(b._specs) + 3)]
+    assert not [v for v in given if set(v.names) & set(reserved)]

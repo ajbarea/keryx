@@ -874,3 +874,25 @@ def test_a_speak_only_file_of_exactly_the_limit_is_read(monkeypatch, sent, tmp_p
         {"hook_event_name": "Stop", "session_id": "heph", "last_assistant_message": "Hi."},
     )
     assert [r["session"] for r in sent["spawn"]] == ["heph"]
+
+
+def test_reserve_shows_sets_and_clears_the_reserved_voices(capsys):
+    assert cli.main(["reserve"]) == 0
+    assert capsys.readouterr().out.strip() == "no voice is reserved"
+    assert cli.main(["reserve", "michael", "bf_emma", "am_michael"]) == 0
+    out = capsys.readouterr().out
+    assert Config.load().reserved_voices == ["am_michael", "bf_emma"]
+    assert "reserved: am_michael, bf_emma" in out and "keryx off, then keryx on" in out
+    assert cli.main(["reserve"]) == 0
+    assert capsys.readouterr().out.strip() == "am_michael, bf_emma"
+    assert cli.main(["reserve", "--none"]) == 0
+    assert Config.load().reserved_voices == []
+
+
+def test_reserve_refuses_a_name_that_is_no_voice_and_writes_nothing(capsys):
+    cli.main(["reserve", "am_michael"])
+    capsys.readouterr()
+    assert cli.main(["reserve", "am_michael", "not_a_voice"]) == 2
+    assert "not_a_voice is not a voice" in capsys.readouterr().err
+    assert Config.load().reserved_voices == ["am_michael"]
+    assert cli.main(["reserve", "--bogus"]) == 2

@@ -235,10 +235,10 @@ class VoiceBook:
         return spec.label() in self._reserved or any(name in self._reserved for name in spec.names)
 
     def default(self) -> VoiceSpec:
-        for spec in self._specs:
-            if not (spec.label() in self._reserved or any(n in self._reserved for n in spec.names)):
-                return spec
-        return self._specs[0]
+        """The first voice that is not reserved: the configured one, unless it is."""
+        return next(
+            (spec for i, spec in enumerate(self._specs) if not self._is_reserved(i)), self._specs[0]
+        )
 
     def assign(self, holder: str, source: str, requested: str | None = None) -> VoiceSpec:
         """The voice for `holder` (a terminal, else a session), working in repo `source`.
@@ -307,7 +307,6 @@ class VoiceBook:
             source
             and changed
             and not homed_elsewhere
-            and not self._is_reserved(index)
             and (
                 home is None
                 or self._is_reserved(home[0])
