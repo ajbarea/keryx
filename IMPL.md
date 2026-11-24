@@ -1,25 +1,23 @@
-# IMPL: #95 reserved voices (PR #99) - PARKED 11-23 for the Personal 5h reset
+# IMPL
 
-Branch fix/reserved-voices-95 (agy's; Opus agy-review-k r1 fixes committed here).
-Push: `git push origin fix/reserved-voices-95:fix/reserved-voices-95`. Never push to main.
+## Current: Session Voice Naming & Immediate Daemon Startup (#73, #89)
 
-## Done (Opus r1)
-- Not wired: nothing set reserved_voices (AJ's config lacks it), so the option was dead.
-  Added `keryx reserve [VOICE ...] | --none` (names resolved against the stock list; refuses an
-  unknown voice), docs/commands.md, README + configuration rows.
-- default() rewritten through _is_reserved (agy duplicated the check); dead home-recording guard
-  removed (reachable only when every voice is reserved); wrap-around test added.
-- Mutations: home, first_free, holderless, wrap-around guards each turn a test red.
-- ruff, ty clean; pytest 721 passed + new CLI/voices tests; AJ's ~/.config/keryx unchanged.
+Slice: A session names its voice via `KERYX_VOICE` (passed on every request: warm, stop, say, notice), the daemon honours and pins the terminal hold without mutating the repo's home voice, unknown or unavailable voices fall back to rotation gracefully, and `keryx on` immediately warms Kokoro and starts the daemon.
 
-- Opus r2 (fresh reader) fixes: a voice held before it was reserved is given up unless asked
-  for (the #95 incident on a running worker); names resolved like `keryx voice` (case, short),
-  an unknown one logged; pin and `keryx voice` refuse a reserved voice; rehome test. 727 passed,
-  both new guards mutation-checked.
+✅ Done
+- `src/keryx/hook.py`: Added `requested_voice()` reading `KERYX_VOICE` and attached `"voice"` to `SessionStart` (warm), `UserPromptSubmit` (stop), `Stop` (say), and `Notification` (say) requests.
+- `src/keryx/voices.py`: Added `_ensure_spec()` to dynamically index valid, available Kokoro single voices (like `bf_alice`) for holders; updated `assign()` to honour requested voices and keep them pinned across turns and restarts without altering repo home voice; updated blend detection to check `len(names) > 1` rather than index threshold.
+- `src/keryx/speaker.py`: Updated `claim()` to pin requested voice for the holder when provided, falling back to rotation `assign()`; updated `submit()` to pin explicit voices for terminal holders.
+- `src/keryx/daemon.py`: Updated `claim()` to extract request voice and pass to `speaker.claim()`; updated `op == "say"` to fall back to rotation instead of rejecting session/terminal requests with unknown/unavailable voices.
+- `src/keryx/__main__.py`: Added `client.send_or_spawn({"op": "warm"})` when `keryx on` runs so the daemon and Kokoro warm up before the next reply; updated `keryx status` without a running daemon to report `"starts with the next reply"` when enabled and `"not running"` when disabled.
+- `tests/`: Added unit tests in `test_hook.py`, `test_voices.py`, `test_daemon.py`, and `test_cli.py` covering session voice naming, fallback to rotation on invalid/unavailable voices, pinning available single voices outside catalogue, and daemon startup on `on` (680 passed, 0 failed).
 
-## Next
-1. Fresh verify pass.
-2. Wiring on the fleet side: klepsydra should run `keryx reserve am_michael bf_emma` (voices.sh
-   apply or fleet install) when keryx has `reserve`: open a klepsydra issue + PR.
-3. After 0.13.0 (#102) lands: run `keryx reserve am_michael bf_emma`, `keryx off; keryx on`, and
-   check a new worker's voice in voices.json is not am_michael/bf_emma (live proof).
+📋 Next
+- Fast-forward merge `feat/session-voice-73-89` to `main` and push to remote.
+- Proceed with `klepsydra#389` to align the card character and terminal voice launch.
+
+## Verify
+- `ruff check src/ tests/`: clean.
+- `ruff format --check src/ tests/`: clean.
+- `ty check`: clean (0 errors).
+- `pytest`: 680 passed in 26.6s.
