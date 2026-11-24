@@ -12,6 +12,7 @@ uv run python eval/density.py replies.json replies-r1-3.json > eval/tally-densit
 ```
 
 `data/` holds private session text and is gitignored. `tally-*.txt` are the committed totals.
+`data/replies-r1-3.json` is rounds 1 to 3's `replies.json`, kept when round 4 collected new replies.
 Round 3's candidates are labelled `model|v2` and `model|v3` (prompt versions).
 
 ## Judge rubric
