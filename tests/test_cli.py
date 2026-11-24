@@ -104,7 +104,7 @@ def test_agy_replay_with_nothing_to_say_again_reaches_the_model(monkeypatch, sen
     # The model answers: the prompt is recorded and speech cut, as replay-hook does.
     (req,) = sent["spawn"]
     assert req["op"] == "stop" and "interrupt" not in req
-    assert "prompt" in req
+    assert req["prompt"] == ""  # agy payloads carry no prompt_id
     assert req["warm"] is True
 
 

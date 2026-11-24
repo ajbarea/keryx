@@ -248,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
             if replayed:
                 print(json.dumps({"terminationBehavior": "terminate"}))
                 return 0
-            # The model answers: send the full request, as replay-hook does.
+            # The model answers: the full request, as replay-hook sends after no replay.
             with contextlib.suppress(OSError, ValueError):
                 client.send_or_spawn(hook.prompt_request(event))
             return 0
