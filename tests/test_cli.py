@@ -101,8 +101,11 @@ def test_agy_replay_with_nothing_to_say_again_reaches_the_model(monkeypatch, sen
     monkeypatch.setattr(client, "send", lambda req, *a, **k: {"replayed": False})
     assert run_hook(monkeypatch, agy_pre_invocation(0)) == 0
     assert capsys.readouterr().out == ""
-    assert sent["spawn"][0]["op"] == "stop"
-    assert sent["spawn"][0]["interrupt"] is False
+    # The model answers: the prompt is recorded and speech cut, as replay-hook does.
+    (req,) = sent["spawn"]
+    assert req["op"] == "stop" and "interrupt" not in req
+    assert "prompt" in req
+    assert req["warm"] is True
 
 
 def test_agy_later_model_calls_of_a_turn_are_not_prompts(monkeypatch, sent, capsys):
