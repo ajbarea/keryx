@@ -22,7 +22,7 @@ Run `keryx status` (or `/keryx status` in Claude Code). It prints the settings a
 | `ollama` | Start Ollama: the Windows app, or `ollama serve` in WSL. If it is not installed, install it from https://ollama.com/download. |
 | `model` | Run the fix line, `ollama pull <model>`. |
 | `ollama-memory` | Marked `optional`, so the result stays ready. The drop-in in its fix line needs sudo, so the user runs it with `!`. Restarting Ollama unloads every model, so ask first. `n/a` means Ollama is not a systemd service; see docs/troubleshooting.md. |
-| `audio-dir` | Windows plays audio only from its own drives. Remove the override, or point `KERYX_AUDIO_DIR` at a folder on a Windows drive. |
+| `audio-dir` | Windows plays audio only from its own drives. The line names where the value comes from. From the config file: set the value the fix line gives. From `KERYX_AUDIO_DIR`: remove it from the shell profile, restart the Claude Code sessions started with it, then `keryx off` and `keryx on`. |
 
 ## 3. Check the result
 
