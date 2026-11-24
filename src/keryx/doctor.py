@@ -210,11 +210,11 @@ def checks(
     else:
         # Name where the value comes from, and a fix that outlasts this shell (#25).
         setting = f'fix: set "audio_dir": "{DEFAULT_AUDIO_DIR}" in {config_path()}'
-        if os.environ.get("KERYX_AUDIO_DIR"):
+        if "KERYX_AUDIO_DIR" in os.environ:  # set, even empty, it overrides the file
             source = "KERYX_AUDIO_DIR in the environment"
             fix = (
-                "fix: remove KERYX_AUDIO_DIR from the shell profile that sets it,"
-                " then keryx off and keryx on"
+                "fix: remove KERYX_AUDIO_DIR from the shell profile that sets it, restart the"
+                " Claude Code sessions started with it, then keryx off and keryx on"
             )
         elif "audio_dir" in read_raw():
             source = str(config_path())

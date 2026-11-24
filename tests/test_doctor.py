@@ -429,3 +429,12 @@ def test_environment_file_paths_may_hold_spaces(tmp_path):
         "OLLAMA_KV_CACHE_TYPE": "q8_0",
         "OLLAMA_FLASH_ATTENTION": "1",
     }
+
+
+def test_an_empty_audio_dir_in_the_environment_is_named_as_the_source(monkeypatch):
+    monkeypatch.setenv("KERYX_AUDIO_DIR", "")
+    found = doctor.checks(
+        Config(audio_dir=""), which=which_all, fetch=fetch_ok, server_env=env_none
+    )
+    assert "KERYX_AUDIO_DIR in the environment" in by_name(found)["audio-dir"].detail
+    assert "restart the Claude Code sessions" in by_name(found)["audio-dir"].fixes[0]

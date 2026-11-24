@@ -12,5 +12,9 @@ Push: `git push origin fix/status-polish-25:fix/status-polish-25`. Never push to
 - Live: `KERYX_AUDIO_DIR=/tmp/bad keryx status` names the env as source with the new fix;
   plain `keryx status` all ok. ruff, ty clean; pytest 710 passed.
 
+- Opus r2 (fresh reader): an empty KERYX_AUDIO_DIR is named as the source (it overrides the file);
+  the env fix says to restart the Claude Code sessions that carry it; conftest isolates
+  XDG_CONFIG_HOME for every test. 711 passed; live `KERYX_AUDIO_DIR= keryx status` checked.
+
 ## Next
-- Fresh-reader round, CI, merge (restore main's IMPL.md first).
+- Fresh verify pass, CI, merge (restore main's IMPL.md first).

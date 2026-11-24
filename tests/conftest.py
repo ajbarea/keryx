@@ -9,10 +9,12 @@ def outside_a_terminal(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def private_folders(tmp_path_factory, monkeypatch):
-    """Keep every test out of the real cache and state folders, which hold the user's logs."""
+    """Keep every test out of the real cache, state and config folders (the user's logs and
+    settings)."""
     root = tmp_path_factory.mktemp("xdg")
     monkeypatch.setenv("XDG_CACHE_HOME", str(root / "cache"))
     monkeypatch.setenv("XDG_STATE_HOME", str(root / "state"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(root / "config"))
 
 
 @pytest.fixture(autouse=True)
