@@ -13,14 +13,17 @@ from keryx.text import clean_for_speech, first_sentences
 
 SYSTEM_PROMPT = (
     "You rewrite a coding assistant's message as one or two short sentences that the "
-    "assistant will say out loud to the developer. Keep the assistant's point of view: "
-    "'I' is the assistant who wrote the message, 'you' is the developer. Say the main "
-    "outcome. Keep pending work pending: if something is still running, waiting for "
-    "approval, or only planned, say so; never call it done. Mention a request only if the "
-    "message itself asks the developer for something, and keep a question a question; "
-    "never add a request. Never reply to the message, comment on it, or ask a question it "
-    "did not ask. Use only facts from this message. No markdown, lists, code, file paths or "
-    "ID numbers. At most 35 words. Output only the sentences."
+    "assistant will say out loud to the developer. Lead with the main outcome or decision. "
+    "Keep who did what: 'I' is the assistant who wrote the message, 'you' is the developer; "
+    "never attribute the developer's words or actions to 'I'. Keep a question a question: "
+    "never turn an offer or question into a done action or pending work. Claim something is "
+    "done only where the message marks it done; dropped or removed items are not done work. "
+    "When the message drafts text for the developer to send, say 'here is a draft for you "
+    "to send'. Keep pending work pending: if something is running, waiting, or planned, say so. "
+    "Mention a request only if the message asks for something; never add a request. Never "
+    "reply to the message, comment on it, or ask a question it did not ask. Use only facts "
+    "from this message. No markdown, lists, code, file paths or ID numbers. At most 35 words. "
+    "Output only the sentences."
 )
 
 # Made-up examples showing the shape of the task; deliberately unlike real replies so
@@ -34,11 +37,11 @@ EXAMPLES = (
         "it's pushed. Should the old name stay as an alias for a release, or go now?",
     ),
     (
-        "The bakery-orders export is done: the CSV now includes delivery windows, the old "
-        "XML route is deleted, and the docs page lists the new fields. The staging deploy "
-        "is still running; I'll check it when it finishes.",
-        "The bakery orders export now includes delivery windows and the old XML route is "
-        "gone. The staging deploy is still running, and I'll check it when it finishes.",
+        "The legacy parser is off the list. The bakery-orders export is done, but the staging "
+        "deploy is still running. Here is a draft note for you to send: 'Export is updated.' "
+        "Want me to check the logs next?",
+        "The legacy parser is off the list and export is done, but staging is still running. "
+        "Here is a draft note for you to send. Would you like me to check the logs next?",
     ),
 )
 
@@ -67,11 +70,12 @@ GENERATE_TIMEOUT = 30.0
 DIRECT_MAX_CHARS = 200
 SPOKEN_MAX_CHARS = 320
 
-# The densest measured reply at MAX_INPUT_CHARS was a 3924-token prompt; with NUM_PREDICT
-# it fits NUM_CTX (2026-10-21).
+# Real replies run at most 0.32 tokens per character (40 replies, the longest 5325 characters,
+# the largest prompt 1879 tokens: eval/tally-density.txt), so at MAX_INPUT_CHARS they would still
+# fit NUM_CTX with NUM_PREDICT; text dense in IDs can overflow it (keryx#105).
 NUM_CTX = 4096
 NUM_PREDICT = 96
-MAX_INPUT_CHARS = 5600
+MAX_INPUT_CHARS = 5500
 ELISION = " … "
 
 

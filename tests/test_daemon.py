@@ -725,7 +725,9 @@ class _Built:
             "OllamaClient": Client,
             "Speaker": Sp,
             "WindowsPlayer": lambda **kw: None,
-            "KokoroVoice": lambda *a: type("V", (), {"voice": type("N", (), {"names": ["x"]})})(),
+            "KokoroVoice": lambda *a: type(
+                "V", (), {"voice": type("N", (), {"names": ["x"]}), "has": lambda self, n: True}
+            )(),
             "model_loaded": lambda host, model, fetch=None: loaded,
             "mem_available_mb": lambda: ram,
             "gpu_free_mb": lambda: vram,
@@ -735,6 +737,16 @@ class _Built:
         _speaker, _player, warm = daemon.build_speaker(cfg, self.state)
         assert warm is not None
         self.warm = warm
+
+
+def test_the_speaker_voice_book_keeps_the_configured_reserved_voices(monkeypatch):
+    # keryx reserve writes reserved_voices; the daemon's book is what hands voices out (#95).
+    from keryx import daemon
+
+    books = []
+    monkeypatch.setattr(daemon, "VoiceBook", lambda *a, **kw: books.append(kw))
+    _Built(monkeypatch, Config(distinct_voices=True, reserved_voices=["am_michael", "bf_emma"]))
+    assert [kw.get("reserved") for kw in books] == [["am_michael", "bf_emma"]]
 
 
 def test_shorten_trims_when_memory_is_low_and_records_the_path(monkeypatch):

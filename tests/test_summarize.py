@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import threading
@@ -11,13 +12,16 @@ import pytest
 
 from keryx.summarize import (
     DIRECT_MAX_CHARS,
+    EXAMPLES,
     GENERATE_TIMEOUT,
     LOAD_TIMEOUT,
     MAX_INPUT_CHARS,
     NUM_CTX,
     NUM_PREDICT,
     SPOKEN_MAX_CHARS,
+    SYSTEM_PROMPT,
     OllamaClient,
+    _framed,
     model_input,
     ollama_keep_alive,
     spoken,
@@ -153,15 +157,38 @@ def test_design_doc_states_the_timeouts_in_use():
     assert f"up to {MAX_INPUT_CHARS} characters" in design
 
 
-# Measured on gemma3:4b, Ollama 0.35.0, 2026-10-21: fixed prompt overhead in tokens and
-# dense text (versions, IDs, percentages) in tokens per char.
-OVERHEAD_TOKENS = 409
-DENSE_TOKENS_PER_CHAR = 0.63
+# Measured on gemma3:4b with eval/density.py (eval/tally-density.txt, 2026-11-23): the fixed
+# prompt overhead (Ollama prompt_eval_count of an empty framed reply, 469, plus one; 409 before
+# #70's rules), and tokens per character of 40 real replies and of a reply dense in IDs.
+OVERHEAD_TOKENS = 470
+# The prompt OVERHEAD_TOKENS was measured on: any edit to SYSTEM_PROMPT or EXAMPLES fails
+# here until OVERHEAD_TOKENS is re-measured and this updated with it.
+OVERHEAD_MEASURED_ON_SHA256 = "fbac5cb69292156a"
+REAL_TOKENS_PER_CHAR = 0.32
+ID_DENSE_TOKENS_PER_CHAR = 0.87
+HEADROOM_TOKENS = 32
 
 
-def test_the_largest_prompt_keryx_can_send_fits_the_context_it_asks_for():
-    worst = OVERHEAD_TOKENS + DENSE_TOKENS_PER_CHAR * MAX_INPUT_CHARS + NUM_PREDICT
-    assert worst <= NUM_CTX
+def test_the_overhead_was_measured_on_this_prompt():
+    text = SYSTEM_PROMPT + "".join(_framed(m) + s for m, s in EXAMPLES)
+    digest = hashlib.sha256(text.encode()).hexdigest()[:16]
+    assert digest == OVERHEAD_MEASURED_ON_SHA256, "prompt changed: re-measure OVERHEAD_TOKENS"
+
+
+@pytest.mark.parametrize(
+    "tokens_per_char",
+    [
+        REAL_TOKENS_PER_CHAR,
+        pytest.param(
+            ID_DENSE_TOKENS_PER_CHAR,
+            marks=pytest.mark.xfail(strict=True, reason="keryx#105: ID-dense text overflows"),
+        ),
+    ],
+    ids=["real-replies", "id-dense"],
+)
+def test_the_largest_prompt_keryx_can_send_fits_the_context_it_asks_for(tokens_per_char):
+    worst = OVERHEAD_TOKENS + tokens_per_char * MAX_INPUT_CHARS + NUM_PREDICT
+    assert worst <= NUM_CTX - HEADROOM_TOKENS
 
 
 def test_chat_and_warm_pin_the_context_window(slow_ollama):

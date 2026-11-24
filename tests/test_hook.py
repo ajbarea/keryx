@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from keryx import version
+from keryx import hook, version
 from keryx.hook import parse, request_for, source_name
 
 
@@ -417,3 +417,13 @@ def test_requests_include_voice_from_event_payload(monkeypatch, tmp_path):
     req = request_for(ev, "cli")
     assert req is not None
     assert req["voice"] == "am_michael"
+
+
+def test_only_the_first_agy_pre_invocation_of_a_turn_is_its_prompt():
+    first = {"hookEventName": "PreInvocation", "invocationNum": 0, "lastUserInput": "hi"}
+    assert hook.normalize(first)["hook_event_name"] == "UserPromptSubmit"
+    later = {**first, "invocationNum": 1}
+    assert hook.normalize(later)["hook_event_name"] == "PreInvocation"
+    assert (
+        hook.normalize({"hookEventName": "PreInvocation"})["hook_event_name"] == "UserPromptSubmit"
+    )

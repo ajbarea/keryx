@@ -75,10 +75,14 @@ def test_ollama_down_names_serve_or_install():
     found = doctor.checks(Config(), which=which_all, fetch=fetch_down)
     assert lines(found)["ollama"] == "missing" and lines(found)["model"] == "n/a"
     assert "  fix: ollama serve" in doctor.render(found).splitlines()
-    no_ollama = doctor.checks(
-        Config(), which=lambda n: None if n == "ollama" else which_all(n), fetch=fetch_down
-    )
+    no_ollama = doctor.checks(Config(), which=lambda n: None, fetch=fetch_down)
     assert "  fix: curl -fsSL https://ollama.com/install.sh | sh" in doctor.render(no_ollama)
+    windows_ollama = doctor.checks(
+        Config(),
+        which=lambda n: "/mnt/c/Ollama/ollama.exe" if n == "ollama.exe" else None,
+        fetch=fetch_down,
+    )
+    assert "  fix: start the Ollama app in Windows" in doctor.render(windows_ollama)
 
 
 def test_model_not_pulled():
@@ -110,6 +114,30 @@ def test_audio_dir_off_a_windows_drive():
         Config(audio_dir="/tmp/keryx"), which=which_all, fetch=fetch_ok, server_env=env_none
     )
     assert lines(found)["audio-dir"] == "missing"
+
+
+def test_audio_dir_names_source_and_persistent_fix(tmp_path, monkeypatch):
+    monkeypatch.setenv("KERYX_AUDIO_DIR", "/tmp/bad")
+    found = doctor.checks(
+        Config(audio_dir="/tmp/bad"), which=which_all, fetch=fetch_ok, server_env=env_none
+    )
+    assert "KERYX_AUDIO_DIR in the environment" in by_name(found)["audio-dir"].detail
+    assert (
+        "remove KERYX_AUDIO_DIR where it is set: a shell profile"
+        in by_name(found)["audio-dir"].fixes[0]
+    )
+
+    monkeypatch.delenv("KERYX_AUDIO_DIR")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    (tmp_path / "keryx").mkdir(parents=True)
+    (tmp_path / "keryx" / "config.json").write_text('{"audio_dir": "/tmp/custom"}')
+    found_cfg = doctor.checks(
+        Config(audio_dir="/tmp/custom"), which=which_all, fetch=fetch_ok, server_env=env_none
+    )
+    cfg_file = tmp_path / "keryx" / "config.json"
+    assert str(cfg_file) in by_name(found_cfg)["audio-dir"].detail
+    want = f'fix: set "audio_dir": "{doctor.DEFAULT_AUDIO_DIR}" in {cfg_file}'
+    assert by_name(found_cfg)["audio-dir"].fixes[0] == want
 
 
 def test_non_object_tags_payload_is_not_a_traceback():
@@ -404,3 +432,17 @@ def test_environment_file_paths_may_hold_spaces(tmp_path):
         "OLLAMA_KV_CACHE_TYPE": "q8_0",
         "OLLAMA_FLASH_ATTENTION": "1",
     }
+
+
+def test_an_empty_audio_dir_in_the_environment_is_named_as_the_source(monkeypatch):
+    monkeypatch.setenv("KERYX_AUDIO_DIR", "")
+    found = doctor.checks(
+        Config(audio_dir=""), which=which_all, fetch=fetch_ok, server_env=env_none
+    )
+    assert "KERYX_AUDIO_DIR in the environment" in by_name(found)["audio-dir"].detail
+    fixes = by_name(found)["audio-dir"].fixes
+    # A daemon spawned from a session that still carries the variable inherits it, and tmux's
+    # global environment hands it to every new window.
+    assert "env block of Claude Code's settings.json" in fixes[0]
+    assert "tmux set-environment -gu KERYX_AUDIO_DIR" in fixes[1]
+    assert "from a new shell, start again every Claude Code session" in fixes[2]

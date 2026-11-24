@@ -6,6 +6,7 @@ import contextlib
 import http.client
 import ipaddress
 import json
+import os
 import re
 import shlex
 import shutil
@@ -16,7 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
-from keryx.config import Config
+from keryx.config import Config, config_path, read_raw
 
 UV_INSTALL = "curl -LsSf https://astral.sh/uv/install.sh | sh"
 OLLAMA_INSTALL = "curl -fsSL https://ollama.com/install.sh | sh"
@@ -175,7 +176,12 @@ def checks(
             tags = json.loads(fetch(f"{host}/api/tags")).get("models", [])
             names = {m.get("name", "") for m in tags}
         except (OSError, ValueError, AttributeError, http.client.HTTPException) as exc:
-            fix = "fix: ollama serve" if which("ollama") else f"fix: {OLLAMA_INSTALL}"
+            if which("ollama"):
+                fix = "fix: ollama serve"
+            elif which("ollama.exe"):
+                fix = "fix: start the Ollama app in Windows"
+            else:
+                fix = f"fix: {OLLAMA_INSTALL}"
             found.append(Check("missing", "ollama", f"{host} did not answer ({exc})", (fix,)))
             found.append(Check("n/a", "model", "Ollama is not reachable"))
         else:
@@ -202,13 +208,32 @@ def checks(
     if WINDOWS_DRIVE.match(cfg.audio_dir):
         found.append(Check("ok", "audio-dir", cfg.audio_dir))
     else:
+        # Name where the value comes from, and a fix that outlasts this shell (#25).
+        setting = f'fix: set "audio_dir": "{DEFAULT_AUDIO_DIR}" in {config_path()}'
+        if "KERYX_AUDIO_DIR" in os.environ:  # set, even empty, it overrides the file
+            source = "KERYX_AUDIO_DIR in the environment"
+            # Open shells and tmux's global environment keep the variable after the profile
+            # loses it, and the daemon inherits whatever its spawner carries.
+            fixes = (
+                "fix: remove KERYX_AUDIO_DIR where it is set: a shell profile, or the"
+                " env block of Claude Code's settings.json",
+                "fix: under tmux, also run: tmux set-environment -gu KERYX_AUDIO_DIR",
+                "fix: from a new shell, start again every Claude Code session that had it"
+                " (this one too), then run keryx off and keryx on",
+            )
+        elif "audio_dir" in read_raw():
+            source = str(config_path())
+            fixes = (setting,)
+        else:
+            source = "the default"
+            fixes = (setting,)
         found.append(
             Check(
                 "missing",
                 "audio-dir",
-                f"{cfg.audio_dir} is not on a Windows drive;"
+                f"{cfg.audio_dir} (from {source}) is not on a Windows drive;"
                 " Windows plays only from its own drives",
-                (f"fix: export KERYX_AUDIO_DIR={DEFAULT_AUDIO_DIR}",),
+                fixes,
             )
         )
     return found
