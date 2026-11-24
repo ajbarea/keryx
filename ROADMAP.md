@@ -11,10 +11,6 @@ Last reviewed: 2026-10-03.
 
 ## Completed
 
-- 2026-11-22: session voices and dual-runtime hook (0.13.0, #88-#90, #92, #93). KERYX_VOICE
-  names the session's asked-for voice without overwriting the daemon default or colliding with
-  keryx voice (#92). `keryx say --out <path>` writes speech directly to a WAV file (#90).
-  Dual-runtime adapter adds native hook support for Claude Code and Antigravity.
 - 2026-11-02: only the sessions you name speak (0.12.0, #75). `speak_only` lists session ids or
   files holding them, read at every hook event, so a change reaches running sessions; every other
   session's hook stops before the daemon. It fails closed. klepsydra's "Heph only" Voices mode uses it.
