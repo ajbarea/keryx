@@ -122,7 +122,10 @@ def test_audio_dir_names_source_and_persistent_fix(tmp_path, monkeypatch):
         Config(audio_dir="/tmp/bad"), which=which_all, fetch=fetch_ok, server_env=env_none
     )
     assert "KERYX_AUDIO_DIR in the environment" in by_name(found)["audio-dir"].detail
-    assert "remove KERYX_AUDIO_DIR where it is set: a shell profile" in by_name(found)["audio-dir"].fixes[0]
+    assert (
+        "remove KERYX_AUDIO_DIR where it is set: a shell profile"
+        in by_name(found)["audio-dir"].fixes[0]
+    )
 
     monkeypatch.delenv("KERYX_AUDIO_DIR")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
