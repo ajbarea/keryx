@@ -2,8 +2,9 @@
 
     uv run python eval/density.py [REPLIES.json ...] > eval/tally-density.txt
 
-Default: data/replies.json. Each reply is cut to MAX_INPUT_CHARS as keryx cuts it and sent with
-the shipped system prompt and examples; Ollama's prompt_eval_count is the prompt size. Prints
+Default: data/replies.json. Each reply is cut to MAX_INPUT_CHARS as model_input cuts it, raw:
+without clean_for_speech or the short-reply path, so the counts are an upper bound. It is sent
+with the shipped system prompt and examples; Ollama's prompt_eval_count is the prompt size. Prints
 the fixed overhead, then per file the replies' most tokens per character (the overhead taken
 off) and their largest prompt, and one synthetic reply dense in IDs at the cap (keryx#105).
 """
