@@ -4,6 +4,7 @@ keryx hook             read a Claude Code hook payload on stdin
 keryx replay-hook      the same for the synchronous "say that again" prompt hook
 keryx on | off         turn speech on or off
 keryx speak-only [ID|FILE ...] | --everyone   let only these sessions speak (none: show the list)
+keryx reserve [VOICE ...] | --none   hand these voices only to a session that asks (none: show them)
 keryx status           show settings, daemon state and setup checks; exit 1 if one is missing
 keryx say [--out FILE] [--voice NAME] [TEXT]   speak TEXT or write to FILE (-: stdin)
 keryx again            say this terminal's last line again
@@ -39,6 +40,7 @@ COMMANDS = (
     "on",
     "off",
     "speak-only",
+    "reserve",
     "status",
     "say",
     "again",
@@ -113,6 +115,12 @@ def _set_voice(cfg: Config, arg: str | None) -> int:
     if label is None:
         print(f"no voice matches {choice!r}; run `keryx voice` to hear them", file=sys.stderr)
         return 2
+    if label in {resolve(r, specs) for r in cfg.reserved_voices}:
+        print(
+            f"{label} is reserved (keryx reserve): a session gets it only with KERYX_VOICE",
+            file=sys.stderr,
+        )
+        return 2
     # Retire a stale daemon (direct `keryx voice NAME` skips the preview that would have), so
     # it understands `set_voice` before config and daemon can diverge.
     if not reconciled and not _reconcile():
@@ -172,6 +180,42 @@ def _speak_only(cfg: Config, targets: list[str]) -> int:
     print("only these speak: " + ", ".join(entries) if entries else "every session speaks")
     if Config.load().speak_only != entries:
         print("note: KERYX_SPEAK_ONLY in the environment overrides this")
+    return 0
+
+
+def _reserve(cfg: Config, targets: list[str]) -> int:
+    """`keryx reserve`: show, set or clear the voices handed out only on request."""
+    usage = "usage: keryx reserve [VOICE ...] | --none"
+    if not targets:
+        print(", ".join(cfg.reserved_voices) if cfg.reserved_voices else "no voice is reserved")
+        return 0
+    if targets == ["--none"]:
+        names: list[str] = []
+    elif any(t.startswith("-") or not t.strip() for t in targets):
+        print(usage, file=sys.stderr)
+        return 2
+    else:
+        from keryx.voices import resolve, stock
+
+        specs = stock(cfg.voice)
+        names = []
+        for t in targets:
+            label = resolve(t, specs)
+            if label is None:
+                print(
+                    f"keryx reserve: {t} is not a voice (keryx voice lists them)", file=sys.stderr
+                )
+                return 2
+            if label not in names:
+                names.append(label)
+    set_stored(reserved_voices=names)
+    if names:
+        print(f"reserved: {', '.join(names)}: a session gets one only by asking (KERYX_VOICE)")
+    else:
+        print("no voice is reserved")
+    print("note: the daemon reads this when it starts (keryx off, then keryx on)")
+    if Config.load().reserved_voices != names:
+        print("note: KERYX_RESERVED_VOICES in the environment overrides this")
     return 0
 
 
@@ -288,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "speak-only":
         return _speak_only(cfg, args[1:])
+
+    if cmd == "reserve":
+        return _reserve(cfg, args[1:])
 
     if cmd == "status":
         from keryx import doctor

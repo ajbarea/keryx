@@ -215,3 +215,20 @@ def test_reply_clips_default_on_and_have_an_env_override(monkeypatch, tmp_path):
     assert Config.load().reply_clips is True
     monkeypatch.setenv("KERYX_REPLY_CLIPS", "off")
     assert Config.load().reply_clips is False
+
+
+def test_reserved_voices_defaults_to_empty_and_loads_from_config(tmp_path, monkeypatch):
+    assert Config.load().reserved_voices == []
+    _write(tmp_path, monkeypatch, {"reserved_voices": ["am_michael", "bf_emma"]})
+    assert Config.load(env=False).reserved_voices == ["am_michael", "bf_emma"]
+
+
+def test_reserved_voices_env_override(monkeypatch):
+    monkeypatch.setenv("KERYX_RESERVED_VOICES", "am_michael,bf_emma")
+    assert Config.load().reserved_voices == ["am_michael", "bf_emma"]
+
+
+@pytest.mark.parametrize("bad", [True, 123, "am_michael", None])
+def test_reserved_voices_of_the_wrong_type_falls_back(tmp_path, monkeypatch, bad):
+    _write(tmp_path, monkeypatch, {"reserved_voices": bad})
+    assert Config.load(env=False).reserved_voices == []

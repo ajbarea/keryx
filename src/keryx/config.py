@@ -66,6 +66,8 @@ class Config:
     voice: str = "af_heart"
     # Give each terminal its own voice; `voice` is the first one handed out.
     distinct_voices: bool = True
+    # Voices handed out only on request (KERYX_VOICE), such as an orchestrator's.
+    reserved_voices: list[str] = field(default_factory=list)
     # Only these sessions speak: session ids, or files (an absolute or ~ path) holding one id a
     # line, read at each hook event so a change applies at once. Empty: every session speaks.
     speak_only: list[str] = field(default_factory=list)
