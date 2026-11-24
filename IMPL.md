@@ -17,5 +17,15 @@ Push: `git push origin feat/agy-dual-runtime-compat:feat/agy-dual-runtime-compat
   - Skill line made true on both runtimes.
 - Guard mutation-checked (2 red). pytest full suite green.
 
+- Opus r2 (fresh reader), settled on a live three-turn agy session (scratch hook returning
+  terminate for "say that again", keryx disabled, klepsydra state in scratch):
+  - invocationNum restarts at 0 each turn (fixture agy-pre-invocation-turn-2.json).
+  - agy fires Stop after a terminate (terminationReason TERMINAL_CUSTOM_HOOK); keryx would read
+    the previous reply from the transcript and say it again: now no reply (fixture
+    agy-stop-after-terminate.json; the test fails without the fix).
+  - The engine == agy guard now has a test (a Claude Code prompt hook never replays).
+  - run_command dropped from the skill's allowed-tools (an unscoped shell grant).
+- 716 passed; each new guard mutation-checked.
+
 ## Next
-- Fresh-reader round, CI, merge (restore main's IMPL.md first).
+- Fresh verify pass, CI, merge (restore main's IMPL.md first).

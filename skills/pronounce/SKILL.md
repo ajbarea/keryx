@@ -1,7 +1,7 @@
 ---
 name: pronounce
 description: Teach keryx how to say a word it mispronounces, like a repo name. Use when the user says a word should sound like something else ("ajsoftworks should sound like AJ soft works", "pronounce X as Y", "say X like Y"), or asks to list or forget pronunciations.
-allowed-tools: Bash(keryx pronounce:*), run_command
+allowed-tools: Bash(keryx pronounce:*)
 ---
 
 Pronunciations so far:

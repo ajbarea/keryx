@@ -72,9 +72,13 @@ AGY_FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def agy_pre_invocation(n: int) -> dict:
-    """A real Antigravity PreInvocation payload (captured 11-23, paths scrubbed), as the
-    `invocationNum`-th model call of a turn whose prompt is "say that again"."""
+    """A real Antigravity PreInvocation payload (captured 11-23, paths scrubbed, the prompt set
+    to "say that again"), as the `invocationNum`-th model call of its turn."""
     return json.loads((AGY_FIXTURES / f"agy-pre-invocation-{n}.json").read_text())
+
+
+def agy_fixture(name: str) -> dict:
+    return json.loads((AGY_FIXTURES / f"agy-{name}.json").read_text())
 
 
 def test_agy_first_pre_invocation_replay_phrase_says_it_again_and_ends_the_turn(
@@ -920,3 +924,42 @@ def test_a_speak_only_file_of_exactly_the_limit_is_read(monkeypatch, sent, tmp_p
         {"hook_event_name": "Stop", "session_id": "heph", "last_assistant_message": "Hi."},
     )
     assert [r["session"] for r in sent["spawn"]] == ["heph"]
+
+
+def test_agy_stop_after_keryx_ended_the_turn_says_nothing_again(monkeypatch, sent, tmp_path):
+    # agy fires Stop after a PreInvocation terminate (captured 11-23): its transcript's last
+    # reply is the previous one, already said, so nothing is sent to be spoken.
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(
+        json.dumps({"type": "PLANNER_RESPONSE", "content": "The previous reply."})
+    )
+    event = {**agy_fixture("stop-after-terminate"), "transcriptPath": str(transcript)}
+    assert event["terminationReason"] == "TERMINAL_CUSTOM_HOOK"
+    assert run_hook(monkeypatch, event) == 0
+    assert not [r for r in sent["spawn"] if r.get("text")]
+
+
+def test_agy_second_turn_starts_again_at_invocation_zero(monkeypatch):
+    from keryx import hook
+
+    event = agy_fixture("pre-invocation-turn-2")
+    assert event["invocationNum"] == 0
+    assert hook.normalize(event)["hook_event_name"] == "UserPromptSubmit"
+
+
+def test_claude_code_prompt_hook_never_replays_from_the_async_hook(monkeypatch, capsys):
+    from keryx import client
+
+    asked = []
+    monkeypatch.setattr(
+        client, "send", lambda req, *a, **k: asked.append(req) or {"replayed": True}
+    )
+    monkeypatch.setattr(client, "send_or_spawn", lambda req, *a, **k: {"ok": True})
+    event = {
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "cc-1",
+        "prompt": "say that again",
+    }
+    assert run_hook(monkeypatch, event) == 0
+    assert [r for r in asked if r.get("op") == "again"] == []
+    assert capsys.readouterr().out == ""

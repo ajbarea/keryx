@@ -154,7 +154,9 @@ def normalize(event: dict) -> dict:
     # 5. Assistant reply: Claude Code "last_assistant_message", AGY transcriptPath
     if not out.get("last_assistant_message") and event_name == "Stop":
         term_reason = event.get("terminationReason")
-        if term_reason in ("USER_CANCELED", "ERROR"):
+        # TERMINAL_CUSTOM_HOOK: a hook (keryx's own replay) ended the turn before the model ran,
+        # so the transcript's last reply is the one before, already said.
+        if term_reason in ("USER_CANCELED", "ERROR", "TERMINAL_CUSTOM_HOOK"):
             out["last_assistant_message"] = ""
         else:
             transcript_path = event.get("transcriptPath")
