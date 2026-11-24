@@ -5,7 +5,7 @@ export const SUBCOMMANDS: Record<string, string> = {
   on: 'turn speech back on; the next prompt starts the daemon',
   off: 'stop speech, shut the daemon down and free its VRAM',
   again: "say this terminal's last line again",
-  status: 'show the settings and whether the daemon is running',
+  status: 'show settings, daemon state and setup checks',
 }
 const USAGE = ['Usage: /keryx on | off | again | status', ...Object.entries(SUBCOMMANDS).map(([k, v]) => `  ${k}: ${v}`)].join('\n')
 // `keryx on` may build the venv on its first run, which takes minutes.
