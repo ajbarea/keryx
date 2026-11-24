@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import itertools
 import json
+import logging
 import math
 import re
 import time
@@ -28,6 +29,8 @@ _VOICE_NAME = re.compile(r"^[a-z]{2}_[a-z0-9_]+$")
 # Kokoro v1.0's English voices graded C or better in its VOICES.md (research 2026-10). The
 # first ten have character portraits on klepsydra's fleet wall, so the first ten terminals
 # get them; those alternate accent and gender where the set allows, best grades first.
+log = logging.getLogger("keryx")
+
 POOL = (
     "af_heart",  # A
     "am_michael",  # C+
@@ -174,6 +177,7 @@ class VoiceBook:
         home_seconds: float = HOME_SECONDS,
         alive: Callable[[str], bool | None] = is_alive,
         available: Callable[[VoiceSpec], bool] | None = None,
+        reserved: tuple[str, ...] | list[str] = (),
     ):
         """`clock` is wall time, since holds and homes outlive the daemon in `path`.
 
@@ -184,6 +188,15 @@ class VoiceBook:
         the current Kokoro lacks is dropped, so rotation never hands out one it cannot speak.
         """
         self._alive = alive
+        # Names as `keryx reserve` takes them (`michael`, `AM_MICHAEL`), held as voice ids; one
+        # that names no voice reserves nothing, and the log says so.
+        self._reserved: set[str] = set()
+        for name in reserved:
+            label = resolve(name, stock(first)) if isinstance(name, str) else None
+            if label is None:
+                log.warning("reserved_voices: %r is not a voice; it reserves nothing", name)
+            else:
+                self._reserved.add(label)
         if available is None:
             self._available = lambda spec: all(
                 name in SELECTABLE or name == "bf_alice" for name in spec.names
@@ -226,34 +239,57 @@ class VoiceBook:
         self._index[spec.label()] = idx
         return idx
 
+    def _is_reserved(self, idx: int) -> bool:
+        if not self._reserved or idx < 0 or idx >= len(self._specs):
+            return False
+        spec = self._specs[idx]
+        return spec.label() in self._reserved or any(name in self._reserved for name in spec.names)
+
     def default(self) -> VoiceSpec:
-        return self._specs[0]
+        """The first voice that is not reserved: the configured one, unless it is."""
+        return next(
+            (spec for i, spec in enumerate(self._specs) if not self._is_reserved(i)), self._specs[0]
+        )
 
     def assign(self, holder: str, source: str, requested: str | None = None) -> VoiceSpec:
         """The voice for `holder` (a terminal, else a session), working in repo `source`.
 
         When `requested` (the session's `KERYX_VOICE`) names a valid, available Kokoro voice and
         `holder` holds none yet, `holder` holds that voice without changing the repo's home
-        voice. A voice it already holds, such as a `keryx voice` pick, stays.
+        voice. A voice it already holds, such as a `keryx voice` pick, stays, unless it has
+        since been reserved and `requested` does not name it.
         Without a holder (`keryx say`, scripts): the first voice nobody holds, so a notice
         is never mistaken for a terminal's line.
         """
         now = self._clock()
         self._expire(now)
-        if holder and requested:
-            req_index = self._ensure_spec(requested)
-            held = self._held.get(holder)
-            if req_index is not None and (held is None or held[0] == req_index):
-                self._held[holder] = (req_index, now)
-                self._save(now, force=held is None)
-                return self._specs[req_index]
+        req_index = self._ensure_spec(requested) if holder and requested else None
+        held = self._held.get(holder) if holder else None
+        # A voice reserved since it was handed out (keryx reserve, then a restart) is given up,
+        # unless this holder asks for it by name.
+        if held is not None and self._is_reserved(held[0]) and held[0] != req_index:
+            del self._held[holder]
+            held = None
+        if req_index is not None and (held is None or held[0] == req_index):
+            self._held[holder] = (req_index, now)
+            self._save(now, force=held is None)
+            return self._specs[req_index]
         taken = {i for h, (i, _) in self._held.items() if h != holder}
         if not holder:
-            return self._specs[next((i for i in range(len(self._specs)) if i not in taken), 0)]
+            free_idx = next(
+                (i for i in range(len(self._specs)) if i not in taken and not self._is_reserved(i)),
+                None,
+            )
+            if free_idx is None:
+                free_idx = next(
+                    (i for i in range(len(self._specs)) if not self._is_reserved(i)),
+                    0,
+                )
+            return self._specs[free_idx]
         changed = holder not in self._held
         home = self._home.get(source)
-        # The repo's own voice when it is a free single voice, else the first free single voice.
-        home_free = home is not None and home[0] not in taken
+        # A free unreserved single voice of the repo, else the first free single voice.
+        home_free = home is not None and home[0] not in taken and not self._is_reserved(home[0])
         single = (
             home[0]
             if home_free and len(self._specs[home[0]].names) == 1
@@ -271,7 +307,12 @@ class VoiceBook:
         else:
             index = self._first_free(taken, now, len(self._specs))
             if index is None:
-                index = len(self._held) % len(self._specs)  # every voice in use: repeat
+                unreserved = [i for i in range(len(self._specs)) if not self._is_reserved(i)]
+                index = (
+                    unreserved[len(self._held) % len(unreserved)]
+                    if unreserved
+                    else len(self._held) % len(self._specs)
+                )
         # A repo's first voice becomes its home, as does a single voice for a repo homed in a blend,
         # unless another repo heard lately calls it home: a borrowed voice stays borrowed.
         homed_elsewhere = any(
@@ -284,6 +325,7 @@ class VoiceBook:
             and not homed_elsewhere
             and (
                 home is None
+                or self._is_reserved(home[0])
                 or (len(self._specs[home[0]].names) > 1 and len(self._specs[index].names) == 1)
             )
         ):
@@ -305,7 +347,7 @@ class VoiceBook:
         if not holder:
             return False
         index = self._ensure_spec(label)
-        if index is None:
+        if index is None or self._is_reserved(index):
             return False
         now = self._clock()
         self._expire(now)
@@ -337,7 +379,7 @@ class VoiceBook:
         for tier in tiers:
             for avoid in (taken | homes, taken):
                 for i in tier:
-                    if i not in avoid:
+                    if i not in avoid and not self._is_reserved(i):
                         return i
         return None
 

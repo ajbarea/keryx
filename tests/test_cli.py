@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -65,6 +66,58 @@ def test_session_start_spawns_and_warms(monkeypatch, sent):
     assert sent["spawn"] == [
         {"op": "warm", "version": version(), "session": "s", "terminal": "", "source": ""}
     ]
+
+
+AGY_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def agy_pre_invocation(n: int) -> dict:
+    """A real Antigravity PreInvocation payload (captured 11-23, paths scrubbed, the prompt set
+    to "say that again"), as the `invocationNum`-th model call of its turn."""
+    return json.loads((AGY_FIXTURES / f"agy-pre-invocation-{n}.json").read_text())
+
+
+def agy_fixture(name: str) -> dict:
+    return json.loads((AGY_FIXTURES / f"agy-{name}.json").read_text())
+
+
+def test_agy_first_pre_invocation_replay_phrase_says_it_again_and_ends_the_turn(
+    monkeypatch, capsys
+):
+    from keryx import client
+
+    sent = []
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: sent.append(req) or {"replayed": True})
+    event = agy_pre_invocation(0)
+    assert run_hook(monkeypatch, event) == 0
+    assert [(r["op"], r["session"]) for r in sent] == [("again", event["conversationId"])]
+    # The documented way to stop before the model call; no step is left in the conversation.
+    assert json.loads(capsys.readouterr().out) == {"terminationBehavior": "terminate"}
+
+
+def test_agy_replay_with_nothing_to_say_again_reaches_the_model(monkeypatch, sent, capsys):
+    from keryx import client
+
+    monkeypatch.setattr(client, "send", lambda req, *a, **k: {"replayed": False})
+    assert run_hook(monkeypatch, agy_pre_invocation(0)) == 0
+    assert capsys.readouterr().out == ""
+    # The model answers: the prompt is recorded and speech cut, as replay-hook does.
+    (req,) = sent["spawn"]
+    assert req["op"] == "stop" and "interrupt" not in req
+    assert req["prompt"] == ""  # agy payloads carry no prompt_id
+    assert req["warm"] is True
+
+
+def test_agy_later_model_calls_of_a_turn_are_not_prompts(monkeypatch, sent, capsys):
+    from keryx import client
+
+    asked = []
+    monkeypatch.setattr(
+        client, "send", lambda req, *a, **k: asked.append(req) or {"replayed": True}
+    )
+    assert run_hook(monkeypatch, agy_pre_invocation(1)) == 0
+    assert asked == [] and capsys.readouterr().out == ""
+    assert sent.get("spawn", []) == []
 
 
 class ExitedDaemon:
@@ -874,3 +927,71 @@ def test_a_speak_only_file_of_exactly_the_limit_is_read(monkeypatch, sent, tmp_p
         {"hook_event_name": "Stop", "session_id": "heph", "last_assistant_message": "Hi."},
     )
     assert [r["session"] for r in sent["spawn"]] == ["heph"]
+
+
+def test_agy_stop_after_keryx_ended_the_turn_says_nothing_again(monkeypatch, sent, tmp_path):
+    # agy fires Stop after a PreInvocation terminate (captured 11-23): its transcript's last
+    # reply is the previous one, already said, so nothing is sent to be spoken.
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(
+        json.dumps({"type": "PLANNER_RESPONSE", "content": "The previous reply."})
+    )
+    event = {**agy_fixture("stop-after-terminate"), "transcriptPath": str(transcript)}
+    assert event["terminationReason"] == "TERMINAL_CUSTOM_HOOK"
+    assert run_hook(monkeypatch, event) == 0
+    assert not [r for r in sent["spawn"] if r.get("text")]
+
+
+def test_agy_second_turn_starts_again_at_invocation_zero(monkeypatch):
+    from keryx import hook
+
+    event = agy_fixture("pre-invocation-turn-2")
+    assert event["invocationNum"] == 0
+    assert hook.normalize(event)["hook_event_name"] == "UserPromptSubmit"
+
+
+def test_claude_code_prompt_hook_never_replays_from_the_async_hook(monkeypatch, capsys):
+    from keryx import client
+
+    asked = []
+    monkeypatch.setattr(
+        client, "send", lambda req, *a, **k: asked.append(req) or {"replayed": True}
+    )
+    monkeypatch.setattr(client, "send_or_spawn", lambda req, *a, **k: {"ok": True})
+    event = {
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "cc-1",
+        "prompt": "say that again",
+    }
+    assert run_hook(monkeypatch, event) == 0
+    assert [r for r in asked if r.get("op") == "again"] == []
+    assert capsys.readouterr().out == ""
+
+
+def test_reserve_shows_sets_and_clears_the_reserved_voices(capsys):
+    assert cli.main(["reserve"]) == 0
+    assert capsys.readouterr().out.strip() == "no voice is reserved"
+    assert cli.main(["reserve", "michael", "bf_emma", "am_michael"]) == 0
+    out = capsys.readouterr().out
+    assert Config.load().reserved_voices == ["am_michael", "bf_emma"]
+    assert "reserved: am_michael, bf_emma" in out and "keryx off, then keryx on" in out
+    assert cli.main(["reserve"]) == 0
+    assert capsys.readouterr().out.strip() == "am_michael, bf_emma"
+    assert cli.main(["reserve", "--none"]) == 0
+    assert Config.load().reserved_voices == []
+
+
+def test_reserve_refuses_a_name_that_is_no_voice_and_writes_nothing(capsys):
+    cli.main(["reserve", "am_michael"])
+    capsys.readouterr()
+    assert cli.main(["reserve", "am_michael", "not_a_voice"]) == 2
+    assert "not_a_voice is not a voice" in capsys.readouterr().err
+    assert Config.load().reserved_voices == ["am_michael"]
+    assert cli.main(["reserve", "--bogus"]) == 2
+
+
+def test_voice_refuses_a_reserved_voice(capsys):
+    cli.main(["reserve", "am_michael"])
+    capsys.readouterr()
+    assert cli.main(["voice", "michael"]) == 2
+    assert "am_michael is reserved" in capsys.readouterr().err
