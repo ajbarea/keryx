@@ -272,6 +272,31 @@ def main(argv: list[str] | None = None) -> int:
         # A session speak_only leaves out stops here: no summarizer call, no speech.
         if not may_speak(cfg, str(event.get("session_id", ""))):
             return 0
+
+        # AGY has no separate prompt hook: its first PreInvocation (normalized to
+        # UserPromptSubmit) can end the turn before the model is called
+        # (terminationBehavior, antigravity.google/docs/hooks). The line said again is the answer;
+        # an injected message would stay in the conversation.
+        if (
+            event.get("engine") == "agy"
+            and event.get("hook_event_name") == "UserPromptSubmit"
+            and hook.is_replay_event(event, hook.entrypoint())
+        ):
+            from keryx.procs import terminal_id
+
+            who = {"terminal": terminal_id(), "session": event.get("session_id", "")}
+            try:
+                replayed = client.send({"op": "again", **who}).get("replayed")
+            except (OSError, ValueError):
+                replayed = False
+            if replayed:
+                print(json.dumps({"terminationBehavior": "terminate"}))
+                return 0
+            # The model answers: the full request, as replay-hook sends after no replay.
+            with contextlib.suppress(OSError, ValueError):
+                client.send_or_spawn(hook.prompt_request(event))
+            return 0
+
         request = hook.request_for(event, hook.entrypoint())
         if request is None:
             return 0
