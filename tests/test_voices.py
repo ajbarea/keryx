@@ -875,3 +875,132 @@ def test_a_blend_spelled_another_way_is_the_same_voice_on_every_request(tmp_path
     specs = len(b._specs)
     b.assign("9:1", "repo", requested=asked)
     assert len(b._specs) == specs  # no new entry per request
+
+
+def test_pool_rotation_skips_reserved_voices(tmp_path):
+    b = VoiceBook(
+        tmp_path / "v.json",
+        clock=Clock(),
+        active_seconds=60,
+        reserved=("am_michael", "bf_emma"),
+    )
+    # POOL is: af_heart, am_michael, bf_emma, am_puck, af_bella...
+    assert b.assign("s1", "repo1") == VoiceSpec(("af_heart",))
+    assert b.assign("s2", "repo2") == VoiceSpec(("am_puck",))
+    assert b.assign("s3", "repo3") == VoiceSpec(("af_bella",))
+
+
+def test_a_freed_reserved_home_voice_is_never_handed_out_without_keryx_voice(tmp_path):
+    path = tmp_path / "v.json"
+    clock = Clock()
+    # State where ajsoftworks calls am_michael home (e.g. Heph previously running)
+    path.write_text(
+        json.dumps(
+            {
+                "homes": {"ajsoftworks": {"voice": "am_michael", "seen": 10.0}},
+                "holders": {},
+            }
+        )
+    )
+    b = VoiceBook(
+        path,
+        clock=clock,
+        active_seconds=60,
+        reserved=("am_michael", "bf_emma"),
+    )
+    # Worker starts in ajsoftworks without KERYX_VOICE: must NOT get am_michael
+    worker = b.assign("worker-1", "ajsoftworks")
+    assert worker != VoiceSpec(("am_michael",))
+    assert worker == VoiceSpec(("af_heart",))
+
+    # Orchestrator session starts in ajsoftworks asking for am_michael: DOES get am_michael
+    heph = b.assign("orchestrator", "ajsoftworks", requested="am_michael")
+    assert heph == VoiceSpec(("am_michael",))
+
+
+def test_a_reserved_voice_does_not_become_repo_home_when_requested(tmp_path):
+    path = tmp_path / "v.json"
+    clock = Clock()
+    b = VoiceBook(
+        path,
+        clock=clock,
+        active_seconds=60,
+        reserved=("am_michael", "bf_emma"),
+    )
+    # A session explicitly asks for am_michael
+    assert b.assign("orch", "newrepo", requested="am_michael") == VoiceSpec(("am_michael",))
+    # Repo home must NOT be am_michael
+    assert "newrepo" not in b._home
+
+    # A subsequent worker without requested voice gets an unreserved pool voice
+    worker = b.assign("w1", "newrepo")
+    assert worker == VoiceSpec(("af_heart",))
+    # And now newrepo is homed in af_heart
+    assert b._home["newrepo"][0] == b._index["af_heart"]
+
+
+def test_holderless_call_avoids_reserved_voices(tmp_path):
+    b = VoiceBook(
+        tmp_path / "v.json",
+        first="am_michael",
+        clock=Clock(),
+        reserved=("am_michael", "bf_emma"),
+    )
+    # Even if first is am_michael, holderless call returns an unreserved voice
+    voice = b.assign("", "repo")
+    assert "am_michael" not in voice.names
+    assert "bf_emma" not in voice.names
+
+
+def test_with_every_unreserved_voice_held_the_next_repeats_one_never_a_reserved_one(tmp_path):
+    reserved = ("am_michael", "bf_emma")
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60, reserved=reserved)
+    given = [b.assign(f"s{i}", f"repo{i}") for i in range(len(b._specs) + 3)]
+    assert not [v for v in given if set(v.names) & set(reserved)]
+
+
+def test_a_voice_held_before_it_was_reserved_is_given_up_unless_asked_for(tmp_path):
+    path = tmp_path / "v.json"
+    clock = Clock()
+    VoiceBook(path, clock=clock, alive=lambda h: True).pin("worker-pid", "am_michael")
+    b = VoiceBook(path, clock=clock, alive=lambda h: True, reserved=("am_michael",))
+    assert b.assign("worker-pid", "ajsoftworks") != VoiceSpec(("am_michael",))
+    heph = VoiceBook(path, clock=clock, alive=lambda h: True, reserved=("am_michael",))
+    assert heph.assign("heph-pid", "ajsoftworks", requested="am_michael") == VoiceSpec(
+        ("am_michael",)
+    )
+    assert heph.assign("heph-pid", "ajsoftworks", requested="am_michael") == VoiceSpec(
+        ("am_michael",)
+    )
+
+
+def test_a_worker_on_a_newly_reserved_voice_gets_the_voice_it_asks_for(tmp_path):
+    # Its hold is given up first, so its KERYX_VOICE is honoured, not the repo's home voice.
+    path = tmp_path / "v.json"
+    clock = Clock()
+    VoiceBook(path, clock=clock, alive=lambda h: True).pin("worker-pid", "am_michael")
+    b = VoiceBook(path, clock=clock, alive=lambda h: True, reserved=("am_michael",))
+    assert b.assign("worker-pid", "ajsoftworks", requested="af_bella") == VoiceSpec(("af_bella",))
+
+
+def test_reserved_names_are_read_as_keryx_reserve_takes_them(tmp_path, caplog):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), reserved=("michael", "BF_EMMA", "nobody"))
+    given = [b.assign(f"s{i}", f"repo{i}") for i in range(8)]
+    assert not [v for v in given if {"am_michael", "bf_emma"} & set(v.names)]
+    assert "'nobody' is not a voice" in caplog.text
+
+
+def test_a_reserved_voice_cannot_be_pinned(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), reserved=("am_michael",))
+    assert b.pin("t1", "am_michael") is False
+    assert b.pin("t1", "af_bella") is True
+
+
+def test_a_repo_homed_in_a_reserved_voice_takes_a_new_home(tmp_path):
+    path = tmp_path / "v.json"
+    path.write_text(
+        json.dumps({"homes": {"ajsoftworks": {"voice": "am_michael", "seen": 10.0}}, "holders": {}})
+    )
+    b = VoiceBook(path, clock=Clock(), active_seconds=60, reserved=("am_michael",))
+    got = b.assign("w1", "ajsoftworks")
+    assert b._home["ajsoftworks"][0] == b._index[got.label()]
