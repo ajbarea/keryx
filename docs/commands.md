@@ -35,6 +35,7 @@ The same `keryx` binary runs from a shell:
 | --- | --- |
 | `keryx on`, `keryx off` | Turn speech on or off |
 | `keryx speak-only [ID\|FILE ...]` | Let only these sessions speak. An argument with a `/`, or naming something that exists here, is stored as an absolute path (a folder is refused; a note if it is not a file yet); anything else is a session id. `--everyone` lets every session speak again; no argument shows the list |
+| `keryx reserve [VOICE ...]` | Hand these voices (a name, such as `michael`, or `am_michael`) to a session only when it asks with `KERYX_VOICE`: never from the rotation or a repo's home voice. `--none` clears the list; no argument shows it. The daemon reads it when it starts |
 | `keryx status` | Show settings, whether the daemon is up, and one line per setup check (exit 1 if one is missing) |
 | `keryx say [--out FILE] [--voice NAME] [TEXT]` | Speak TEXT as given, or write it to FILE without playing (-: read from stdin) |
 | `keryx again` | Say this terminal's last line again |
