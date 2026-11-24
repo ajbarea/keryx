@@ -70,8 +70,8 @@ GENERATE_TIMEOUT = 30.0
 DIRECT_MAX_CHARS = 200
 SPOKEN_MAX_CHARS = 320
 
-# The densest measured reply at MAX_INPUT_CHARS was a 3924-token prompt; with NUM_PREDICT
-# it fits NUM_CTX (2026-10-21).
+# Real replies at MAX_INPUT_CHARS fit NUM_CTX with NUM_PREDICT (densest of 40: 1879 tokens,
+# 2026-11-23); text dense in IDs can overflow it (keryx#105).
 NUM_CTX = 4096
 NUM_PREDICT = 96
 MAX_INPUT_CHARS = 5500

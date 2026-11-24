@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import threading
@@ -160,16 +161,17 @@ def test_design_doc_states_the_timeouts_in_use():
 # an empty framed reply, plus one; 409 before #70's rules) and dense text (versions, IDs,
 # percentages) in tokens per char (2026-10-21). Re-measured 11-23: 469 + 1.
 OVERHEAD_TOKENS = 470
-# The prompt OVERHEAD_TOKENS was measured on, in characters: an edit to SYSTEM_PROMPT or
-# EXAMPLES fails here until OVERHEAD_TOKENS is re-measured and this updated with it.
-OVERHEAD_MEASURED_ON_CHARS = 1812
+# The prompt OVERHEAD_TOKENS was measured on: any edit to SYSTEM_PROMPT or EXAMPLES fails
+# here until OVERHEAD_TOKENS is re-measured and this updated with it.
+OVERHEAD_MEASURED_ON_SHA256 = "fbac5cb69292156a"
 DENSE_TOKENS_PER_CHAR = 0.63
 HEADROOM_TOKENS = 32  # so the next wording edit fails here, not in a cut-off prompt
 
 
 def test_the_overhead_was_measured_on_this_prompt():
-    chars = len(SYSTEM_PROMPT) + sum(len(_framed(m)) + len(s) for m, s in EXAMPLES)
-    assert chars == OVERHEAD_MEASURED_ON_CHARS, "prompt changed: re-measure OVERHEAD_TOKENS"
+    text = SYSTEM_PROMPT + "".join(_framed(m) + s for m, s in EXAMPLES)
+    digest = hashlib.sha256(text.encode()).hexdigest()[:16]
+    assert digest == OVERHEAD_MEASURED_ON_SHA256, "prompt changed: re-measure OVERHEAD_TOKENS"
 
 
 def test_the_largest_prompt_keryx_can_send_fits_the_context_it_asks_for():
