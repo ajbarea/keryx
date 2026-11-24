@@ -437,4 +437,6 @@ def test_an_empty_audio_dir_in_the_environment_is_named_as_the_source(monkeypatc
         Config(audio_dir=""), which=which_all, fetch=fetch_ok, server_env=env_none
     )
     assert "KERYX_AUDIO_DIR in the environment" in by_name(found)["audio-dir"].detail
-    assert "restart the Claude Code sessions" in by_name(found)["audio-dir"].fixes[0]
+    fix = by_name(found)["audio-dir"].fixes[0]
+    # A daemon spawned from a session that still carries the variable inherits it.
+    assert "restart every Claude Code session" in fix and "from a new terminal" in fix

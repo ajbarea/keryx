@@ -213,8 +213,9 @@ def checks(
         if "KERYX_AUDIO_DIR" in os.environ:  # set, even empty, it overrides the file
             source = "KERYX_AUDIO_DIR in the environment"
             fix = (
-                "fix: remove KERYX_AUDIO_DIR from the shell profile that sets it, restart the"
-                " Claude Code sessions started with it, then keryx off and keryx on"
+                "fix: remove KERYX_AUDIO_DIR from the shell profile that sets it, restart every"
+                " Claude Code session started with it (this one too), then run keryx off and"
+                " keryx on from a new terminal"
             )
         elif "audio_dir" in read_raw():
             source = str(config_path())
