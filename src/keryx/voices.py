@@ -256,7 +256,8 @@ class VoiceBook:
 
         When `requested` (the session's `KERYX_VOICE`) names a valid, available Kokoro voice and
         `holder` holds none yet, `holder` holds that voice without changing the repo's home
-        voice. A voice it already holds, such as a `keryx voice` pick, stays.
+        voice. A voice it already holds, such as a `keryx voice` pick, stays, unless it has
+        since been reserved and `requested` does not name it.
         Without a holder (`keryx say`, scripts): the first voice nobody holds, so a notice
         is never mistaken for a terminal's line.
         """
