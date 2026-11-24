@@ -1,0 +1,5 @@
+model gemma3:4b; overhead 469 tokens; room 4000 tokens (4096 context less 96)
+input                    replies  max tok/char  max prompt  longest
+replies.json                  20          0.32        1879     5325
+replies-r1-3.json             20          0.31        1760     4963
+ID-dense, at the cap           1          0.87        5242     5492

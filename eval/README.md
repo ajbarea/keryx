@@ -8,9 +8,11 @@ uv run python eval/run.py v3 gemma3:4b ...    # outputs, load time, latency -> d
 uv run python eval/blind.py round3 results-v3.json:gemma3:4b results-v3.json:gemma4:e2b
 # a judge agent scores data/blind-round3.json -> data/scores-round3.json (rubric below)
 uv run python eval/tally.py round3            # un-blind and total
+uv run python eval/density.py replies.json replies-r1-3.json > eval/tally-density.txt   # tokens per character
 ```
 
 `data/` holds private session text and is gitignored. `tally-*.txt` are the committed totals.
+`data/replies-r1-3.json` is rounds 1 to 3's `replies.json`, kept when round 4 collected new replies.
 Round 3's candidates are labelled `model|v2` and `model|v3` (prompt versions).
 
 ## Judge rubric
