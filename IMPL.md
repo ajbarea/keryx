@@ -1,28 +1,27 @@
-# IMPL
+# IMPL: #70 faithful spoken summaries (PR #103)
 
-## Current: Faithfulness and attribution rules in spoken summaries (#70)
+Branch fix/summary-attribution-70 (agy's; reworked by Opus agy-review-k 11-23).
+Push: `git push origin fix/summary-attribution-70:fix/summary-attribution-70`. Never push to main.
 
-Slice: Prevent spoken summaries from misstating who did what, turning offers into done actions, claiming removed items as updated, or claiming user drafts as assistant acts. Add strict prompt rules, deterministic faithfulness verification with single retry/fallback, real evaluation pairs in `eval/pairs.json`, and an evaluation script in `eval/eval_pairs.py`.
+## Done
+- agy: prompt rules (who did what, questions stay questions, done only when marked done,
+  drafts for you to send, lead with the outcome) + a new few-shot pair; a ~150-line regex
+  "faithfulness" checker with a retry; a 6-pair static eval scoring the checker.
+- Opus r1, measured on AJ's real replies (233 pairs from daemon.log + transcripts, 11-16..11-23;
+  60 sampled, gemma3:4b, a blind A/B reader):
 
-✅ Done
-- `src/keryx/summarize.py`:
-  - Strengthened `SYSTEM_PROMPT` to enforce: lead with main outcome/decision, preserve attribution ('I' assistant vs 'you' developer), keep offers/questions as questions, claim work done only where explicitly marked done, treat dropped/removed items as not done, and introduce user drafts as "here is a draft for you to send".
-  - Updated `EXAMPLES` with concise coverage of removed items, user drafts, pending operations, and offers.
-  - Implemented `check_faithfulness(summary, source)` and `is_faithful(summary, source)` checking the 5 failure classes: `question_as_action`, `removed_item_as_done`, `draft_claimed_by_assistant`, `attribution_flip`, and `pending_claimed_as_done`.
-  - Added faithfulness verification in `spoken()` with a single guided retry before falling back to opening sentences.
-- `eval/pairs.json` & `eval/eval_pairs.py`:
-  - Added real failure/faithful test pairs and static/model evaluation harness.
-- `tests/test_summarize.py`:
-  - Added test cases covering each faithfulness failure category and verify `spoken()` retry and fallback behavior (44 passed).
+  | | main | this branch (agy) |
+  |---|---|---|
+  | unfaithful | 24/60 | 23/60 |
+  | main point lost | 7 | 5 |
+  | pending read as done | 9 | 6 |
+  | preferred | 22 | 30 (8 ties) |
 
-📋 Next
-- Push branch `fix/summary-attribution-70` and open PR with label `bug` and assignee `ajbarea`.
-- Run Elenchus review against diff.
-- Proceed to next open issue / deliverable.
+  The regex checker flagged 1 of the 233 real summaries: kept out (dead weight; the 6/6 eval
+  only scored the checker against pairs written to fit it). The prompt changes are kept.
+- eval/real_pairs.py: extract real pairs (to ~/.local/state/keryx/eval, never the repo), run a
+  checkout over a fixed sample, build the blind A/B file, score it. Unit test for the pairing.
 
-## Verify
-- `uv run ruff check .`: clean (0 errors).
-- `uv run ruff format --check .`: clean (62 files formatted).
-- `uv run ty check`: clean (0 errors).
-- `uv run pytest`: 718 passed in 45.3s.
-- `uv run python eval/eval_pairs.py`: 6/6 static pairs passed.
+## Next
+- #70 stays open: about 40% of summaries still mislead (pending-as-done, invented, who-flipped).
+  Next levers per the issue: gemma3:12b, a judge pass. Fresh-reader round, CI, merge.
