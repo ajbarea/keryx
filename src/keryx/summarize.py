@@ -70,9 +70,9 @@ GENERATE_TIMEOUT = 30.0
 DIRECT_MAX_CHARS = 200
 SPOKEN_MAX_CHARS = 320
 
-# Real replies run at most 0.32 tokens per character (40 replies, none at the cap, largest
-# prompt 1879 tokens: eval/tally-density.txt), so at MAX_INPUT_CHARS they would still fit NUM_CTX
-# with NUM_PREDICT; text dense in IDs can overflow it (keryx#105).
+# Real replies run at most 0.32 tokens per character (40 replies, the longest 5325 characters,
+# the largest prompt 1879 tokens: eval/tally-density.txt), so at MAX_INPUT_CHARS they would still
+# fit NUM_CTX with NUM_PREDICT; text dense in IDs can overflow it (keryx#105).
 NUM_CTX = 4096
 NUM_PREDICT = 96
 MAX_INPUT_CHARS = 5500

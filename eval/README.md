@@ -8,7 +8,7 @@ uv run python eval/run.py v3 gemma3:4b ...    # outputs, load time, latency -> d
 uv run python eval/blind.py round3 results-v3.json:gemma3:4b results-v3.json:gemma4:e2b
 # a judge agent scores data/blind-round3.json -> data/scores-round3.json (rubric below)
 uv run python eval/tally.py round3            # un-blind and total
-uv run python eval/density.py > eval/tally-density.txt   # prompt tokens per character of reply
+uv run python eval/density.py replies.json replies-r1-3.json > eval/tally-density.txt   # tokens per character
 ```
 
 `data/` holds private session text and is gitignored. `tally-*.txt` are the committed totals.
