@@ -215,7 +215,8 @@ def checks(
             # Open shells and tmux's global environment keep the variable after the profile
             # loses it, and the daemon inherits whatever its spawner carries.
             fixes = (
-                "fix: remove KERYX_AUDIO_DIR from the shell profile that sets it",
+                "fix: remove KERYX_AUDIO_DIR where it is set: a shell profile, or the"
+                " env block of Claude Code's settings.json",
                 "fix: under tmux, also run: tmux set-environment -gu KERYX_AUDIO_DIR",
                 "fix: from a new shell, start again every Claude Code session that had it"
                 " (this one too), then run keryx off and keryx on",

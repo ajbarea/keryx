@@ -22,7 +22,7 @@ Run `keryx status` (or `/keryx status` in Claude Code). It prints the settings a
 | `ollama` | Start Ollama: the Windows app, or `ollama serve` in WSL. If it is not installed, install it from https://ollama.com/download. |
 | `model` | Run the fix line, `ollama pull <model>`. |
 | `ollama-memory` | Marked `optional`, so the result stays ready. The drop-in in its fix line needs sudo, so the user runs it with `!`. Restarting Ollama unloads every model, so ask first. `n/a` means Ollama is not a systemd service; see docs/troubleshooting.md. |
-| `audio-dir` | Windows plays audio only from its own drives. The line names where the value comes from. From the config file: set the value the fix line gives. From `KERYX_AUDIO_DIR`: the user removes it from the shell profile, clears tmux's copy (`tmux set-environment -gu KERYX_AUDIO_DIR`), then from a new shell starts again every Claude Code session that had it, this one included, and runs `keryx off` and `keryx on`. A daemon inherits the variable from whatever started it. |
+| `audio-dir` | Windows plays audio only from its own drives. The line names where the value comes from. From the config file: set the value the fix line gives. From `KERYX_AUDIO_DIR`: the user removes it where it is set (a shell profile, or the `env` block of Claude Code's `settings.json`), clears tmux's copy (`tmux set-environment -gu KERYX_AUDIO_DIR`), then from a new shell starts again every Claude Code session that had it, this one included, and runs `keryx off` and `keryx on`. A daemon inherits the variable from whatever started it. |
 
 ## 3. Check the result
 
