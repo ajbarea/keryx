@@ -153,15 +153,17 @@ def test_design_doc_states_the_timeouts_in_use():
     assert f"up to {MAX_INPUT_CHARS} characters" in design
 
 
-# Measured on gemma3:4b, Ollama 0.35.0, 2026-10-21: fixed prompt overhead in tokens and
-# dense text (versions, IDs, percentages) in tokens per char.
-OVERHEAD_TOKENS = 409
+# Measured on gemma3:4b: fixed prompt overhead in tokens (2026-11-23, Ollama prompt_eval_count of
+# an empty framed reply, plus one; 409 before #70's rules) and dense text (versions, IDs,
+# percentages) in tokens per char (2026-10-21). Re-measure when SYSTEM_PROMPT or FEW_SHOT change.
+OVERHEAD_TOKENS = 470
 DENSE_TOKENS_PER_CHAR = 0.63
+HEADROOM_TOKENS = 32  # so the next wording edit fails here, not in a cut-off prompt
 
 
 def test_the_largest_prompt_keryx_can_send_fits_the_context_it_asks_for():
     worst = OVERHEAD_TOKENS + DENSE_TOKENS_PER_CHAR * MAX_INPUT_CHARS + NUM_PREDICT
-    assert worst <= NUM_CTX
+    assert worst <= NUM_CTX - HEADROOM_TOKENS
 
 
 def test_chat_and_warm_pin_the_context_window(slow_ollama):

@@ -37,8 +37,11 @@ Scripts and tallies are in [the evaluation folder](https://github.com/ajbarea/ke
   described as done.
 - **Round 3**, a rule to keep pending work pending, and two examples with unrelated
   subjects: `gemma3:4b` 76 with 1 unfaithful line of 17, `gemma4:e2b` 76 with 3.
+- **Round 4** (#70), rules for who did what, questions and offers, removed items and drafts, on
+  17 newer replies with `gemma3:4b`: 82 with 1 unfaithful line, against the round-3 prompt's 77
+  with 5 (faithful 27 against 20).
 
-`gemma3:4b` with the round-3 prompt ships. The totals tie, and faithfulness decides: saying
+`gemma3:4b` with the round-4 prompt ships. The totals tie, and faithfulness decides: saying
 something false aloud costs more than an awkward phrase. It takes a median 1.06 s per reply
 and 3.7 GB of VRAM measured with `nvidia-smi` (Ollama reported 2.88 GB).
 
@@ -221,7 +224,7 @@ unduck started a new player that restored it 3.1 s later. AJ confirmed the 25% l
   Shortening runs on its own thread, so a permission prompt is spoken while a reply waits
   on a load.
 - **Context.** keryx asks for a 4096-token context and sends a longer reply's opening and close
-  up to 5600 characters; the densest measured case was a 3924-token prompt. A 2048 context would save
+  up to 5500 characters; the densest measured case was a 3924-token prompt. A 2048 context would save
   only 44 MiB of VRAM, while a server default of 32768 costs 600 MiB more.
 - **Low memory.** When the model is not loaded and available RAM or free GPU memory is under
   `min_free_ram_mb` or `min_free_vram_mb`, the reply's opening is spoken instead of loading

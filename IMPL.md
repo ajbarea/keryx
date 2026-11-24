@@ -19,8 +19,11 @@ Push: `git push origin fix/summary-attribution-70:fix/summary-attribution-70`. N
 
   The regex checker flagged 1 of the 233 real summaries: kept out (dead weight; the 6/6 eval
   only scored the checker against pairs written to fit it). The prompt changes are kept.
-- eval/real_pairs.py: extract real pairs (to ~/.local/state/keryx/eval, never the repo), run a
-  checkout over a fixed sample, build the blind A/B file, score it. Unit test for the pairing.
+- Opus r2 (fresh reader): real_pairs.py duplicated the repo's own eval harness (collect, run,
+  blind, tally; data/ gitignored) and could write private text into a repo: removed. Round 4
+  run with that harness instead: tally-round4.txt, docs/design.md. The prompt's overhead grew
+  408 -> 469 tokens (measured), leaving 2 tokens of context: MAX_INPUT_CHARS 5600 -> 5500 and the
+  fit test keeps 32 tokens of headroom.
 
 ## Next
 - #70 stays open: about 40% of summaries still mislead (pending-as-done, invented, who-flipped).
