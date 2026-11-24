@@ -437,6 +437,8 @@ def test_an_empty_audio_dir_in_the_environment_is_named_as_the_source(monkeypatc
         Config(audio_dir=""), which=which_all, fetch=fetch_ok, server_env=env_none
     )
     assert "KERYX_AUDIO_DIR in the environment" in by_name(found)["audio-dir"].detail
-    fix = by_name(found)["audio-dir"].fixes[0]
-    # A daemon spawned from a session that still carries the variable inherits it.
-    assert "restart every Claude Code session" in fix and "from a new terminal" in fix
+    fixes = by_name(found)["audio-dir"].fixes
+    # A daemon spawned from a session that still carries the variable inherits it, and tmux's
+    # global environment hands it to every new window.
+    assert "tmux set-environment -gu KERYX_AUDIO_DIR" in fixes[1]
+    assert "from a new shell, start again every Claude Code session" in fixes[2]

@@ -212,24 +212,27 @@ def checks(
         setting = f'fix: set "audio_dir": "{DEFAULT_AUDIO_DIR}" in {config_path()}'
         if "KERYX_AUDIO_DIR" in os.environ:  # set, even empty, it overrides the file
             source = "KERYX_AUDIO_DIR in the environment"
-            fix = (
-                "fix: remove KERYX_AUDIO_DIR from the shell profile that sets it, restart every"
-                " Claude Code session started with it (this one too), then run keryx off and"
-                " keryx on from a new terminal"
+            # Open shells and tmux's global environment keep the variable after the profile
+            # loses it, and the daemon inherits whatever its spawner carries.
+            fixes = (
+                "fix: remove KERYX_AUDIO_DIR from the shell profile that sets it",
+                "fix: under tmux, also run: tmux set-environment -gu KERYX_AUDIO_DIR",
+                "fix: from a new shell, start again every Claude Code session that had it"
+                " (this one too), then run keryx off and keryx on",
             )
         elif "audio_dir" in read_raw():
             source = str(config_path())
-            fix = setting
+            fixes = (setting,)
         else:
             source = "the default"
-            fix = setting
+            fixes = (setting,)
         found.append(
             Check(
                 "missing",
                 "audio-dir",
                 f"{cfg.audio_dir} (from {source}) is not on a Windows drive;"
                 " Windows plays only from its own drives",
-                (fix,),
+                fixes,
             )
         )
     return found
