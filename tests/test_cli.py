@@ -896,3 +896,10 @@ def test_reserve_refuses_a_name_that_is_no_voice_and_writes_nothing(capsys):
     assert "not_a_voice is not a voice" in capsys.readouterr().err
     assert Config.load().reserved_voices == ["am_michael"]
     assert cli.main(["reserve", "--bogus"]) == 2
+
+
+def test_voice_refuses_a_reserved_voice(capsys):
+    cli.main(["reserve", "am_michael"])
+    capsys.readouterr()
+    assert cli.main(["voice", "michael"]) == 2
+    assert "am_michael is reserved" in capsys.readouterr().err

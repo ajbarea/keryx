@@ -957,3 +957,41 @@ def test_with_every_unreserved_voice_held_the_next_repeats_one_never_a_reserved_
     b = VoiceBook(tmp_path / "v.json", clock=Clock(), active_seconds=60, reserved=reserved)
     given = [b.assign(f"s{i}", f"repo{i}") for i in range(len(b._specs) + 3)]
     assert not [v for v in given if set(v.names) & set(reserved)]
+
+
+def test_a_voice_held_before_it_was_reserved_is_given_up_unless_asked_for(tmp_path):
+    path = tmp_path / "v.json"
+    clock = Clock()
+    VoiceBook(path, clock=clock, alive=lambda h: True).pin("worker-pid", "am_michael")
+    b = VoiceBook(path, clock=clock, alive=lambda h: True, reserved=("am_michael",))
+    assert b.assign("worker-pid", "ajsoftworks") != VoiceSpec(("am_michael",))
+    heph = VoiceBook(path, clock=clock, alive=lambda h: True, reserved=("am_michael",))
+    assert heph.assign("heph-pid", "ajsoftworks", requested="am_michael") == VoiceSpec(
+        ("am_michael",)
+    )
+    assert heph.assign("heph-pid", "ajsoftworks", requested="am_michael") == VoiceSpec(
+        ("am_michael",)
+    )
+
+
+def test_reserved_names_are_read_as_keryx_reserve_takes_them(tmp_path, caplog):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), reserved=("michael", "BF_EMMA", "nobody"))
+    given = [b.assign(f"s{i}", f"repo{i}") for i in range(8)]
+    assert not [v for v in given if {"am_michael", "bf_emma"} & set(v.names)]
+    assert "'nobody' is not a voice" in caplog.text
+
+
+def test_a_reserved_voice_cannot_be_pinned(tmp_path):
+    b = VoiceBook(tmp_path / "v.json", clock=Clock(), reserved=("am_michael",))
+    assert b.pin("t1", "am_michael") is False
+    assert b.pin("t1", "af_bella") is True
+
+
+def test_a_repo_homed_in_a_reserved_voice_takes_a_new_home(tmp_path):
+    path = tmp_path / "v.json"
+    path.write_text(
+        json.dumps({"homes": {"ajsoftworks": {"voice": "am_michael", "seen": 10.0}}, "holders": {}})
+    )
+    b = VoiceBook(path, clock=Clock(), active_seconds=60, reserved=("am_michael",))
+    got = b.assign("w1", "ajsoftworks")
+    assert b._home["ajsoftworks"][0] == b._index[got.label()]

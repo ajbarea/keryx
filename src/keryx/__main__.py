@@ -115,6 +115,12 @@ def _set_voice(cfg: Config, arg: str | None) -> int:
     if label is None:
         print(f"no voice matches {choice!r}; run `keryx voice` to hear them", file=sys.stderr)
         return 2
+    if label in {resolve(r, specs) for r in cfg.reserved_voices}:
+        print(
+            f"{label} is reserved (keryx reserve): a session gets it only with KERYX_VOICE",
+            file=sys.stderr,
+        )
+        return 2
     # Retire a stale daemon (direct `keryx voice NAME` skips the preview that would have), so
     # it understands `set_voice` before config and daemon can diverge.
     if not reconciled and not _reconcile():

@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import itertools
 import json
+import logging
 import math
 import re
 import time
@@ -28,6 +29,8 @@ _VOICE_NAME = re.compile(r"^[a-z]{2}_[a-z0-9_]+$")
 # Kokoro v1.0's English voices graded C or better in its VOICES.md (research 2026-10). The
 # first ten have character portraits on klepsydra's fleet wall, so the first ten terminals
 # get them; those alternate accent and gender where the set allows, best grades first.
+log = logging.getLogger("keryx")
+
 POOL = (
     "af_heart",  # A
     "am_michael",  # C+
@@ -185,7 +188,15 @@ class VoiceBook:
         the current Kokoro lacks is dropped, so rotation never hands out one it cannot speak.
         """
         self._alive = alive
-        self._reserved = set(reserved)
+        # Names as `keryx reserve` takes them (`michael`, `AM_MICHAEL`), held as voice ids; one
+        # that names no voice reserves nothing, and the log says so.
+        self._reserved: set[str] = set()
+        for name in reserved:
+            label = resolve(name, stock(first)) if isinstance(name, str) else None
+            if label is None:
+                log.warning("reserved_voices: %r is not a voice; it reserves nothing", name)
+            else:
+                self._reserved.add(label)
         if available is None:
             self._available = lambda spec: all(
                 name in SELECTABLE or name == "bf_alice" for name in spec.names
@@ -270,6 +281,10 @@ class VoiceBook:
                     0,
                 )
             return self._specs[free_idx]
+        # A voice reserved since it was handed out (keryx reserve, then a restart) is given up:
+        # only asking (`requested`, above) keeps one.
+        if holder in self._held and self._is_reserved(self._held[holder][0]):
+            del self._held[holder]
         changed = holder not in self._held
         home = self._home.get(source)
         # A free unreserved single voice of the repo, else the first free single voice.
@@ -331,7 +346,7 @@ class VoiceBook:
         if not holder:
             return False
         index = self._ensure_spec(label)
-        if index is None:
+        if index is None or self._is_reserved(index):
             return False
         now = self._clock()
         self._expire(now)
