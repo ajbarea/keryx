@@ -70,8 +70,8 @@ GENERATE_TIMEOUT = 30.0
 DIRECT_MAX_CHARS = 200
 SPOKEN_MAX_CHARS = 320
 
-# Real replies at MAX_INPUT_CHARS fit NUM_CTX with NUM_PREDICT (densest of 40: 1879 tokens,
-# 2026-11-23); text dense in IDs can overflow it (keryx#105).
+# Real replies at MAX_INPUT_CHARS fit NUM_CTX with NUM_PREDICT (largest of 40: 1879 tokens,
+# eval/tally-density.txt); text dense in IDs can overflow it (keryx#105).
 NUM_CTX = 4096
 NUM_PREDICT = 96
 MAX_INPUT_CHARS = 5500

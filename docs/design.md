@@ -44,7 +44,7 @@ Scripts and tallies are in [the evaluation folder](https://github.com/ajbarea/ke
 `gemma3:4b` with the round-4 prompt ships. With the round-3 prompt it tied `gemma4:e2b` at
 76, and faithfulness decided (1 unfaithful line against 3): saying something false aloud
 costs more than an awkward phrase. With the round-4 prompt it takes a median 0.62 s per
-reply (max 3.18 s), and 3.7 GB of VRAM measured with `nvidia-smi` (Ollama reported 2.88 GB).
+reply (max 3.18 s), and 3.7 GB of VRAM measured with `nvidia-smi` (Ollama reports 2.79 GB in rounds 3 and 4).
 
 `research(2026-10)`: small-model candidates were taken from current Ollama roundups (Gemma 3
 and 4, Qwen 3 and 3.5, Llama 3.2).
@@ -225,9 +225,9 @@ unduck started a new player that restored it 3.1 s later. AJ confirmed the 25% l
   Shortening runs on its own thread, so a permission prompt is spoken while a reply waits
   on a load.
 - **Context.** keryx asks for a 4096-token context and sends a longer reply's opening and close
-  up to 5500 characters. Measured 11-23 with the round-4 prompt: real replies run at most 0.32
-  tokens per character (1879 tokens, the densest of 40); text dense in IDs runs about 0.87 and
-  overflows at the cap (keryx#105). A 2048 context would save
+  up to 5500 characters. Measured 11-23 with the round-4 prompt (`eval/tally-density.txt`): 40
+  real replies run at most 0.32 tokens per character, the largest prompt 1879 tokens; a reply
+  dense in IDs runs 0.87 and overflows at the cap (keryx#105). A 2048 context would save
   only 44 MiB of VRAM, while a server default of 32768 costs 600 MiB more.
 - **Low memory.** When the model is not loaded and available RAM or free GPU memory is under
   `min_free_ram_mb` or `min_free_vram_mb`, the reply's opening is spoken instead of loading
