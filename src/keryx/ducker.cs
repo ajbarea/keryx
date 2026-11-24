@@ -65,6 +65,7 @@ class KeryxDeviceEnumerator {}
 
 public static class KeryxDucker {
     static Guid ctx = Guid.Empty;
+    static uint myPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
 
     class Session {
         public string Id;  // the session instance id, unique per session even within one app
@@ -77,24 +78,49 @@ public static class KeryxDucker {
         } catch { return null; }
     }
 
+    static bool MatchesAny(string name, ICollection<string> list) {
+        if (name == null || list == null) return false;
+        foreach (var item in list) {
+            string target = item.Trim();
+            if (target.Length > 0 && string.Equals(name, target, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    static bool IsWildcard(ICollection<string> list) {
+        if (list == null) return false;
+        foreach (var item in list) {
+            if (item.Trim() == "*") return true;
+        }
+        return false;
+    }
+
+    static string[] SplitList(string s) {
+        if (string.IsNullOrEmpty(s)) return new string[0];
+        return s.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+    }
+
     // Adds session `i` to `found` if it is wanted; releases it otherwise.
-    static void AddSession(IKeryxSessionEnumerator sessions, int i, ICollection<string> apps,
+    static void AddSession(IKeryxSessionEnumerator sessions, int i,
+                           ICollection<string> apps, ICollection<string> exclude,
                            List<Session> found) {
         IKeryxSessionControl2 control;
         if (sessions.GetSession(i, out control) != 0) return;
         bool keep = false;
         try {
             uint pid;
-            control.GetProcessId(out pid);
-            bool wanted = apps == null;
-            if (!wanted) {
-                string name = ProcessName(pid);
-                foreach (var app in apps)
-                    if (name != null && string.Equals(name, app.Trim(), StringComparison.OrdinalIgnoreCase))
-                        wanted = true;
-            }
+            if (control.GetProcessId(out pid) != 0) return;
+            if (pid == myPid) return;
+
+            string name = ProcessName(pid);
+            if (exclude != null && MatchesAny(name, exclude)) return;
+
+            bool wanted = apps == null || IsWildcard(apps) || MatchesAny(name, apps);
+            if (!wanted) return;
+
             IntPtr raw;
-            if (!wanted || control.GetSessionInstanceIdentifier(out raw) != 0) return;
+            if (control.GetSessionInstanceIdentifier(out raw) != 0) return;
             string id = Marshal.PtrToStringUni(raw);
             Marshal.FreeCoTaskMem(raw);
             found.Add(new Session { Id = id, Volume = (IKeryxSimpleVolume)control });
@@ -106,7 +132,7 @@ public static class KeryxDucker {
 
     // Audio sessions on every active output device, filtered by process name unless `apps` is
     // null; null when the devices cannot be listed at all.
-    static List<Session> Sessions(ICollection<string> apps) {
+    static List<Session> Sessions(ICollection<string> apps, ICollection<string> exclude) {
         var found = new List<Session>();
         var en = (IKeryxDeviceEnumerator)new KeryxDeviceEnumerator();
         IKeryxDeviceCollection devices;
@@ -127,7 +153,7 @@ public static class KeryxDucker {
                 if (((IKeryxSessionManager2)manager).GetSessionEnumerator(out sessions) != 0) continue;
                 int n;
                 sessions.GetCount(out n);
-                for (int i = 0; i < n; i++) AddSession(sessions, i, apps, found);
+                for (int i = 0; i < n; i++) AddSession(sessions, i, apps, exclude, found);
             } finally {
                 // Every path out of the device, `continue` included, hands its objects back.
                 if (sessions != null) Marshal.ReleaseComObject(sessions);
@@ -144,23 +170,56 @@ public static class KeryxDucker {
         foreach (var s in sessions) Marshal.ReleaseComObject(s.Volume);
     }
 
-    // Lowers each matching session to ratio x its volume. State lines: id TAB original TAB ducked.
     public static int Duck(string statePath, string appList, float ratio) {
-        if (File.Exists(statePath)) return 0;  // already ducked
-        var targets = Sessions(appList.Split(','));
+        return Duck(statePath, appList, ratio, "");
+    }
+
+    // Lowers each matching session to ratio x its volume. State lines: id TAB original TAB ducked.
+    public static int Duck(string statePath, string appList, float ratio, string excludeList) {
+        var apps = SplitList(appList);
+        var exclude = SplitList(excludeList);
+        var targets = Sessions(apps, exclude);
         if (targets == null || targets.Count == 0) return 0;
-        var levels = new float[targets.Count];
-        var lines = new string[targets.Count];
-        for (int i = 0; i < targets.Count; i++) {
-            targets[i].Volume.GetMasterVolume(out levels[i]);
-            lines[i] = string.Format(CultureInfo.InvariantCulture, "{0}\t{1}\t{2}",
-                                     targets[i].Id, levels[i], levels[i] * ratio);
+
+        var existingIds = new HashSet<string>();
+        if (File.Exists(statePath)) {
+            foreach (var line in File.ReadAllLines(statePath)) {
+                var f = line.Split('\t');
+                if (f.Length >= 1 && f[0].Length > 0)
+                    existingIds.Add(f[0]);
+            }
         }
-        File.WriteAllLines(statePath, lines);
-        for (int i = 0; i < targets.Count; i++)
-            targets[i].Volume.SetMasterVolume(levels[i] * ratio, ref ctx);
-        Release(targets);
-        return targets.Count;
+
+        var toDuck = new List<Session>();
+        for (int i = 0; i < targets.Count; i++) {
+            if (!existingIds.Contains(targets[i].Id)) {
+                toDuck.Add(targets[i]);
+            } else {
+                Marshal.ReleaseComObject(targets[i].Volume);
+            }
+        }
+
+        if (toDuck.Count == 0) return 0;
+
+        var lines = new List<string>();
+        var levels = new float[toDuck.Count];
+        for (int i = 0; i < toDuck.Count; i++) {
+            toDuck[i].Volume.GetMasterVolume(out levels[i]);
+            lines.Add(string.Format(CultureInfo.InvariantCulture, "{0}\t{1}\t{2}",
+                                    toDuck[i].Id, levels[i], levels[i] * ratio));
+        }
+
+        if (File.Exists(statePath)) {
+            File.AppendAllLines(statePath, lines);
+        } else {
+            File.WriteAllLines(statePath, lines.ToArray());
+        }
+
+        for (int i = 0; i < toDuck.Count; i++)
+            toDuck[i].Volume.SetMasterVolume(levels[i] * ratio, ref ctx);
+
+        Release(toDuck);
+        return toDuck.Count;
     }
 
     // Puts back what the state file records, unless the user changed a volume meanwhile.
@@ -176,7 +235,7 @@ public static class KeryxDucker {
                 && float.TryParse(f[2], NumberStyles.Float, CultureInfo.InvariantCulture, out ducked))
                 saved[f[0]] = new[] { original, ducked };
         }
-        var sessions = Sessions(null);
+        var sessions = Sessions(null, null);
         if (sessions == null) return -1;
         int restored = 0;
         foreach (var s in sessions) {

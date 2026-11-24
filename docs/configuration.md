@@ -28,7 +28,8 @@ back to the default, and the daemon log names it; `speak_only` instead lets nobo
 | `keep_alive` | `5m` | How long Ollama keeps the summarizer loaded after a reply or a warm-up: a Go duration such as `90s` or `10m`, or seconds. `0` unloads after every reply, the lightest setting; the next reply then waits about 5 s for the model to load. Anything else falls back to `5m` with a warning |
 | `min_free_ram_mb` | `2048` | With the summarizer not loaded and less RAM than this available (MiB, `MemAvailable`), a long reply's opening is spoken instead of loading the model. `0` turns the check off. The default is the model's 1.22 GB peak RSS plus earlyoom's 0.5 GB floor, rounded up |
 | `min_free_vram_mb` | `4096` | The same for free GPU memory (MiB), read with `nvidia-smi`; no GPU means no check. `0` turns it off. The default is the 3.8 GB loading `gemma3:4b` took, plus margin |
-| `duck_apps` | `["Spotify"]` | Windows process names turned down while keryx speaks; `[]` for none |
+| `duck_apps` | `["*"]` | Windows process names turned down while keryx speaks; `["*"]` lowers every active audio session except keryx's own player; `[]` for none |
+| `duck_exclude` | `[]` | Apps never lowered while speaking (e.g. `["Zoom", "Teams"]` to keep calls untouched) |
 | `duck_ratio` | `0.25` | The share of their volume ducked apps keep |
 | `speaking_signal` | `true` | Write `speaking.json` into klepsydra's fleet folder while a line plays, when that folder exists ([format](speaking-signal.md)) |
 | `reply_clips` | `true` | Keep each session's latest spoken reply as one WAV in `replies/` beside klepsydra's fleet folder, when that folder exists, for its wall to play again ([format](reply-clips.md)) |
@@ -67,16 +68,31 @@ deleted by keryx; remove it by hand once no daemon runs from it.
 
 ## Ducking
 
-While keryx speaks, apps in `duck_apps` drop to `duck_ratio` of their volume and come back a
-second after the last line. A duck covers every active output device. The original volumes are
-written to `keryx-ducked.txt` before anything changes, and a restart restores them, so a crash
-cannot leave the music down. A level you change by hand during speech is kept.
+While keryx speaks, other apps drop to `duck_ratio` of their volume (a quarter by default) and
+come back a second after the last line. By default (`duck_apps: ["*"]`), every active audio session
+on every output device is lowered, except keryx's own player. Sessions that start mid-speech are
+lowered too, and restored with the rest.
 
-To duck another app, name its Windows process:
+To keep specific apps untouched (such as calls), list them in `duck_exclude`:
+
+```bash
+export KERYX_DUCK_EXCLUDE=Zoom,Teams
+```
+
+To duck only specific apps instead of everything, name their Windows processes in `duck_apps`:
 
 ```bash
 export KERYX_DUCK_APPS=Spotify,vlc
 ```
+
+Windows' own "communications ducking" (Sound Control Panel > Communications) only reacts to call
+streams and is set per user (muting or reducing by 50% or 80%), so it does not duck background media
+for local speech. keryx uses Windows Core Audio session APIs (`IAudioSessionManager2`,
+`IAudioSessionEnumerator`, `IAudioSessionControl2`, `ISimpleAudioVolume`) to adjust per-session volume
+directly across all active output devices.
+
+The original volumes are written to `keryx-ducked.txt` before anything changes, and a restart
+restores them, so a crash cannot leave the music down. A level you change by hand during speech is kept.
 
 ## Choosing a different summarizer
 

@@ -53,16 +53,29 @@ def test_duck_apps_come_from_a_comma_separated_env_var(tmp_path, monkeypatch):
     assert Config.load().duck_apps == ["Spotify", "chrome"]
 
 
-def test_ducking_defaults_to_spotify_at_a_quarter(tmp_path, monkeypatch):
+def test_ducking_defaults_to_all_apps_at_a_quarter(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.delenv("KERYX_DUCK_APPS", raising=False)
+    monkeypatch.delenv("KERYX_DUCK_EXCLUDE", raising=False)
     cfg = Config.load()
-    assert (cfg.duck_apps, cfg.duck_ratio) == (["Spotify"], 0.25)
+    assert (cfg.duck_apps, cfg.duck_ratio, cfg.duck_exclude) == (["*"], 0.25, [])
+
+
+def test_duck_exclude_comes_from_a_comma_separated_env_var(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("KERYX_DUCK_EXCLUDE", "Zoom, Teams ,")
+    assert Config.load().duck_exclude == ["Zoom", "Teams"]
 
 
 @pytest.mark.parametrize(
     ("field", "bad"),
-    [("duck_apps", "Spotify"), ("duck_apps", [1, 2]), ("duck_ratio", "half"), ("enabled", "yes")],
+    [
+        ("duck_apps", "Spotify"),
+        ("duck_apps", [1, 2]),
+        ("duck_exclude", "Zoom"),
+        ("duck_ratio", "half"),
+        ("enabled", "yes"),
+    ],
 )
 def test_a_value_of_the_wrong_type_falls_back_to_the_default(
     tmp_path, monkeypatch, caplog, field, bad
