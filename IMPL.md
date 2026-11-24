@@ -1,23 +1,16 @@
-# IMPL
+# IMPL: #25 keryx status polish (PR #100)
 
-## Current: Status Polish & Onboarding Follow-ups (#25)
+Branch fix/status-polish-25 (agy's; reviewed and fixed by Opus agy-review-k 11-23).
+Push: `git push origin fix/status-polish-25:fix/status-polish-25`. Never push to main.
 
-Slice: When Ollama is installed on Windows but stopped, suggest starting the Ollama app in Windows (avoiding duplicate WSL installs when `ollama.exe` exists on PATH); name the source of non-Windows audio_dir values and provide persistent fixes; align `/keryx status` usage description with `keryx status` CLI; clarify in getting-started docs that `keryx status` checks host requirements rather than the Claude Code version.
+## Done
+- agy: Ollama on Windows only (ollama.exe) says start the Windows app; audio-dir names its
+  source; /keryx status usage text; getting-started line.
+- Opus r1: the docs line listed what status does not check (it now lists what it checks);
+  the audio-dir fixes now give the exact value to write (`"audio_dir": "<default>"` in the
+  config file) or say to remove the env var from the profile and restart keryx.
+- Live: `KERYX_AUDIO_DIR=/tmp/bad keryx status` names the env as source with the new fix;
+  plain `keryx status` all ok. ruff, ty clean; pytest 710 passed.
 
-✅ Done
-- `src/keryx/doctor.py`: Added check for `which("ollama.exe")` to recommend `"fix: start the Ollama app in Windows"`. Added source identification for bad `audio_dir` (environment variable vs config file) and persistent fix instructions.
-- `hooks/register.ts`: Updated `/keryx status` usage description to `'show settings, daemon state and setup checks'`.
-- `docs/getting-started.md`: Clarified that `keryx status` checks host requirements (uv, PowerShell, Ollama, model, Windows audio dir) and does not check the Claude Code version.
-- `tests/test_doctor.py`: Added tests covering `ollama.exe` detection when Ollama is stopped and audio_dir source/fix attribution.
-
-📋 Next
-- Push branch `fix/status-polish-25` to origin.
-- Open PR for issue #25.
-- Self-review against elenchus bug-class catalog.
-
-## Verify
-- `ruff check`: clean.
-- `ruff format --check`: clean.
-- `ty check`: clean.
-- `pytest`: 711 passed in 35.0s.
-- `docs-build`: clean.
+## Next
+- Fresh-reader round, CI, merge (restore main's IMPL.md first).

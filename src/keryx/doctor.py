@@ -208,17 +208,20 @@ def checks(
     if WINDOWS_DRIVE.match(cfg.audio_dir):
         found.append(Check("ok", "audio-dir", cfg.audio_dir))
     else:
+        # Name where the value comes from, and a fix that outlasts this shell (#25).
+        setting = f'fix: set "audio_dir": "{DEFAULT_AUDIO_DIR}" in {config_path()}'
         if os.environ.get("KERYX_AUDIO_DIR"):
-            source = "environment variable KERYX_AUDIO_DIR"
-            fix = f"fix: unset KERYX_AUDIO_DIR or export KERYX_AUDIO_DIR={DEFAULT_AUDIO_DIR}"
+            source = "KERYX_AUDIO_DIR in the environment"
+            fix = (
+                "fix: remove KERYX_AUDIO_DIR from the shell profile that sets it,"
+                " then keryx off and keryx on"
+            )
+        elif "audio_dir" in read_raw():
+            source = str(config_path())
+            fix = setting
         else:
-            raw = read_raw()
-            if "audio_dir" in raw:
-                source = f"config file {config_path()}"
-                fix = f"fix: update audio_dir in {config_path()} to a Windows drive path"
-            else:
-                source = "default setting"
-                fix = f"fix: set audio_dir in {config_path()} to a Windows drive path"
+            source = "the default"
+            fix = setting
         found.append(
             Check(
                 "missing",

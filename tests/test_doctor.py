@@ -121,8 +121,8 @@ def test_audio_dir_names_source_and_persistent_fix(tmp_path, monkeypatch):
     found = doctor.checks(
         Config(audio_dir="/tmp/bad"), which=which_all, fetch=fetch_ok, server_env=env_none
     )
-    assert "environment variable KERYX_AUDIO_DIR" in by_name(found)["audio-dir"].detail
-    assert "unset KERYX_AUDIO_DIR" in by_name(found)["audio-dir"].fixes[0]
+    assert "KERYX_AUDIO_DIR in the environment" in by_name(found)["audio-dir"].detail
+    assert "remove KERYX_AUDIO_DIR from the shell profile" in by_name(found)["audio-dir"].fixes[0]
 
     monkeypatch.delenv("KERYX_AUDIO_DIR")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
@@ -131,8 +131,10 @@ def test_audio_dir_names_source_and_persistent_fix(tmp_path, monkeypatch):
     found_cfg = doctor.checks(
         Config(audio_dir="/tmp/custom"), which=which_all, fetch=fetch_ok, server_env=env_none
     )
-    assert "config file" in by_name(found_cfg)["audio-dir"].detail
-    assert "update audio_dir" in by_name(found_cfg)["audio-dir"].fixes[0]
+    cfg_file = tmp_path / "keryx" / "config.json"
+    assert str(cfg_file) in by_name(found_cfg)["audio-dir"].detail
+    want = f'fix: set "audio_dir": "{doctor.DEFAULT_AUDIO_DIR}" in {cfg_file}'
+    assert by_name(found_cfg)["audio-dir"].fixes[0] == want
 
 
 def test_non_object_tags_payload_is_not_a_traceback():

@@ -14,7 +14,7 @@ description: Requirements, install and first run of keryx.
   speaks, and you control it from a shell.
 - Optional: an NVIDIA GPU. Without one, Kokoro runs on the CPU.
 
-`keryx status` checks host requirements (uv, PowerShell, Ollama, model and Windows audio directory) and prints the fix for anything missing (it does not check the Claude Code version). Claude can walk you through setup with the [setup runbook](https://github.com/ajbarea/keryx/blob/main/AGENTS.md).
+`keryx status` checks what keryx needs on this machine (uv, PowerShell, Ollama with its model and memory settings, and a Windows audio folder) and prints the fix for anything missing. Claude can walk you through setup with the [setup runbook](https://github.com/ajbarea/keryx/blob/main/AGENTS.md).
 
 The first run downloads the Kokoro model files (about 350 MB). With an NVIDIA GPU it also
 downloads the CUDA runtime wheels (about 2 GB).
