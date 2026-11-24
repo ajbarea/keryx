@@ -124,8 +124,12 @@ def normalize(event: dict) -> dict:
 
     # 1. Hook event name: Claude Code "hook_event_name", AGY "hookEventName"
     event_name = event.get("hook_event_name") or event.get("hookEventName")
+    if event.get("hookEventName"):
+        out["engine"] = "agy"
     if event_name:
-        if event_name == "PreInvocation":
+        # AGY fires PreInvocation before every model call of a turn (invocationNum 0, 1, ...),
+        # each carrying the same lastUserInput: only the first is the user's prompt.
+        if event_name == "PreInvocation" and not event.get("invocationNum"):
             event_name = "UserPromptSubmit"
         out["hook_event_name"] = event_name
 
@@ -150,7 +154,9 @@ def normalize(event: dict) -> dict:
     # 5. Assistant reply: Claude Code "last_assistant_message", AGY transcriptPath
     if not out.get("last_assistant_message") and event_name == "Stop":
         term_reason = event.get("terminationReason")
-        if term_reason in ("USER_CANCELED", "ERROR"):
+        # TERMINAL_CUSTOM_HOOK: a hook (keryx's own replay) ended the turn before the model ran,
+        # so the transcript's last reply is the one before, already said.
+        if term_reason in ("USER_CANCELED", "ERROR", "TERMINAL_CUSTOM_HOOK"):
             out["last_assistant_message"] = ""
         else:
             transcript_path = event.get("transcriptPath")
