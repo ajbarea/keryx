@@ -41,8 +41,9 @@ Scripts and tallies are in [the evaluation folder](https://github.com/ajbarea/ke
   17 newer replies with `gemma3:4b`: 82 with 1 unfaithful line, against the round-3 prompt's 77
   with 5 (faithful 27 against 20).
 
-`gemma3:4b` with the round-4 prompt ships. The totals tie, and faithfulness decides: saying
-something false aloud costs more than an awkward phrase. It takes a median 1.06 s per reply
+`gemma3:4b` with the round-4 prompt ships. In round 3 the two best totals tied and
+faithfulness decided (1 unfaithful line against 3): saying something false aloud costs more
+than an awkward phrase. It takes a median 1.06 s per reply
 and 3.7 GB of VRAM measured with `nvidia-smi` (Ollama reported 2.88 GB).
 
 `research(2026-10)`: small-model candidates were taken from current Ollama roundups (Gemma 3

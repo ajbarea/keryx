@@ -11,13 +11,16 @@ import pytest
 
 from keryx.summarize import (
     DIRECT_MAX_CHARS,
+    EXAMPLES,
     GENERATE_TIMEOUT,
     LOAD_TIMEOUT,
     MAX_INPUT_CHARS,
     NUM_CTX,
     NUM_PREDICT,
     SPOKEN_MAX_CHARS,
+    SYSTEM_PROMPT,
     OllamaClient,
+    _framed,
     model_input,
     ollama_keep_alive,
     spoken,
@@ -155,10 +158,18 @@ def test_design_doc_states_the_timeouts_in_use():
 
 # Measured on gemma3:4b: fixed prompt overhead in tokens (2026-11-23, Ollama prompt_eval_count of
 # an empty framed reply, plus one; 409 before #70's rules) and dense text (versions, IDs,
-# percentages) in tokens per char (2026-10-21). Re-measure when SYSTEM_PROMPT or FEW_SHOT change.
+# percentages) in tokens per char (2026-10-21). Re-measured 11-23: 469 + 1.
 OVERHEAD_TOKENS = 470
+# The prompt OVERHEAD_TOKENS was measured on, in characters: an edit to SYSTEM_PROMPT or
+# EXAMPLES fails here until OVERHEAD_TOKENS is re-measured and this updated with it.
+OVERHEAD_MEASURED_ON_CHARS = 1812
 DENSE_TOKENS_PER_CHAR = 0.63
 HEADROOM_TOKENS = 32  # so the next wording edit fails here, not in a cut-off prompt
+
+
+def test_the_overhead_was_measured_on_this_prompt():
+    chars = len(SYSTEM_PROMPT) + sum(len(_framed(m)) + len(s) for m, s in EXAMPLES)
+    assert chars == OVERHEAD_MEASURED_ON_CHARS, "prompt changed: re-measure OVERHEAD_TOKENS"
 
 
 def test_the_largest_prompt_keryx_can_send_fits_the_context_it_asks_for():
