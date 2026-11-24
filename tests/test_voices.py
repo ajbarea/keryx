@@ -974,6 +974,15 @@ def test_a_voice_held_before_it_was_reserved_is_given_up_unless_asked_for(tmp_pa
     )
 
 
+def test_a_worker_on_a_newly_reserved_voice_gets_the_voice_it_asks_for(tmp_path):
+    # Its hold is given up first, so its KERYX_VOICE is honoured, not the repo's home voice.
+    path = tmp_path / "v.json"
+    clock = Clock()
+    VoiceBook(path, clock=clock, alive=lambda h: True).pin("worker-pid", "am_michael")
+    b = VoiceBook(path, clock=clock, alive=lambda h: True, reserved=("am_michael",))
+    assert b.assign("worker-pid", "ajsoftworks", requested="af_bella") == VoiceSpec(("af_bella",))
+
+
 def test_reserved_names_are_read_as_keryx_reserve_takes_them(tmp_path, caplog):
     b = VoiceBook(tmp_path / "v.json", clock=Clock(), reserved=("michael", "BF_EMMA", "nobody"))
     given = [b.assign(f"s{i}", f"repo{i}") for i in range(8)]

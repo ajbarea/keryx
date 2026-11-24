@@ -262,13 +262,17 @@ class VoiceBook:
         """
         now = self._clock()
         self._expire(now)
-        if holder and requested:
-            req_index = self._ensure_spec(requested)
-            held = self._held.get(holder)
-            if req_index is not None and (held is None or held[0] == req_index):
-                self._held[holder] = (req_index, now)
-                self._save(now, force=held is None)
-                return self._specs[req_index]
+        req_index = self._ensure_spec(requested) if holder and requested else None
+        held = self._held.get(holder) if holder else None
+        # A voice reserved since it was handed out (keryx reserve, then a restart) is given up,
+        # unless this holder asks for it by name.
+        if held is not None and self._is_reserved(held[0]) and held[0] != req_index:
+            del self._held[holder]
+            held = None
+        if req_index is not None and (held is None or held[0] == req_index):
+            self._held[holder] = (req_index, now)
+            self._save(now, force=held is None)
+            return self._specs[req_index]
         taken = {i for h, (i, _) in self._held.items() if h != holder}
         if not holder:
             free_idx = next(
@@ -281,10 +285,6 @@ class VoiceBook:
                     0,
                 )
             return self._specs[free_idx]
-        # A voice reserved since it was handed out (keryx reserve, then a restart) is given up:
-        # only asking (`requested`, above) keeps one.
-        if holder in self._held and self._is_reserved(self._held[holder][0]):
-            del self._held[holder]
         changed = holder not in self._held
         home = self._home.get(source)
         # A free unreserved single voice of the repo, else the first free single voice.
