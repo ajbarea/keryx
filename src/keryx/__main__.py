@@ -229,8 +229,15 @@ def main(argv: list[str] | None = None) -> int:
         if not may_speak(cfg, str(event.get("session_id", ""))):
             return 0
 
-        # In AGY, PreInvocation acts as both prompt notification and synchronous replay hook:
-        if event.get("engine") == "agy" and hook.is_replay_event(event, hook.entrypoint()):
+        # AGY has no separate prompt hook: its first PreInvocation (normalized to
+        # UserPromptSubmit) can end the turn before the model is called
+        # (terminationBehavior, antigravity.google/docs/hooks). The line said again is the answer;
+        # an injected message would stay in the conversation.
+        if (
+            event.get("engine") == "agy"
+            and event.get("hook_event_name") == "UserPromptSubmit"
+            and hook.is_replay_event(event, hook.entrypoint())
+        ):
             from keryx.procs import terminal_id
 
             who = {"terminal": terminal_id(), "session": event.get("session_id", "")}
@@ -239,23 +246,7 @@ def main(argv: list[str] | None = None) -> int:
             except (OSError, ValueError):
                 replayed = False
             if replayed:
-                print(
-                    json.dumps(
-                        {
-                            "terminationBehavior": "terminate",
-                            "injectSteps": [
-                                {
-                                    "systemMessage": {
-                                        "systemMessage": "",
-                                        "metadata": {
-                                            "user_markdown": "*(keryx: saying that again)*"
-                                        },
-                                    }
-                                }
-                            ],
-                        }
-                    )
-                )
+                print(json.dumps({"terminationBehavior": "terminate"}))
                 return 0
 
         request = hook.request_for(event, hook.entrypoint())

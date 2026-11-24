@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -67,40 +68,49 @@ def test_session_start_spawns_and_warms(monkeypatch, sent):
     ]
 
 
-def test_agy_pre_invocation_replay_phrase_triggers_again_and_terminates(monkeypatch, capsys):
+AGY_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def agy_pre_invocation(n: int) -> dict:
+    """A real Antigravity PreInvocation payload (captured 11-23, paths scrubbed), as the
+    `invocationNum`-th model call of a turn whose prompt is "say that again"."""
+    return json.loads((AGY_FIXTURES / f"agy-pre-invocation-{n}.json").read_text())
+
+
+def test_agy_first_pre_invocation_replay_phrase_says_it_again_and_ends_the_turn(
+    monkeypatch, capsys
+):
     from keryx import client
 
     sent = []
     monkeypatch.setattr(client, "send", lambda req, *a, **k: sent.append(req) or {"replayed": True})
-    event = {
-        "hookEventName": "PreInvocation",
-        "conversationId": "conv-agy-1",
-        "lastUserInput": "say that again",
-    }
+    event = agy_pre_invocation(0)
     assert run_hook(monkeypatch, event) == 0
-    assert len(sent) == 1
-    assert sent[0]["op"] == "again"
-    assert sent[0]["session"] == "conv-agy-1"
-    out = json.loads(capsys.readouterr().out)
-    assert out["terminationBehavior"] == "terminate"
-    assert (
-        "saying that again" in out["injectSteps"][0]["systemMessage"]["metadata"]["user_markdown"]
-    )
+    assert [(r["op"], r["session"]) for r in sent] == [("again", event["conversationId"])]
+    # The documented way to stop before the model call; no step is left in the conversation.
+    assert json.loads(capsys.readouterr().out) == {"terminationBehavior": "terminate"}
 
 
-def test_agy_pre_invocation_replay_phrase_proceeds_when_not_replayed(monkeypatch, sent, capsys):
+def test_agy_replay_with_nothing_to_say_again_reaches_the_model(monkeypatch, sent, capsys):
     from keryx import client
 
     monkeypatch.setattr(client, "send", lambda req, *a, **k: {"replayed": False})
-    event = {
-        "hookEventName": "PreInvocation",
-        "conversationId": "conv-agy-2",
-        "lastUserInput": "say that again",
-    }
-    assert run_hook(monkeypatch, event) == 0
+    assert run_hook(monkeypatch, agy_pre_invocation(0)) == 0
     assert capsys.readouterr().out == ""
     assert sent["spawn"][0]["op"] == "stop"
     assert sent["spawn"][0]["interrupt"] is False
+
+
+def test_agy_later_model_calls_of_a_turn_are_not_prompts(monkeypatch, sent, capsys):
+    from keryx import client
+
+    asked = []
+    monkeypatch.setattr(
+        client, "send", lambda req, *a, **k: asked.append(req) or {"replayed": True}
+    )
+    assert run_hook(monkeypatch, agy_pre_invocation(1)) == 0
+    assert asked == [] and capsys.readouterr().out == ""
+    assert sent.get("spawn", []) == []
 
 
 class ExitedDaemon:

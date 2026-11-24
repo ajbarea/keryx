@@ -127,7 +127,9 @@ def normalize(event: dict) -> dict:
     if event.get("hookEventName"):
         out["engine"] = "agy"
     if event_name:
-        if event_name == "PreInvocation":
+        # AGY fires PreInvocation before every model call of a turn (invocationNum 0, 1, ...),
+        # each carrying the same lastUserInput: only the first is the user's prompt.
+        if event_name == "PreInvocation" and not event.get("invocationNum"):
             event_name = "UserPromptSubmit"
         out["hook_event_name"] = event_name
 

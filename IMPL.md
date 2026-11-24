@@ -1,23 +1,21 @@
-# IMPL
+# IMPL: #83 AGY replay parity and pronounce skill (PR #101)
 
-## Current: Dual-Runtime Compatibility for AGY (#83)
+Branch feat/agy-dual-runtime-compat (agy's; reviewed and fixed by Opus agy-review-k 11-23).
+Push: `git push origin feat/agy-dual-runtime-compat:feat/agy-dual-runtime-compat`. Never push to main.
 
-Slice: Complete cross-runtime parity for Google Antigravity (AGY) in Keryx:
-1. Update `skills/pronounce/SKILL.md` to be tool-agnostic (supporting `run_command` in AGY and `Bash` in Claude Code) and eliminate Claude Code-specific `!` backtick dynamic interpolation in favor of clear execution runbooks.
-2. Intercept replay requests in `PreInvocation` hook for AGY sessions, send `op: again` to the daemon, and return an AGY termination payload with user markdown, preventing prompt tokens from reaching the model.
+## Done
+- agy: "say that again" in AGY replays and ends the turn from PreInvocation; engine tag; skill
+  name + run_command.
+- Opus r1, from a real capture (agy -p in a scratch folder, keryx disabled, klepsydra state in
+  scratch; fixtures tests/fixtures/agy-pre-invocation-{0,1}.json):
+  - AGY fires PreInvocation before EVERY model call of a turn with the same lastUserInput
+    (invocationNum 0, 1, ...). Every call was read as a new prompt (on main too), and the replay
+    would fire again on each. Now only invocationNum 0 is the prompt (hook.normalize).
+  - The reply is the documented `{"terminationBehavior": "terminate"}`
+    (antigravity.google/docs/hooks, PreInvocation): agy's undocumented metadata.user_markdown and
+    an empty systemMessage (which the docs say stays in the conversation) removed.
+  - Skill line made true on both runtimes.
+- Guard mutation-checked (2 red). pytest full suite green.
 
-✅ Done
-- `skills/pronounce/SKILL.md`: Added `name: pronounce`, updated `allowed-tools` to include `run_command`, replaced `!` backtick command interpolation with direct procedural steps.
-- `src/keryx/hook.py`: Updated `normalize()` to tag `out["engine"] = "agy"` when `hookEventName` is present.
-- `src/keryx/__main__.py`: Added AGY `PreInvocation` replay interception in `cmd == "hook"`, calling `client.send({"op": "again", ...})` and emitting `{"terminationBehavior": "terminate", "injectSteps": [...]}`.
-- `tests/test_cli.py`: Added tests covering AGY `PreInvocation` replay phrase termination and fallback when not replayed.
-
-📋 Next
-- Push branch `feat/agy-dual-runtime-compat`.
-- Open PR and self-review.
-
-## Verify
-- `ruff check`: clean.
-- `ruff format --check`: clean.
-- `ty check`: clean.
-- `pytest`: 712 passed in 36.2s.
+## Next
+- Fresh-reader round, CI, merge (restore main's IMPL.md first).
