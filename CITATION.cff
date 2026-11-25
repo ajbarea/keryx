@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: If you use keryx, please cite it as below.
+title: "keryx: gives Claude Code a voice"
+abstract: >-
+  A Claude Code plugin that speaks the gist of each reply. After every turn a hook
+  hands the reply to a background daemon, a local Ollama model shortens it to one or
+  two sentences about what happened and what Claude needs from you, and Kokoro-82M
+  speaks them. Everything runs locally and costs no tokens.
+type: software
+version: 0.13.0
+date-released: "2026-11-24"
+doi: 10.5281/zenodo.23327640
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23327640
+    description: Concept DOI, all versions
+authors:
+  - given-names: AJ
+    family-names: Barea
+    affiliation: Rochester Institute of Technology
+    orcid: "https://orcid.org/0009-0001-7938-2376"
+repository-code: "https://github.com/ajbarea/keryx"
+url: "https://ajbarea.github.io/keryx/"
+license: MIT
+keywords:
+  - claude code
+  - text-to-speech
+  - speech synthesis
+  - summarization
+  - local language models
+  - developer tooling
