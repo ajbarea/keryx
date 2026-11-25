@@ -141,7 +141,7 @@ them; [eval/](eval/) holds the summarizer evaluation.
 
 ## Cite
 
-Cite keryx by its Zenodo DOI, [10.5281/zenodo.23327640](https://doi.org/10.5281/zenodo.23327640), which resolves to the latest release. keryx also ships in the techne marketplace, whose [CITATION.cff](https://github.com/ajbarea/techne/blob/main/CITATION.cff) covers it.
+Cite keryx with the metadata in [CITATION.cff](CITATION.cff); GitHub's **Cite this repository** button, in the repository sidebar, turns it into APA and BibTeX. Its DOI, [10.5281/zenodo.23327640](https://doi.org/10.5281/zenodo.23327640), resolves to the latest release on Zenodo.
 
 ## Why "keryx"
 

@@ -6,10 +6,11 @@ CLAUDE_CODE_VERSION := 2.1.291
 TYPESCRIPT_VERSION := 7.0.2
 CLAUDE := npx --yes @anthropic-ai/claude-code@$(CLAUDE_CODE_VERSION)
 
-lint:                       ## ruff format --check, ruff check, ty
+lint:                       ## ruff format --check, ruff check, ty, CITATION.cff schema
 	uv run ruff format --check .
 	uv run ruff check .
 	uv run ty check
+	uv run --no-project --quiet --with cffconvert==2.0.0 cffconvert --validate -i CITATION.cff
 
 test:                       ## Run the test suite with coverage
 	uv run pytest --cov=keryx --cov-branch --cov-report=term-missing
